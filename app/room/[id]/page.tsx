@@ -38,7 +38,7 @@ export default async function RoomPage({
         </Link>
 
         <div className="overflow-hidden rounded-xl border border-white/10 bg-[#12051e]">
-          <div className="aspect-video bg-black">
+          <div className="h-[520px] bg-black md:h-[620px]">
   <WebLiveKitRoom roomId={id} />
 </div>
 

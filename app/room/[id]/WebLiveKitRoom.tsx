@@ -73,10 +73,11 @@ export default function WebLiveKitRoom({ roomId }: { roomId: string }) {
 }
 
 function CustomStreamView() {
-  
-    const participants = useParticipants();
-    const viewerCount = participants.length;  
-    const tracks = useTracks(
+  const participants = useParticipants();
+  const viewerCount = participants.length;
+  const [selectedTrackKey, setSelectedTrackKey] = useState<string | null>(null);
+
+  const tracks = useTracks(
     [
       { source: Track.Source.Camera, withPlaceholder: false },
       { source: Track.Source.ScreenShare, withPlaceholder: false },
@@ -88,37 +89,71 @@ function CustomStreamView() {
     return trackRef.publication?.track && !trackRef.publication.isMuted;
   });
 
+  function getTrackKey(trackRef: (typeof videoTracks)[number]) {
+    return `${trackRef.participant.identity}-${trackRef.source}`;
+  }
+
+  const selectedTrack =
+    videoTracks.find((trackRef) => getTrackKey(trackRef) === selectedTrackKey) ||
+    videoTracks[0];
+
+  useEffect(() => {
+    if (!selectedTrack && selectedTrackKey) {
+      setSelectedTrackKey(null);
+    }
+
+    if (selectedTrack && !selectedTrackKey) {
+      setSelectedTrackKey(getTrackKey(selectedTrack));
+    }
+  }, [selectedTrack, selectedTrackKey]);
+
   return (
     <div className="relative h-full w-full overflow-hidden bg-black">
-        <div className="absolute right-4 top-4 z-30 flex items-center gap-2 rounded-full bg-black/70 px-3 py-2 text-xs font-black text-white backdrop-blur">
-  <span className="h-2 w-2 rounded-full bg-red-500" />
-  LIVE
-  <span className="text-zinc-300">•</span>
-  <span>{viewerCount} watching</span>
-</div>
-      {videoTracks.length > 0 ? (
-        <div className="h-full w-full">
-          {videoTracks.map((trackRef) => (
-            <div
-              key={`${trackRef.participant.identity}-${trackRef.source}`}
-              className="h-full w-full overflow-hidden bg-black [&_.lk-participant-tile]:h-full [&_.lk-participant-tile]:w-full [&_video]:h-full [&_video]:w-full [&_video]:object-cover"
-            >
-              <ParticipantTile trackRef={trackRef} />
-            </div>
-          ))}
-        </div>
-      ) : (
-       <div className="grid h-full w-full place-items-center bg-[#08000f]">
-  <div className="text-center">
-    <div className="mb-2 text-2xl font-black text-white">
-      David
-    </div>
+      <div className="absolute right-4 top-4 z-30 flex items-center gap-2 rounded-full bg-black/70 px-3 py-2 text-xs font-black text-white backdrop-blur">
+        <span className="h-2 w-2 rounded-full bg-red-500" />
+        LIVE
+        <span className="text-zinc-300">•</span>
+        <span>{viewerCount} watching</span>
+      </div>
 
-    <div className="text-zinc-400">
-      Camera Off
+      {selectedTrack ? (
+  <div className="grid h-full w-full place-items-center bg-black">
+    <div className="h-full max-h-[620px] w-full max-w-[1100px] overflow-hidden bg-black [&_.lk-participant-tile]:h-full [&_.lk-participant-tile]:w-full [&_video]:h-full [&_video]:w-full [&_video]:object-contain">
+      <ParticipantTile trackRef={selectedTrack} />
     </div>
   </div>
-</div>
+) : (
+        <div className="grid h-full w-full place-items-center bg-[#08000f]">
+          <div className="text-center">
+            <div className="mb-2 text-2xl font-black text-white">David</div>
+            <div className="text-zinc-400">Camera Off</div>
+          </div>
+        </div>
+      )}
+
+      {videoTracks.length > 1 && (
+        <div className="absolute bottom-20 left-4 right-4 z-30 flex gap-3 overflow-x-auto pb-1">
+          {videoTracks.map((trackRef) => {
+            const key = getTrackKey(trackRef);
+            const isSelected = key === getTrackKey(selectedTrack);
+
+            return (
+              <button
+                key={key}
+                onClick={() => setSelectedTrackKey(key)}
+                className={`h-24 w-36 shrink-0 overflow-hidden rounded-xl border bg-black ${
+                  isSelected
+                    ? "border-purple-400"
+                    : "border-white/15 opacity-80 hover:opacity-100"
+                }`}
+              >
+                <div className="h-full w-full [&_.lk-participant-tile]:h-full [&_.lk-participant-tile]:w-full [&_video]:h-full [&_video]:w-full [&_video]:object-cover">
+                  <ParticipantTile trackRef={trackRef} />
+                </div>
+              </button>
+            );
+          })}
+        </div>
       )}
 
       <CustomControls />
