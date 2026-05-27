@@ -40,7 +40,7 @@ export default function CreateRoomButton() {
           queue_count: 0,
           max_users: 12,
           is_private: false,
-          type: "general",
+          type: "party",
           mode: "livestream",
           status: "live",
           venue_name: null,
