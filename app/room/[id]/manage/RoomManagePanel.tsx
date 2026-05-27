@@ -82,19 +82,28 @@ export default function RoomManagePanel({ roomId }: { roomId: string }) {
   }
 
   async function kickUser(userId: string) {
-    const confirmed = window.confirm("Kick this user from the room?");
-    if (!confirmed) return;
+  const confirmed = window.confirm("Kick this user from the room?");
+  if (!confirmed) return;
 
-    const supabase = createSupabaseClient();
+  const supabase = createSupabaseClient();
 
-    const { error } = await supabase
-      .from("event_attendees")
-      .delete()
-      .eq("event_room_id", roomId)
-      .eq("user_id", userId);
+  const { error } = await supabase
+    .from("event_attendees")
+    .delete()
+    .eq("event_room_id", roomId)
+    .eq("user_id", userId);
 
-    if (error) alert(error.message);
+  if (error) {
+    alert(error.message);
+    return;
   }
+
+  setAttendees((current) =>
+    current.filter((attendee) => attendee.user_id !== userId),
+  );
+
+  await loadRoomData();
+}
 
  async function testObsIngress() {
   const supabase = createSupabaseClient();
