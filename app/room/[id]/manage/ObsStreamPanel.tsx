@@ -1,17 +1,33 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createSupabaseClient } from "@/lib/supabase";
 
 type ObsKey = {
-  ingressId: string;
-  rtmpUrl: string;
-  streamKey: string;
+  ingress_id: string;
+  rtmp_url: string;
+  stream_key: string;
 };
 
 export default function ObsStreamPanel({ roomId }: { roomId: string }) {
   const [obsKey, setObsKey] = useState<ObsKey | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    async function loadExistingKey() {
+      const supabase = createSupabaseClient();
+
+      const { data } = await supabase
+        .from("room_stream_keys")
+        .select("ingress_id, rtmp_url, stream_key")
+        .eq("room_id", roomId)
+        .maybeSingle();
+
+      setObsKey(data);
+    }
+
+    loadExistingKey();
+  }, [roomId]);
 
   async function generateObsKey() {
     if (loading) return;
@@ -19,6 +35,18 @@ export default function ObsStreamPanel({ roomId }: { roomId: string }) {
     setLoading(true);
 
     const supabase = createSupabaseClient();
+
+    const { data: existingKey } = await supabase
+      .from("room_stream_keys")
+      .select("ingress_id, rtmp_url, stream_key")
+      .eq("room_id", roomId)
+      .maybeSingle();
+
+    if (existingKey) {
+      setObsKey(existingKey);
+      setLoading(false);
+      return;
+    }
 
     const { data, error } = await supabase.functions.invoke(
       "create-obs-stream",
@@ -36,7 +64,29 @@ export default function ObsStreamPanel({ roomId }: { roomId: string }) {
       return;
     }
 
-    setObsKey(data as ObsKey);
+    const newKey = {
+      room_id: roomId,
+      ingress_id: data.ingressId,
+      rtmp_url: data.rtmpUrl,
+      stream_key: data.streamKey,
+    };
+
+    const { error: saveError } = await supabase
+      .from("room_stream_keys")
+      .upsert(newKey, { onConflict: "room_id" });
+
+    if (saveError) {
+      alert(saveError.message);
+      setLoading(false);
+      return;
+    }
+
+    setObsKey({
+      ingress_id: newKey.ingress_id,
+      rtmp_url: newKey.rtmp_url,
+      stream_key: newKey.stream_key,
+    });
+
     setLoading(false);
   }
 
@@ -72,11 +122,11 @@ export default function ObsStreamPanel({ roomId }: { roomId: string }) {
               <div className="flex gap-2">
                 <input
                   readOnly
-                  value={obsKey.rtmpUrl}
+                  value={obsKey.rtmp_url}
                   className="min-w-0 flex-1 rounded-md bg-black px-3 py-2 text-sm text-white"
                 />
                 <button
-                  onClick={() => copyText(obsKey.rtmpUrl)}
+                  onClick={() => copyText(obsKey.rtmp_url)}
                   className="rounded-md border border-white/15 px-3 py-2 text-sm font-black hover:bg-white/10"
                 >
                   Copy
@@ -91,11 +141,11 @@ export default function ObsStreamPanel({ roomId }: { roomId: string }) {
               <div className="flex gap-2">
                 <input
                   readOnly
-                  value={obsKey.streamKey}
+                  value={obsKey.stream_key}
                   className="min-w-0 flex-1 rounded-md bg-black px-3 py-2 text-sm text-white"
                 />
                 <button
-                  onClick={() => copyText(obsKey.streamKey)}
+                  onClick={() => copyText(obsKey.stream_key)}
                   className="rounded-md border border-white/15 px-3 py-2 text-sm font-black hover:bg-white/10"
                 >
                   Copy

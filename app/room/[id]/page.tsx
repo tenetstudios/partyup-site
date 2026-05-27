@@ -3,6 +3,7 @@ import { createSupabaseClient } from "@/lib/supabase";
 import JoinRoomButton from "./JoinRoomButton";
 import WebLiveKitRoom from "./WebLiveKitRoom";
 import RoomChat from "./RoomChat";
+import ManageRoomLink from "./ManageRoomLink";
 
 export default async function RoomPage({
   params,
@@ -39,8 +40,8 @@ export default async function RoomPage({
 
         <div className="overflow-hidden rounded-xl border border-white/10 bg-[#12051e]">
           <div className="h-[520px] bg-black md:h-[620px]">
-  <WebLiveKitRoom roomId={id} />
-</div>
+            <WebLiveKitRoom roomId={id} />
+          </div>
 
           <div className="p-6">
             <div className="mb-3 flex items-center gap-3">
@@ -71,17 +72,12 @@ export default async function RoomPage({
                 <div className="mt-1 font-black">{room.status}</div>
               </div>
             </div>
-            
+
             <JoinRoomButton roomId={id} />
+
             <RoomChat roomId={id} />
-            <div className="mt-8 border-t border-white/10 pt-6">
-  <Link
-    href={`/room/${id}/manage`}
-    className="inline-flex rounded-md border border-white/15 px-4 py-2 text-sm font-black hover:bg-white/10"
-  >
-    Manage Room
-  </Link>
-</div>
+
+            <ManageRoomLink roomId={id} hostId={room.host_id} />
           </div>
         </div>
       </div>
