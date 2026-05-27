@@ -85,9 +85,9 @@ export default function CreateRoomButton() {
           mode: roomMode,
           status: roomStatus,
           scheduled_at:
-          roomStatus === "scheduled" && scheduledAt
-            ? new Date(scheduledAt).toISOString()
-            : null,
+  roomStatus === "scheduled" && scheduledAt
+    ? scheduledAt
+    : null,
           venue_name: venueName.trim() || null,
           latitude: null,
           longitude: null,
