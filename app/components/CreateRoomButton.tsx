@@ -41,7 +41,7 @@ export default function CreateRoomButton() {
           max_users: 12,
           is_private: false,
           type: "general",
-          mode: "public",
+          mode: "livestream",
           status: "live",
           venue_name: null,
           latitude: null,
