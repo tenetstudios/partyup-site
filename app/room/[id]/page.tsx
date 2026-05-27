@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createSupabaseClient } from "@/lib/supabase";
 import JoinRoomButton from "./JoinRoomButton";
 import DeleteRoomButton from "./DeleteRoomButton";
+import WebLiveKitRoom from "./WebLiveKitRoom";
 
 export default async function RoomPage({
   params,
@@ -68,9 +69,10 @@ export default async function RoomPage({
                 <div className="mt-1 font-black">{room.status}</div>
               </div>
             </div>
-
-            <JoinRoomButton roomId={id} />
+                <WebLiveKitRoom roomId={id} />
             
+            <JoinRoomButton roomId={id} />
+
             <DeleteRoomButton roomId={id} hostId={room.host_id} />
           </div>
         </div>
