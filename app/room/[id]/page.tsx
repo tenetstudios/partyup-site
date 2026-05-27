@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createSupabaseClient } from "@/lib/supabase";
 import JoinRoomButton from "./JoinRoomButton";
+import DeleteRoomButton from "./DeleteRoomButton";
 
 export default async function RoomPage({
   params,
@@ -69,6 +70,8 @@ export default async function RoomPage({
             </div>
 
             <JoinRoomButton roomId={id} />
+            
+            <DeleteRoomButton roomId={id} hostId={room.host_id} />
           </div>
         </div>
       </div>
