@@ -45,9 +45,19 @@ export default async function RoomPage({
 
           <div className="p-6">
             <div className="mb-3 flex items-center gap-3">
-              <span className="rounded bg-red-600 px-2 py-1 text-xs font-black">
-                LIVE
-              </span>
+              {room.status === "scheduled" ? (
+  <span className="rounded bg-blue-600 px-2 py-1 text-xs font-black">
+    SCHEDULED
+  </span>
+) : room.status === "ended" ? (
+  <span className="rounded bg-zinc-600 px-2 py-1 text-xs font-black">
+    ENDED
+  </span>
+) : (
+  <span className="rounded bg-red-600 px-2 py-1 text-xs font-black">
+    LIVE
+  </span>
+)}
 
               <span className="text-sm text-zinc-400">
                 {room.current_users ?? 0} users
@@ -55,6 +65,18 @@ export default async function RoomPage({
             </div>
 
             <h1 className="text-4xl font-black">{room.title}</h1>
+            
+              {room.status === "scheduled" && room.scheduled_at && (
+  <p className="mt-2 text-purple-300 font-bold">
+    Starts{" "}
+    {new Date(room.scheduled_at).toLocaleString("en-CA", {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    })}
+  </p>
+)}
 
             <div className="mt-6 grid gap-4 md:grid-cols-3">
               <div className="rounded-lg bg-black/30 p-4">

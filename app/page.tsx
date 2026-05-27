@@ -10,6 +10,7 @@ type LiveRoom = DatabaseRecord & {
   id: string | number;
   host_id?: string | number | null;
   status?: string | null;
+  scheduled_at?: string | null;
 };
 
 type HostProfile = DatabaseRecord & {
@@ -97,6 +98,27 @@ function getCategory(room: LiveRoom) {
     asText(room.type) ??
     "Live"
   );
+}
+
+function getScheduledText(room: LiveRoom) {
+  const rawDate = asText(room.scheduled_at);
+
+  if (!rawDate) {
+    return null;
+  }
+
+  const date = new Date(rawDate);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date.toLocaleString("en-CA", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 async function getLiveRooms() {
@@ -338,15 +360,24 @@ export default async function HomePage() {
                       {getRoomDescription(room)}
                     </p>
                     <div className="mt-4 flex items-center justify-between gap-3">
-                      <span className="rounded-sm bg-purple-500/15 px-2 py-1 text-xs font-bold text-purple-200">
-                        {getCategory(room)}
-                      </span>
-                      <Link
-                        href={`/room/${room.id}`}
-                        className="rounded-md bg-[#9146ff] px-4 py-2 text-sm font-black hover:bg-[#7b31e8]"
-                      >
-                        Join Room
-                      </Link>
+                    <div className="flex items-center gap-2">
+  <span className="rounded-sm bg-purple-500/15 px-2 py-1 text-xs font-bold text-purple-200">
+    {getCategory(room)}
+  </span>
+
+  {room.status === "scheduled" && getScheduledText(room) && (
+    <span className="rounded-sm bg-blue-500/15 px-2 py-1 text-xs font-bold text-blue-200">
+      Starts {getScheduledText(room)}
+    </span>
+  )}
+</div>
+
+<Link
+  href={`/room/${room.id}`}
+  className="rounded-md bg-[#9146ff] px-4 py-2 text-sm font-black hover:bg-[#7b31e8]"
+>
+  Join Room
+</Link>
                     </div>
                   </div>
                 </article>
