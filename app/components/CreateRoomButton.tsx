@@ -15,8 +15,9 @@ export default function CreateRoomButton() {
   const [isPrivateRoom, setIsPrivateRoom] = useState(false);
   const [roomType, setRoomType] = useState("party");
   const [roomMode, setRoomMode] = useState("livestream");
-  const [roomStatus, setRoomStatus] = useState("live");
+  const [roomStatus, setRoomStatus] = useState("scheduled");
   const [venueName, setVenueName] = useState("");
+  const [scheduledAt, setScheduledAt] = useState("");
 
   async function createRoom() {
     if (loading) return;
@@ -186,6 +187,11 @@ export default function CreateRoomButton() {
                     className="w-full rounded-md bg-black px-3 py-3 text-white outline-none"
                   >
                     <option value="party">Party</option>
+<option value="concert">Concert</option>
+<option value="dj_set">DJ Set</option>
+<option value="popup">Pop-Up</option>
+<option value="sports">Sports</option>
+<option value="watch_party">Watch Party</option>
                   </select>
                 </label>
 
@@ -223,9 +229,25 @@ export default function CreateRoomButton() {
                     onChange={(event) => setRoomStatus(event.target.value)}
                     className="w-full rounded-md bg-black px-3 py-3 text-white outline-none"
                   >
-                    <option value="live">Live</option>
+                    <option value="scheduled">Scheduled</option>
+<option value="live">Live</option>
+<option value="ended">Ended</option>
                   </select>
                 </label>
+                {roomStatus === "scheduled" && (
+  <label className="block">
+    <span className="mb-1 block text-sm font-black">
+      Scheduled Date & Time
+    </span>
+
+    <input
+      type="datetime-local"
+      value={scheduledAt}
+      onChange={(event) => setScheduledAt(event.target.value)}
+      className="w-full rounded-md bg-black px-3 py-3 text-white outline-none"
+    />
+  </label>
+)}
               </div>
 
               <label className="block">
