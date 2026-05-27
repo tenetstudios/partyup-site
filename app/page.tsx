@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { connection } from "next/server";
 import { createSupabaseClient } from "@/lib/supabase";
+import CreateRoomButton from "@/app/components/CreateRoomButton";
+import AuthButton from "@/app/components/AuthButton";
 
 type DatabaseRecord = Record<string, unknown>;
 
@@ -186,20 +188,17 @@ export default async function HomePage() {
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="hidden items-center gap-2 rounded-full border border-purple-400/30 bg-purple-500/10 px-3 py-2 text-xs font-black uppercase text-purple-200 sm:flex">
-              <span className="h-2 w-2 rounded-full bg-red-500 shadow-[0_0_14px_rgba(239,68,68,0.9)]" />
-              {rooms.length} live
-            </div>
-            <a
-              href="#live-now"
-              className="rounded-md bg-[#9146ff] px-4 py-2 text-sm font-black hover:bg-[#7b31e8]"
-            >
-              Browse
-            </a>
-          </div>
+  <div className="hidden items-center gap-2 rounded-full border border-purple-400/30 bg-purple-500/10 px-3 py-2 text-xs font-black uppercase text-purple-200 sm:flex">
+    <span className="h-2 w-2 rounded-full bg-red-500 shadow-[0_0_14px_rgba(239,68,68,0.9)]" />
+    {rooms.length} live
+  </div>
+
+  <AuthButton />
+
+  <CreateRoomButton />
+</div>
         </div>
       </nav>
-
       <section className="border-b border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(145,70,255,0.45),transparent_34%),linear-gradient(135deg,#130024,#07000f_58%)]">
         <div className="mx-auto grid max-w-7xl gap-8 px-5 py-8 lg:grid-cols-[1.4fr_0.8fr] lg:py-12">
           <div id="featured">
