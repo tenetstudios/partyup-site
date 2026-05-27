@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import {
   LiveKitRoom,
   VideoConference,
+  ControlBar,
 } from "@livekit/components-react";
 import { createSupabaseClient } from "@/lib/supabase";
 
@@ -86,8 +87,20 @@ export default function WebLiveKitRoom({ roomId }: { roomId: string }) {
     audio={true}
     video={true}
   >
-    <div className="h-full w-full overflow-hidden bg-black [&_.lk-video-conference]:h-full [&_.lk-video-conference]:bg-black">
+    <div className="relative h-full w-full overflow-hidden bg-black">
       <VideoConference />
+
+      <div className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 rounded-full border border-white/10 bg-black/80 px-3 py-2 backdrop-blur">
+        <ControlBar
+          controls={{
+            microphone: true,
+            camera: true,
+            screenShare: true,
+            chat: false,
+            leave: true,
+          }}
+        />
+      </div>
     </div>
   </LiveKitRoom>
 );
