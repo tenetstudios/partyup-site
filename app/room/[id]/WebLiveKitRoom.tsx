@@ -108,7 +108,7 @@ function CustomStreamView() {
   }, [selectedTrack, selectedTrackKey]);
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-black">
+    <div className="flex h-full w-full flex-col overflow-hidden bg-black">
       <div className="absolute right-4 top-4 z-30 flex items-center gap-2 rounded-full bg-black/70 px-3 py-2 text-xs font-black text-white backdrop-blur">
         <span className="h-2 w-2 rounded-full bg-red-500" />
         LIVE
@@ -132,7 +132,7 @@ function CustomStreamView() {
       )}
 
       {videoTracks.length > 1 && (
-        <div className="absolute bottom-20 left-4 right-4 z-30 flex gap-3 overflow-x-auto pb-1">
+  <div className="flex gap-3 overflow-x-auto border-t border-white/10 bg-[#0a0010] p-3">
           {videoTracks.map((trackRef) => {
             const key = getTrackKey(trackRef);
             const isSelected = key === getTrackKey(selectedTrack);
