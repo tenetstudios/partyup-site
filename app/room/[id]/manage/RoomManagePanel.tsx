@@ -96,6 +96,30 @@ export default function RoomManagePanel({ roomId }: { roomId: string }) {
     if (error) alert(error.message);
   }
 
+ async function testObsIngress() {
+  const supabase = createSupabaseClient();
+
+  const { data, error } = await supabase.functions.invoke(
+    "create-obs-stream",
+    {
+      body: {
+        roomName: roomId,
+        participantName: "OBS Stream",
+      },
+    },
+  );
+
+  console.log("OBS DATA:", data);
+  console.log("OBS ERROR:", error);
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  alert("Check browser console (F12)");
+}
+
   if (!isHost) {
     return (
       <div className="mt-8 rounded-xl border border-red-500/30 bg-red-500/10 p-6 text-red-200">
@@ -184,6 +208,13 @@ export default function RoomManagePanel({ roomId }: { roomId: string }) {
                 >
                   Kick
                 </button>
+
+                <button
+  onClick={testObsIngress}
+  className="rounded-md bg-blue-600 px-3 py-2 text-xs font-black"
+>
+  Test OBS Ingress
+</button>
               </div>
             </div>
           ))
