@@ -22,7 +22,7 @@ export default function RoomChat({ roomId }: { roomId: string }) {
 
     async function loadMessages() {
       const { data } = await supabase
-        .from("messages")
+        .from("room_messages")
         .select("id, room_id, user_id, message, created_at, display_name")
         .eq("room_id", roomId)
         .order("created_at", { ascending: true })
@@ -40,7 +40,7 @@ export default function RoomChat({ roomId }: { roomId: string }) {
         {
           event: "INSERT",
           schema: "public",
-          table: "messages",
+          table: "room_messages",
           filter: `room_id=eq.${roomId}`,
         },
         (payload) => {
@@ -80,7 +80,7 @@ export default function RoomChat({ roomId }: { roomId: string }) {
       .eq("id", user.id)
       .maybeSingle();
 
-    const { error } = await supabase.from("messages").insert({
+    const { error } = await supabase.from("room_messages").insert({
       room_id: roomId,
       user_id: user.id,
       message: trimmed,

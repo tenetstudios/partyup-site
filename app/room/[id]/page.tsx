@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { createSupabaseClient } from "@/lib/supabase";
 import JoinRoomButton from "./JoinRoomButton";
-import DeleteRoomButton from "./DeleteRoomButton";
 import WebLiveKitRoom from "./WebLiveKitRoom";
 import RoomChat from "./RoomChat";
 
@@ -74,8 +73,15 @@ export default async function RoomPage({
             </div>
             
             <JoinRoomButton roomId={id} />
-            <DeleteRoomButton roomId={id} hostId={room.host_id} />
             <RoomChat roomId={id} />
+            <div className="mt-8 border-t border-white/10 pt-6">
+  <Link
+    href={`/room/${id}/manage`}
+    className="inline-flex rounded-md border border-white/15 px-4 py-2 text-sm font-black hover:bg-white/10"
+  >
+    Manage Room
+  </Link>
+</div>
           </div>
         </div>
       </div>
