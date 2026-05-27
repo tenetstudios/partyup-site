@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import {
   LiveKitRoom,
   ParticipantTile,
+  useParticipants,
   useLocalParticipant,
   useRoomContext,
   useTracks,
@@ -63,8 +64,8 @@ export default function WebLiveKitRoom({ roomId }: { roomId: string }) {
       serverUrl={livekitUrl}
       token={token}
       connect={true}
-      audio={true}
-      video={true}
+      audio={false}
+      video={false}
     >
       <CustomStreamView />
     </LiveKitRoom>
@@ -72,7 +73,10 @@ export default function WebLiveKitRoom({ roomId }: { roomId: string }) {
 }
 
 function CustomStreamView() {
-  const tracks = useTracks(
+  
+    const participants = useParticipants();
+    const viewerCount = participants.length;  
+    const tracks = useTracks(
     [
       { source: Track.Source.Camera, withPlaceholder: false },
       { source: Track.Source.ScreenShare, withPlaceholder: false },
@@ -86,6 +90,12 @@ function CustomStreamView() {
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-black">
+        <div className="absolute right-4 top-4 z-30 flex items-center gap-2 rounded-full bg-black/70 px-3 py-2 text-xs font-black text-white backdrop-blur">
+  <span className="h-2 w-2 rounded-full bg-red-500" />
+  LIVE
+  <span className="text-zinc-300">•</span>
+  <span>{viewerCount} watching</span>
+</div>
       {videoTracks.length > 0 ? (
         <div className="h-full w-full">
           {videoTracks.map((trackRef) => (
@@ -98,9 +108,17 @@ function CustomStreamView() {
           ))}
         </div>
       ) : (
-        <p className="grid h-full w-full place-items-center text-sm font-bold text-zinc-400">
-          No video yet
-        </p>
+       <div className="grid h-full w-full place-items-center bg-[#08000f]">
+  <div className="text-center">
+    <div className="mb-2 text-2xl font-black text-white">
+      David
+    </div>
+
+    <div className="text-zinc-400">
+      Camera Off
+    </div>
+  </div>
+</div>
       )}
 
       <CustomControls />
@@ -112,8 +130,8 @@ function CustomControls() {
   const room = useRoomContext();
   const { localParticipant } = useLocalParticipant();
 
-  const [micOn, setMicOn] = useState(true);
-  const [camOn, setCamOn] = useState(true);
+  const [micOn, setMicOn] = useState(false);
+const [camOn, setCamOn] = useState(false);
   const [screenOn, setScreenOn] = useState(false);
   const [obsOn, setObsOn] = useState(false);
 
@@ -172,8 +190,8 @@ function CustomControls() {
       </button>
 
       <button onClick={toggleCam} className={controlClass(camOn)}>
-        {camOn ? "Cam On" : "Cam Off"}
-      </button>
+  {camOn ? "End Live" : "Go Live"}
+</button>
 
       <button onClick={useObsVirtualCamera} className={controlClass(obsOn)}>
   {obsOn ? "OBS On" : "OBS Cam"}
