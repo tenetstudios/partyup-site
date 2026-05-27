@@ -5,7 +5,6 @@ import {
   LiveKitRoom,
   VideoConference,
 } from "@livekit/components-react";
-import "@livekit/components-styles";
 import { createSupabaseClient } from "@/lib/supabase";
 
 export default function WebLiveKitRoom({ roomId }: { roomId: string }) {
