@@ -34,17 +34,21 @@ export default function CreateRoomButton() {
 let profile = existingProfile;
 
 if (!profile) {
-  const fallbackUsername =
-    user.user_metadata?.full_name ||
-    user.user_metadata?.name ||
-    "PartyUp User";
-
   const { data: createdProfile } = await supabase
     .from("profiles")
     .insert({
       id: user.id,
-      username: fallbackUsername,
-      avatar_url: user.user_metadata?.avatar_url || "",
+      username:
+        user.user_metadata?.full_name ||
+        user.user_metadata?.name ||
+        user.email?.split("@")[0] ||
+        "Guest",
+      avatar_url:
+        user.user_metadata?.avatar_url ||
+        user.user_metadata?.picture ||
+        "",
+      bio: "",
+      is_google_verified: !!user.email,
     })
     .select("username, avatar_url")
     .single();
