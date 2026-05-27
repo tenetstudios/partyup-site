@@ -18,7 +18,7 @@ export default function CreateRoomButton() {
   const [roomStatus, setRoomStatus] = useState("scheduled");
   const [venueName, setVenueName] = useState("");
   const [scheduledAt, setScheduledAt] = useState("");
-
+  
   async function createRoom() {
     if (loading) return;
 
@@ -84,6 +84,10 @@ export default function CreateRoomButton() {
           type: roomType,
           mode: roomMode,
           status: roomStatus,
+          scheduled_at:
+          roomStatus === "scheduled" && scheduledAt
+            ? new Date(scheduledAt).toISOString()
+            : null,
           venue_name: venueName.trim() || null,
           latitude: null,
           longitude: null,
@@ -128,6 +132,7 @@ export default function CreateRoomButton() {
       setRoomMode("livestream");
       setRoomStatus("live");
       setVenueName("");
+      setScheduledAt("");
       setOpen(false);
       setLoading(false);
 
