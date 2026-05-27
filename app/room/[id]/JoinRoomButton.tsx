@@ -34,7 +34,11 @@ export default function JoinRoomButton({ roomId }: { roomId: string }) {
         {
           event_room_id: roomId,
           user_id: user.id,
-          username: profile?.username || user.email || "Guest",
+          username:
+  profile?.username ||
+  user.user_metadata?.full_name ||
+  user.user_metadata?.name ||
+  "PartyUp User",
           avatar_url: profile?.avatar_url || "",
           status: "accepted",
           can_stream: false,

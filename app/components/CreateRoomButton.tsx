@@ -25,11 +25,32 @@ export default function CreateRoomButton() {
         return;
       }
 
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("username, avatar_url")
-        .eq("id", user.id)
-        .single();
+      const { data: existingProfile } = await supabase
+  .from("profiles")
+  .select("username, avatar_url")
+  .eq("id", user.id)
+  .maybeSingle();
+
+let profile = existingProfile;
+
+if (!profile) {
+  const fallbackUsername =
+    user.user_metadata?.full_name ||
+    user.user_metadata?.name ||
+    "PartyUp User";
+
+  const { data: createdProfile } = await supabase
+    .from("profiles")
+    .insert({
+      id: user.id,
+      username: fallbackUsername,
+      avatar_url: user.user_metadata?.avatar_url || "",
+    })
+    .select("username, avatar_url")
+    .single();
+
+  profile = createdProfile;
+}
 
       const { data: insertedRoom, error: roomError } = await supabase
         .from("event_rooms")
