@@ -3,21 +3,22 @@
 import { useEffect, useState } from "react";
 import {
   LiveKitRoom,
-  VideoConference,
-  ControlBar,
+  ParticipantTile,
+  useLocalParticipant,
+  useRoomContext,
+  useTracks,
 } from "@livekit/components-react";
+import { Track } from "livekit-client";
 import { createSupabaseClient } from "@/lib/supabase";
 
 export default function WebLiveKitRoom({ roomId }: { roomId: string }) {
   const [token, setToken] = useState("");
   const [error, setError] = useState("");
-
   const livekitUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL;
 
   useEffect(() => {
     async function getToken() {
       const supabase = createSupabaseClient();
-
       const { data: userData } = await supabase.auth.getUser();
       const user = userData.user;
 
@@ -32,8 +33,7 @@ export default function WebLiveKitRoom({ roomId }: { roomId: string }) {
         .eq("id", user.id)
         .maybeSingle();
 
-      const displayName =
-        profile?.username || `Guest ${user.id.slice(0, 4)}`;
+      const displayName = profile?.username || `Guest ${user.id.slice(0, 4)}`;
 
       const { data, error } = await supabase.functions.invoke("livekit-token", {
         body: {
@@ -44,7 +44,6 @@ export default function WebLiveKitRoom({ roomId }: { roomId: string }) {
       });
 
       if (error) {
-        console.log("LIVEKIT TOKEN ERROR:", error);
         setError(error.message);
         return;
       }
@@ -55,53 +54,120 @@ export default function WebLiveKitRoom({ roomId }: { roomId: string }) {
     getToken();
   }, [roomId]);
 
-  if (!livekitUrl) {
-    return (
-      <div className="mt-8 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-red-200">
-        Missing NEXT_PUBLIC_LIVEKIT_URL.
+  if (!livekitUrl) return <StreamMessage text="Missing LiveKit URL." />;
+  if (error) return <StreamMessage text={error} />;
+  if (!token) return <StreamMessage text="Connecting to livestream..." />;
+
+  return (
+    <LiveKitRoom
+      serverUrl={livekitUrl}
+      token={token}
+      connect={true}
+      audio={true}
+      video={true}
+    >
+      <CustomStreamView />
+    </LiveKitRoom>
+  );
+}
+
+function CustomStreamView() {
+  const tracks = useTracks(
+    [
+      { source: Track.Source.Camera, withPlaceholder: true },
+      { source: Track.Source.ScreenShare, withPlaceholder: false },
+    ],
+    { onlySubscribed: false },
+  );
+
+  return (
+    <div className="relative h-full w-full overflow-hidden bg-black">
+      <div className="grid h-full w-full place-items-center">
+        {tracks.length > 0 ? (
+          <div className="grid h-full w-full grid-cols-1 gap-2 p-2 md:grid-cols-2">
+            {tracks.map((trackRef) => (
+              <div
+                key={`${trackRef.participant.identity}-${trackRef.source}`}
+                className="overflow-hidden rounded-xl bg-[#09000f]"
+              >
+                <ParticipantTile trackRef={trackRef} />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm font-bold text-zinc-400">No video yet</p>
+        )}
       </div>
-    );
+
+      <CustomControls />
+    </div>
+  );
+}
+
+function CustomControls() {
+  const room = useRoomContext();
+  const { localParticipant } = useLocalParticipant();
+
+  const [micOn, setMicOn] = useState(true);
+  const [camOn, setCamOn] = useState(true);
+  const [screenOn, setScreenOn] = useState(false);
+
+  async function toggleMic() {
+    const next = !micOn;
+    await localParticipant.setMicrophoneEnabled(next);
+    setMicOn(next);
   }
 
-  if (error) {
-    return (
-      <div className="mt-8 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-red-200">
-        {error}
-      </div>
-    );
+  async function toggleCam() {
+    const next = !camOn;
+    await localParticipant.setCameraEnabled(next);
+    setCamOn(next);
   }
 
-  if (!token) {
-    return (
-      <div className="mt-8 rounded-lg border border-white/10 bg-black/30 p-6 text-zinc-300">
-        Connecting to livestream...
-      </div>
-    );
+  async function toggleScreen() {
+    const next = !screenOn;
+    await localParticipant.setScreenShareEnabled(next);
+    setScreenOn(next);
+  }
+
+  function leaveRoom() {
+    room.disconnect();
   }
 
   return (
-  <LiveKitRoom
-    serverUrl={livekitUrl}
-    token={token}
-    connect={true}
-    audio={true}
-    video={true}
-  >
-    <div className="relative h-full w-full overflow-hidden bg-black">
-      <VideoConference />
+    <div className="absolute bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/10 bg-black/75 p-2 shadow-2xl backdrop-blur">
+      <button onClick={toggleMic} className={controlClass(micOn)}>
+        {micOn ? "Mic On" : "Mic Off"}
+      </button>
 
-      <div className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 rounded-full border border-white/10 bg-black/80 px-3 py-2 backdrop-blur">
-        <ControlBar
-          controls={{
-            microphone: true,
-            camera: true,
-            screenShare: true,
-            chat: false,
-            leave: true,
-          }}
-        />
-      </div>
+      <button onClick={toggleCam} className={controlClass(camOn)}>
+        {camOn ? "Cam On" : "Cam Off"}
+      </button>
+
+      <button onClick={toggleScreen} className={controlClass(screenOn)}>
+        {screenOn ? "Sharing" : "Share"}
+      </button>
+
+      <button
+        onClick={leaveRoom}
+        className="rounded-full bg-red-600 px-4 py-2 text-sm font-black text-white hover:bg-red-500"
+      >
+        Leave
+      </button>
     </div>
-  </LiveKitRoom>
-);
+  );
+}
+
+function controlClass(active: boolean) {
+  return active
+    ? "rounded-full bg-white px-4 py-2 text-sm font-black text-black hover:bg-zinc-200"
+    : "rounded-full bg-zinc-800 px-4 py-2 text-sm font-black text-white hover:bg-zinc-700";
+}
+
+function StreamMessage({ text }: { text: string }) {
+  return (
+    <div className="grid h-full w-full place-items-center bg-black text-sm font-bold text-zinc-400">
+      {text}
+    </div>
+  );
 }
