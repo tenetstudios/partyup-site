@@ -38,7 +38,9 @@ export default async function RoomPage({
         </Link>
 
         <div className="overflow-hidden rounded-xl border border-white/10 bg-[#12051e]">
-          <div className="aspect-video bg-[linear-gradient(135deg,rgba(145,70,255,0.52),rgba(16,2,28,0.95))]" />
+          <div className="aspect-video bg-black">
+  <WebLiveKitRoom roomId={id} />
+</div>
 
           <div className="p-6">
             <div className="mb-3 flex items-center gap-3">

@@ -79,33 +79,16 @@ export default function WebLiveKitRoom({ roomId }: { roomId: string }) {
   }
 
   return (
-  <section className="mt-8 overflow-hidden rounded-2xl border border-purple-300/20 bg-[#050008] shadow-2xl shadow-purple-950/40">
-    <div className="flex items-center justify-between border-b border-white/10 bg-[#0b0213] px-4 py-3">
-      <div>
-        <p className="text-xs font-black uppercase tracking-[0.18em] text-purple-300">
-          Livestream
-        </p>
-        <p className="text-sm text-zinc-400">Camera and mic enabled</p>
-      </div>
-
-      <span className="rounded-full bg-red-600 px-3 py-1 text-xs font-black uppercase">
-        Live
-      </span>
+  <LiveKitRoom
+    serverUrl={livekitUrl}
+    token={token}
+    connect={true}
+    audio={true}
+    video={true}
+  >
+    <div className="h-full w-full overflow-hidden bg-black [&_.lk-video-conference]:h-full [&_.lk-video-conference]:bg-black">
+      <VideoConference />
     </div>
-
-    <div className="relative aspect-video bg-black">
-      <LiveKitRoom
-        serverUrl={livekitUrl}
-        token={token}
-        connect={true}
-        audio={true}
-        video={true}
-      >
-        <div className="h-full w-full overflow-hidden [&_.lk-video-conference]:h-full [&_.lk-video-conference]:bg-black [&_.lk-control-bar]:rounded-none">
-          <VideoConference />
-        </div>
-      </LiveKitRoom>
-    </div>
-  </section>
+  </LiveKitRoom>
 );
 }
