@@ -127,7 +127,7 @@ async function getLiveRooms() {
   const { data: rooms, error: roomsError } = await supabase
     .from("event_rooms")
     .select("*")
-    .eq("status", "live");
+    .in("status", ["live", "scheduled"]);
 
   if (roomsError) {
     throw roomsError;
@@ -186,7 +186,10 @@ export default async function HomePage() {
         : "Unable to load live rooms right now.";
   }
 
-  const featuredRoom = rooms[0];
+const liveRooms = rooms.filter((room) => room.status === "live");
+const scheduledRooms = rooms.filter((room) => room.status === "scheduled");
+
+  const featuredRoom = liveRooms[0];
   const featuredHost =
     featuredRoom?.host_id != null
       ? profilesById.get(String(featuredRoom.host_id))
@@ -212,7 +215,7 @@ export default async function HomePage() {
           <div className="flex items-center gap-3">
   <div className="hidden items-center gap-2 rounded-full border border-purple-400/30 bg-purple-500/10 px-3 py-2 text-xs font-black uppercase text-purple-200 sm:flex">
     <span className="h-2 w-2 rounded-full bg-red-500 shadow-[0_0_14px_rgba(239,68,68,0.9)]" />
-    {rooms.length} live
+    {liveRooms.length} live
   </div>
 
   <AuthButton />
@@ -316,13 +319,13 @@ export default async function HomePage() {
             </h2>
           </div>
           <p className="text-sm font-semibold text-zinc-400">
-            {rooms.length} room{rooms.length === 1 ? "" : "s"}
+            {liveRooms.length} room{liveRooms.length === 1 ? "" : "s"}
           </p>
         </div>
 
-        {rooms.length > 0 ? (
+        {liveRooms.length > 0 ? (
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {rooms.map((room) => {
+            {liveRooms.map((room) => {
               const host =
                 room.host_id != null
                   ? profilesById.get(String(room.host_id))
@@ -387,8 +390,85 @@ export default async function HomePage() {
         ) : (
           <EmptyState loadError={loadError} />
         )}
-      </section>
-    </main>
+     </section>
+
+{/* Upcoming Rooms */}
+<section id="upcoming" className="mx-auto max-w-7xl px-5 py-10">
+  <div className="mb-6 flex items-end justify-between gap-4">
+    <div>
+      <p className="text-sm font-black uppercase tracking-[0.18em] text-purple-300">
+        Upcoming
+      </p>
+      <h2 className="mt-2 text-3xl font-black md:text-4xl">
+        Scheduled rooms
+      </h2>
+    </div>
+
+    <p className="text-sm font-semibold text-zinc-400">
+      {scheduledRooms.length} room
+      {scheduledRooms.length === 1 ? "" : "s"}
+    </p>
+  </div>
+
+  {scheduledRooms.length > 0 ? (
+    <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+      {scheduledRooms.map((room) => {
+        const host =
+          room.host_id != null
+            ? profilesById.get(String(room.host_id))
+            : undefined;
+
+        return (
+          <article
+            key={String(room.id)}
+            className="overflow-hidden rounded-lg border border-white/10 bg-[#12051e]"
+          >
+            <div className="relative aspect-video bg-[linear-gradient(135deg,rgba(59,130,246,0.42),rgba(16,2,28,0.95))]">
+              <span className="absolute left-3 top-3 rounded-sm bg-blue-600 px-2 py-1 text-xs font-black uppercase">
+                Scheduled
+              </span>
+            </div>
+
+            <div className="p-4">
+              <h3 className="truncate text-lg font-black">
+                {getRoomTitle(room)}
+              </h3>
+
+              {getScheduledText(room) && (
+                <p className="mt-2 text-sm font-black text-purple-300">
+                  Starts {getScheduledText(room)}
+                </p>
+              )}
+
+              <p className="mt-2 text-sm text-zinc-400">
+                Hosted by {getHostName(host)}
+              </p>
+
+              <div className="mt-4 flex items-center justify-between gap-3">
+                <span className="rounded-sm bg-purple-500/15 px-2 py-1 text-xs font-bold text-purple-200">
+                  {getCategory(room)}
+                </span>
+
+                <Link
+                  href={`/room/${room.id}`}
+                  className="rounded-md bg-[#9146ff] px-4 py-2 text-sm font-black hover:bg-[#7b31e8]"
+                >
+                  View
+                </Link>
+              </div>
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  ) : (
+    <p className="rounded-lg border border-white/10 bg-[#12051e] p-6 text-zinc-400">
+      No scheduled rooms yet.
+    </p>
+  )}
+</section>
+
+</main>
   );
 }
 
