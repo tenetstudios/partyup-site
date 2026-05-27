@@ -83,16 +83,18 @@ function CustomStreamView() {
   return (
     <div className="relative h-full w-full overflow-hidden bg-black">
       <div className="grid h-full w-full place-items-center">
-        {tracks.length > 0 ? (
+        {tracks.filter((trackRef) => trackRef.publication?.isSubscribed && !trackRef.publication?.isMuted).length > 0 ? (
           <div className="grid h-full w-full grid-cols-1 gap-2 p-2 md:grid-cols-2">
-            {tracks.map((trackRef) => (
-              <div
-                key={`${trackRef.participant.identity}-${trackRef.source}`}
-                className="overflow-hidden rounded-xl bg-[#09000f]"
-              >
-                <ParticipantTile trackRef={trackRef} />
-              </div>
-            ))}
+            {tracks
+  .filter((trackRef) => trackRef.publication?.isSubscribed && !trackRef.publication?.isMuted)
+  .map((trackRef) => (
+    <div
+      key={`${trackRef.participant.identity}-${trackRef.source}`}
+      className="overflow-hidden rounded-xl bg-[#09000f]"
+    >
+      <ParticipantTile trackRef={trackRef} />
+    </div>
+  ))}
           </div>
         ) : (
           <p className="text-sm font-bold text-zinc-400">No video yet</p>
