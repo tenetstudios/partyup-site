@@ -80,26 +80,28 @@ function CustomStreamView() {
     { onlySubscribed: false },
   );
 
+  const videoTracks = tracks.filter((trackRef) => {
+    return trackRef.publication?.track && !trackRef.publication.isMuted;
+  });
+
   return (
     <div className="relative h-full w-full overflow-hidden bg-black">
-      <div className="grid h-full w-full place-items-center">
-        {tracks.filter((trackRef) => trackRef.publication?.isSubscribed && !trackRef.publication?.isMuted).length > 0 ? (
-          <div className="grid h-full w-full grid-cols-1 gap-2 p-2 md:grid-cols-2">
-            {tracks
-  .filter((trackRef) => trackRef.publication?.isSubscribed && !trackRef.publication?.isMuted)
-  .map((trackRef) => (
-    <div
-      key={`${trackRef.participant.identity}-${trackRef.source}`}
-      className="overflow-hidden rounded-xl bg-[#09000f]"
-    >
-      <ParticipantTile trackRef={trackRef} />
-    </div>
-  ))}
-          </div>
-        ) : (
-          <p className="text-sm font-bold text-zinc-400">No video yet</p>
-        )}
-      </div>
+      {videoTracks.length > 0 ? (
+        <div className="h-full w-full">
+          {videoTracks.map((trackRef) => (
+            <div
+              key={`${trackRef.participant.identity}-${trackRef.source}`}
+              className="h-full w-full overflow-hidden bg-black [&_.lk-participant-tile]:h-full [&_.lk-participant-tile]:w-full [&_video]:h-full [&_video]:w-full [&_video]:object-cover"
+            >
+              <ParticipantTile trackRef={trackRef} />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="grid h-full w-full place-items-center text-sm font-bold text-zinc-400">
+          No video yet
+        </p>
+      )}
 
       <CustomControls />
     </div>
