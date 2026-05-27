@@ -71,7 +71,6 @@ export default async function RoomPage({
                 <div className="mt-1 font-black">{room.status}</div>
               </div>
             </div>
-                <WebLiveKitRoom roomId={id} />
             
             <JoinRoomButton roomId={id} />
 
