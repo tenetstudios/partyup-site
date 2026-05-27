@@ -2,6 +2,7 @@ import Link from "next/link";
 import RoomManagePanel from "./RoomManagePanel";
 import DeleteRoomButton from "../DeleteRoomButton";
 import { createSupabaseClient } from "@/lib/supabase";
+import ObsStreamPanel from "./ObsStreamPanel";
 
 export default async function ManageRoomPage({
   params,
@@ -42,6 +43,7 @@ const { data: room } = await supabase
         </p>
 
         <RoomManagePanel roomId={id} />
+        <ObsStreamPanel roomId={id} />
         <div className="mt-8">
   <DeleteRoomButton roomId={id} hostId={room.host_id} />
 </div>

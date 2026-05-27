@@ -208,13 +208,6 @@ export default function RoomManagePanel({ roomId }: { roomId: string }) {
                 >
                   Kick
                 </button>
-
-                <button
-  onClick={testObsIngress}
-  className="rounded-md bg-blue-600 px-3 py-2 text-xs font-black"
->
-  Test OBS Ingress
-</button>
               </div>
             </div>
           ))
