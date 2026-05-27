@@ -74,7 +74,7 @@ export default function WebLiveKitRoom({ roomId }: { roomId: string }) {
 function CustomStreamView() {
   const tracks = useTracks(
     [
-      { source: Track.Source.Camera, withPlaceholder: true },
+      { source: Track.Source.Camera, withPlaceholder: false },
       { source: Track.Source.ScreenShare, withPlaceholder: false },
     ],
     { onlySubscribed: false },
@@ -111,6 +111,7 @@ function CustomControls() {
   const [micOn, setMicOn] = useState(true);
   const [camOn, setCamOn] = useState(true);
   const [screenOn, setScreenOn] = useState(false);
+  const [obsOn, setObsOn] = useState(false);
 
   async function toggleMic() {
     const next = !micOn;
@@ -134,6 +135,32 @@ function CustomControls() {
     room.disconnect();
   }
 
+  async function useObsVirtualCamera() {
+  const devices = await navigator.mediaDevices.enumerateDevices();
+
+  const obsCamera = devices.find(
+    (device) =>
+      device.kind === "videoinput" &&
+      device.label.toLowerCase().includes("obs"),
+  );
+
+  if (!obsCamera) {
+    alert(
+      "OBS Virtual Camera not found. Open OBS, click Start Virtual Camera, then refresh PartyUp.",
+    );
+    return;
+  }
+
+  await localParticipant.setCameraEnabled(false);
+
+  await localParticipant.setCameraEnabled(true, {
+    deviceId: obsCamera.deviceId,
+  });
+
+  setCamOn(true);
+  setObsOn(true);
+}
+
   return (
     <div className="absolute bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/10 bg-black/75 p-2 shadow-2xl backdrop-blur">
       <button onClick={toggleMic} className={controlClass(micOn)}>
@@ -144,9 +171,9 @@ function CustomControls() {
         {camOn ? "Cam On" : "Cam Off"}
       </button>
 
-      <button onClick={toggleScreen} className={controlClass(screenOn)}>
-        {screenOn ? "Sharing" : "Share"}
-      </button>
+      <button onClick={useObsVirtualCamera} className={controlClass(obsOn)}>
+  {obsOn ? "OBS On" : "OBS Cam"}
+</button>
 
       <button
         onClick={leaveRoom}
