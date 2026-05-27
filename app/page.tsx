@@ -113,12 +113,12 @@ function getScheduledText(room: LiveRoom) {
     return null;
   }
 
-  return date.toLocaleString("en-CA", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return date.toLocaleString(undefined, {
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+});
 }
 
 async function getLiveRooms() {
@@ -187,7 +187,19 @@ export default async function HomePage() {
   }
 
 const liveRooms = rooms.filter((room) => room.status === "live");
-const scheduledRooms = rooms.filter((room) => room.status === "scheduled");
+const scheduledRooms = rooms
+  .filter((room) => room.status === "scheduled")
+  .sort((first, second) => {
+    const firstTime = first.scheduled_at
+      ? new Date(first.scheduled_at).getTime()
+      : Number.MAX_SAFE_INTEGER;
+
+    const secondTime = second.scheduled_at
+      ? new Date(second.scheduled_at).getTime()
+      : Number.MAX_SAFE_INTEGER;
+
+    return firstTime - secondTime;
+  });
 
   const featuredRoom = liveRooms[0];
   const featuredHost =
