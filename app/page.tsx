@@ -11,6 +11,7 @@ type LiveRoom = DatabaseRecord & {
   host_id?: string | number | null;
   status?: string | null;
   scheduled_at?: string | null;
+  cover_image?: string | null;
 };
 
 type HostProfile = DatabaseRecord & {
@@ -348,7 +349,14 @@ const scheduledRooms = rooms
                   key={String(room.id)}
                   className="overflow-hidden rounded-lg border border-white/10 bg-[#12051e] transition hover:-translate-y-0.5 hover:border-purple-300/50"
                 >
-                  <div className="relative aspect-video bg-[linear-gradient(135deg,rgba(145,70,255,0.52),rgba(16,2,28,0.95)),radial-gradient(circle_at_75%_25%,rgba(255,255,255,0.24),transparent_25%)]">
+                  <div
+  className="relative aspect-video bg-cover bg-center"
+  style={{
+    backgroundImage: room.cover_image
+      ? `linear-gradient(rgba(0,0,0,0.15), rgba(0,0,0,0.35)), url(${room.cover_image})`
+      : "linear-gradient(135deg,rgba(145,70,255,0.52),rgba(16,2,28,0.95))",
+  }}
+>
                     <span className="absolute left-3 top-3 rounded-sm bg-red-600 px-2 py-1 text-xs font-black uppercase">
                       Live
                     </span>
@@ -435,7 +443,14 @@ const scheduledRooms = rooms
             key={String(room.id)}
             className="overflow-hidden rounded-lg border border-white/10 bg-[#12051e]"
           >
-            <div className="relative aspect-video bg-[linear-gradient(135deg,rgba(59,130,246,0.42),rgba(16,2,28,0.95))]">
+            <div
+  className="relative aspect-video bg-cover bg-center"
+  style={{
+    backgroundImage: room.cover_image
+      ? `linear-gradient(rgba(0,0,0,0.15), rgba(0,0,0,0.35)), url(${room.cover_image})`
+      : "linear-gradient(135deg,rgba(59,130,246,0.42),rgba(16,2,28,0.95))",
+  }}
+>
               <span className="absolute left-3 top-3 rounded-sm bg-blue-600 px-2 py-1 text-xs font-black uppercase">
                 Scheduled
               </span>

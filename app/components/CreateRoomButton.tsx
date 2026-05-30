@@ -18,131 +18,155 @@ export default function CreateRoomButton() {
   const [roomStatus, setRoomStatus] = useState("scheduled");
   const [venueName, setVenueName] = useState("");
   const [scheduledAt, setScheduledAt] = useState("");
+  const [coverFile, setCoverFile] = useState<File | null>(null);
   
   async function createRoom() {
-    if (loading) return;
+  if (loading) return;
 
-    if (!title.trim()) {
-      alert("Enter a room name");
+  if (!title.trim()) {
+    alert("Enter a room name");
+    return;
+  }
+
+  setLoading(true);
+
+  try {
+    const supabase = createSupabaseClient();
+
+    const { data: userData } = await supabase.auth.getUser();
+    const user = userData.user;
+
+    if (!user) {
+      alert("You need to sign in first.");
+      setLoading(false);
       return;
     }
 
-    setLoading(true);
+    const { data: existingProfile } = await supabase
+      .from("profiles")
+      .select("username, avatar_url")
+      .eq("id", user.id)
+      .maybeSingle();
 
-    try {
-      const supabase = createSupabaseClient();
+    let profile = existingProfile;
 
-      const { data: userData } = await supabase.auth.getUser();
-      const user = userData.user;
-
-      if (!user) {
-        alert("You need to sign in first.");
-        setLoading(false);
-        return;
-      }
-
-      const { data: existingProfile } = await supabase
+    if (!profile) {
+      const { data: createdProfile } = await supabase
         .from("profiles")
-        .select("username, avatar_url")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      let profile = existingProfile;
-
-      if (!profile) {
-        const { data: createdProfile } = await supabase
-          .from("profiles")
-          .insert({
-            id: user.id,
-            username:
-              user.user_metadata?.full_name ||
-              user.user_metadata?.name ||
-              user.email?.split("@")[0] ||
-              "Guest",
-            avatar_url:
-              user.user_metadata?.avatar_url ||
-              user.user_metadata?.picture ||
-              "",
-            bio: "",
-            is_google_verified: !!user.email,
-          })
-          .select("username, avatar_url")
-          .single();
-
-        profile = createdProfile;
-      }
-
-      const { data: insertedRoom, error: roomError } = await supabase
-        .from("event_rooms")
         .insert({
-          title: title.trim(),
-          host_id: user.id,
-          current_users: 0,
-          queue_count: 0,
-          max_users: Number(maxUsers) || 12,
-          is_private: isPrivateRoom,
-          type: roomType,
-          mode: roomMode,
-          status: roomStatus,
-          scheduled_at:
-  roomStatus === "scheduled" && scheduledAt
-    ? scheduledAt
-    : null,
-          venue_name: venueName.trim() || null,
-          latitude: null,
-          longitude: null,
-          last_active_at: new Date().toISOString(),
+          id: user.id,
+          username:
+            user.user_metadata?.full_name ||
+            user.user_metadata?.name ||
+            user.email?.split("@")[0] ||
+            "Guest",
+          avatar_url:
+            user.user_metadata?.avatar_url ||
+            user.user_metadata?.picture ||
+            "",
+          bio: "",
+          is_google_verified: !!user.email,
         })
-        .select("id")
+        .select("username, avatar_url")
         .single();
 
-      if (roomError || !insertedRoom?.id) {
-        alert(roomError?.message || "Room could not be created.");
-        setLoading(false);
-        return;
-      }
-
-      const { error: attendeeError } = await supabase
-        .from("event_attendees")
-        .upsert(
-          {
-            event_room_id: insertedRoom.id,
-            user_id: user.id,
-            username: profile?.username || "Host",
-            avatar_url: profile?.avatar_url || "",
-            status: "accepted",
-            can_stream: true,
-            stream_status: "off",
-          },
-          {
-            onConflict: "event_room_id,user_id",
-          },
-        );
-
-      if (attendeeError) {
-        alert(attendeeError.message);
-        setLoading(false);
-        return;
-      }
-
-      setTitle("");
-      setMaxUsers("12");
-      setIsPrivateRoom(false);
-      setRoomType("party");
-      setRoomMode("livestream");
-      setRoomStatus("live");
-      setVenueName("");
-      setScheduledAt("");
-      setOpen(false);
-      setLoading(false);
-
-      router.push(`/room/${insertedRoom.id}`);
-    } catch (error) {
-      console.error(error);
-      alert("Room could not be created.");
-      setLoading(false);
+      profile = createdProfile;
     }
+
+    let coverImage: string | null = null;
+
+    if (coverFile) {
+      const fileExt = coverFile.name.split(".").pop() || "jpg";
+      const filePath = `${user.id}/${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("event-images")
+        .upload(filePath, coverFile);
+
+      if (uploadError) {
+        alert(uploadError.message);
+        setLoading(false);
+        return;
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from("event-images")
+        .getPublicUrl(filePath);
+
+      coverImage = publicUrlData.publicUrl;
+    }
+
+    const { data: insertedRoom, error: roomError } = await supabase
+      .from("event_rooms")
+      .insert({
+        title: title.trim(),
+        host_id: user.id,
+        cover_image: coverImage,
+        current_users: 0,
+        queue_count: 0,
+        max_users: Number(maxUsers) || 12,
+        is_private: isPrivateRoom,
+        type: roomType,
+        mode: roomMode,
+        status: roomStatus,
+        scheduled_at:
+          roomStatus === "scheduled" && scheduledAt ? scheduledAt : null,
+        venue_name: venueName.trim() || null,
+        latitude: null,
+        longitude: null,
+        last_active_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single();
+
+    if (roomError || !insertedRoom?.id) {
+      alert(roomError?.message || "Room could not be created.");
+      setLoading(false);
+      return;
+    }
+
+    const { error: attendeeError } = await supabase
+      .from("event_attendees")
+      .upsert(
+        {
+          event_room_id: insertedRoom.id,
+          user_id: user.id,
+          username: profile?.username || "Host",
+          avatar_url: profile?.avatar_url || "",
+          status: "accepted",
+          can_stream: true,
+          stream_status: "off",
+        },
+        {
+          onConflict: "event_room_id,user_id",
+        },
+      );
+
+    if (attendeeError) {
+      alert(attendeeError.message);
+      setLoading(false);
+      return;
+    }
+
+    setTitle("");
+    setMaxUsers("12");
+    setIsPrivateRoom(false);
+    setRoomType("party");
+    setRoomMode("livestream");
+    setRoomStatus("live");
+    setVenueName("");
+    setScheduledAt("");
+    setCoverFile(null);
+    setOpen(false);
+    setLoading(false);
+
+    router.push(`/room/${insertedRoom.id}`);
+  } catch (error) {
+    console.error(error);
+    alert("Room could not be created.");
+    setLoading(false);
   }
+}
 
   return (
     <>
@@ -256,18 +280,33 @@ export default function CreateRoomButton() {
               </div>
 
               <label className="block">
-                <span className="mb-1 block text-sm font-black">
-                  Venue name
-                </span>
-                <input
-                  value={venueName}
-                  onChange={(event) => setVenueName(event.target.value)}
-                  placeholder="Optional"
-                  className="w-full rounded-md bg-black px-3 py-3 text-white outline-none placeholder:text-zinc-500"
-                />
-              </label>
+  <span className="mb-1 block text-sm font-black">
+    Venue name
+  </span>
+  <input
+    value={venueName}
+    onChange={(event) => setVenueName(event.target.value)}
+    placeholder="Optional"
+    className="w-full rounded-md bg-black px-3 py-3 text-white outline-none placeholder:text-zinc-500"
+  />
+</label>
 
-              <label className="flex items-center justify-between rounded-md bg-black/40 px-3 py-3">
+<label className="block">
+  <span className="mb-1 block text-sm font-black">
+    Cover Image
+  </span>
+
+  <input
+    type="file"
+    accept="image/*"
+    onChange={(event) =>
+      setCoverFile(event.target.files?.[0] ?? null)
+    }
+    className="w-full rounded-md bg-black px-3 py-3 text-white"
+  />
+</label>
+
+<label className="flex items-center justify-between rounded-md bg-black/40 px-3 py-3">
                 <span>
                   <span className="block text-sm font-black">Private room</span>
                   <span className="text-xs text-zinc-500">
