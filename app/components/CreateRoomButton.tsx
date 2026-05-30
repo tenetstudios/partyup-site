@@ -33,8 +33,13 @@ export default function CreateRoomButton() {
   try {
     const supabase = createSupabaseClient();
 
-    const { data: userData } = await supabase.auth.getUser();
-    const user = userData.user;
+    console.time("getUser");
+
+const { data: userData } = await supabase.auth.getUser();
+
+console.timeEnd("getUser");
+
+const user = userData.user;
 
     if (!user) {
       alert("You need to sign in first.");
@@ -65,9 +70,11 @@ export default function CreateRoomButton() {
       coverImage = publicUrlData.publicUrl;
     }
 
-    const { data: insertedRoom, error: roomError } = await supabase
-      .from("event_rooms")
-      .insert({
+    console.time("roomInsert");
+
+const { data: insertedRoom, error: roomError } = await supabase
+  .from("event_rooms")
+  .insert({
         title: title.trim(),
         host_id: user.id,
         cover_image: coverImage,
@@ -87,6 +94,7 @@ export default function CreateRoomButton() {
       })
       .select("id")
       .single();
+      console.timeEnd("roomInsert");
 
     if (roomError || !insertedRoom?.id) {
       alert(roomError?.message || "Room could not be created.");
@@ -94,6 +102,8 @@ export default function CreateRoomButton() {
       return;
     }
 
+    console.time("attendeeUpsert");
+    
     const { error: attendeeError } = await supabase
       .from("event_attendees")
       .upsert(
