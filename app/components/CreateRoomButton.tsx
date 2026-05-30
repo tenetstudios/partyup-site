@@ -42,37 +42,6 @@ export default function CreateRoomButton() {
       return;
     }
 
-    const { data: existingProfile } = await supabase
-      .from("profiles")
-      .select("username, avatar_url")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    let profile = existingProfile;
-
-    if (!profile) {
-      const { data: createdProfile } = await supabase
-        .from("profiles")
-        .insert({
-          id: user.id,
-          username:
-            user.user_metadata?.full_name ||
-            user.user_metadata?.name ||
-            user.email?.split("@")[0] ||
-            "Guest",
-          avatar_url:
-            user.user_metadata?.avatar_url ||
-            user.user_metadata?.picture ||
-            "",
-          bio: "",
-          is_google_verified: !!user.email,
-        })
-        .select("username, avatar_url")
-        .single();
-
-      profile = createdProfile;
-    }
-
     let coverImage: string | null = null;
 
     if (coverFile) {
@@ -131,8 +100,15 @@ export default function CreateRoomButton() {
         {
           event_room_id: insertedRoom.id,
           user_id: user.id,
-          username: profile?.username || "Host",
-          avatar_url: profile?.avatar_url || "",
+          username:
+  user.user_metadata?.full_name ||
+  user.user_metadata?.name ||
+  "Host",
+
+avatar_url:
+  user.user_metadata?.avatar_url ||
+  user.user_metadata?.picture ||
+  "",
           status: "accepted",
           can_stream: true,
           stream_status: "off",
