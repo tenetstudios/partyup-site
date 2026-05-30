@@ -103,7 +103,7 @@ const { data: insertedRoom, error: roomError } = await supabase
     }
 
     console.time("attendeeUpsert");
-    
+
     const { error: attendeeError } = await supabase
       .from("event_attendees")
       .upsert(
@@ -127,6 +127,7 @@ avatar_url:
           onConflict: "event_room_id,user_id",
         },
       );
+console.timeEnd("attendeeUpsert");
 
     if (attendeeError) {
       alert(attendeeError.message);
