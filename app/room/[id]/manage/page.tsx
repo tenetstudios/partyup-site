@@ -3,6 +3,7 @@ import RoomManagePanel from "./RoomManagePanel";
 import DeleteRoomButton from "../DeleteRoomButton";
 import { createSupabaseClient } from "@/lib/supabase";
 import ObsStreamPanel from "./ObsStreamPanel";
+import RoomDetailsEditor from "./RoomDetailsEditor";
 
 export default async function ManageRoomPage({
   params,
@@ -41,7 +42,8 @@ const { data: room } = await supabase
         <p className="mt-2 text-zinc-400">
           Approve streamers, remove users, and manage the room queue.
         </p>
-
+        
+        <RoomDetailsEditor roomId={id} />
         <RoomManagePanel roomId={id} />
         <ObsStreamPanel roomId={id} />
         <div className="mt-8">
