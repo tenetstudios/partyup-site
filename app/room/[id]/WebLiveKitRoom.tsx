@@ -16,9 +16,12 @@ export default function WebLiveKitRoom({ roomId }: { roomId: string }) {
   const [token, setToken] = useState("");
   const [error, setError] = useState("");
   const livekitUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL;
+  const [shouldConnect, setShouldConnect] = useState(false);
 
-  useEffect(() => {
-    async function getToken() {
+ useEffect(() => {
+  if (!shouldConnect) return;
+
+  async function getToken() {
       const supabase = createSupabaseClient();
       const { data: userData } = await supabase.auth.getUser();
       const user = userData.user;
@@ -52,15 +55,28 @@ export default function WebLiveKitRoom({ roomId }: { roomId: string }) {
       setToken(data.token);
     }
 
-    getToken();
-  }, [roomId]);
+   getToken();
+}, [roomId, shouldConnect]);
 
-  if (!livekitUrl) return <StreamMessage text="Missing LiveKit URL." />;
-  if (error) return <StreamMessage text={error} />;
-  if (!token) return <StreamMessage text="Connecting to livestream..." />;
-
+  if (!shouldConnect) {
   return (
-    <LiveKitRoom
+    <div className="grid h-full w-full place-items-center bg-[#08000f]">
+      <button
+        onClick={() => setShouldConnect(true)}
+        className="rounded-md bg-[#9146ff] px-6 py-3 font-black hover:bg-[#7b31e8]"
+      >
+        Join Livestream
+      </button>
+    </div>
+  );
+}
+
+if (!livekitUrl) return <StreamMessage text="Missing LiveKit URL." />;
+if (error) return <StreamMessage text={error} />;
+if (!token) return <StreamMessage text="Connecting to livestream..." />;
+
+return (
+  <LiveKitRoom
       serverUrl={livekitUrl}
       token={token}
       connect={true}
