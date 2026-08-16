@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { FunctionsHttpError } from "@supabase/supabase-js";
 import {
   LiveKitRoom,
   ParticipantTile,
@@ -34,15 +33,15 @@ type MatchLiveKitProps = {
   onReturnToMatch: () => void;
 };
 
-async function getFunctionErrorMessage(error: Error) {
-  if (error instanceof FunctionsHttpError) {
+async function getFunctionErrorMessage(error: Error, response?: Response) {
+  if (response) {
     try {
-      const body = await error.context.json();
+      const body = await response.clone().json();
       const message = typeof body?.error === "string" ? body.error : error.message;
 
-      return `${error.context.status}: ${message}`;
+      return `${response.status}: ${message}`;
     } catch {
-      return `${error.context.status}: ${error.message}`;
+      return `${response.status}: ${error.message}`;
     }
   }
 
@@ -74,7 +73,7 @@ export default function MatchLiveKit({ sessionId, onReturnToMatch }: MatchLiveKi
       setRoomName(null);
       setParticipantIdentity(null);
 
-      const { data, error } = await supabase.functions.invoke<MatchLiveKitTokenResponse>(
+      const { data, error, response } = await supabase.functions.invoke<MatchLiveKitTokenResponse>(
         "match-livekit-token",
         {
           body: {
@@ -89,7 +88,7 @@ export default function MatchLiveKit({ sessionId, onReturnToMatch }: MatchLiveKi
 
       if (error) {
         setStatus("error");
-        setMessage(await getFunctionErrorMessage(error));
+        setMessage(await getFunctionErrorMessage(error, response));
         return;
       }
 
