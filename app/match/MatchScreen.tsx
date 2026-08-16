@@ -180,6 +180,7 @@ export default function MatchScreen() {
     setError(null);
     setSession(null);
     setSearchIdentityId(null);
+    clearSubscription();
 
     try {
       const { data } = await supabase.auth.getUser();
@@ -193,6 +194,12 @@ export default function MatchScreen() {
       }
 
       setUser(currentUser);
+
+      try {
+        await cancelMatchSearch(supabase);
+      } catch {
+        // Starting a new search should not be blocked if there was no active search to cancel.
+      }
 
       const [partyUpIdentity, pool] = await Promise.all([
         ensurePartyUpIdentity(supabase),
@@ -255,6 +262,17 @@ export default function MatchScreen() {
     setState("idle");
   }
 
+  const handleMatchExpired = useCallback(() => {
+    void cancelMatchSearch(supabase).finally(() => {
+      clearSubscription();
+      setSession(null);
+      setSearchIdentityId(null);
+      setBusy(false);
+      setError("That match session expired. Start matching again to create a fresh connection.");
+      setState("idle");
+    });
+  }, [clearSubscription, supabase]);
+
   return (
     <div className="min-h-[70vh]">
       {state === "idle" && (
@@ -269,7 +287,11 @@ export default function MatchScreen() {
       )}
       {state === "searching" && <MatchSearching busy={busy} onCancel={cancelSearch} />}
       {state === "connected" && session?.id && (
-        <MatchLiveKit sessionId={session.id} onReturnToMatch={returnToMatch} />
+        <MatchLiveKit
+          onMatchExpired={handleMatchExpired}
+          sessionId={session.id}
+          onReturnToMatch={returnToMatch}
+        />
       )}
       {state === "disconnected" && <MatchDisconnected onRematch={startMatching} />}
     </div>

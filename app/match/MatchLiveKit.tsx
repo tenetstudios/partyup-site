@@ -29,6 +29,7 @@ type MatchLiveKitStatus =
   | "disconnected";
 
 type MatchLiveKitProps = {
+  onMatchExpired: () => void;
   sessionId: string;
   onReturnToMatch: () => void;
 };
@@ -48,7 +49,11 @@ async function getFunctionErrorMessage(error: Error, response?: Response) {
   return error.message || "Could not request Match video access.";
 }
 
-export default function MatchLiveKit({ sessionId, onReturnToMatch }: MatchLiveKitProps) {
+export default function MatchLiveKit({
+  onMatchExpired,
+  sessionId,
+  onReturnToMatch,
+}: MatchLiveKitProps) {
   const [token, setToken] = useState<string | null>(null);
   const [roomName, setRoomName] = useState<string | null>(null);
   const [participantIdentity, setParticipantIdentity] = useState<string | null>(null);
@@ -87,6 +92,11 @@ export default function MatchLiveKit({ sessionId, onReturnToMatch }: MatchLiveKi
       }
 
       if (error) {
+        if (response?.status === 410) {
+          onMatchExpired();
+          return;
+        }
+
         setStatus("error");
         setMessage(await getFunctionErrorMessage(error, response));
         return;
@@ -109,7 +119,7 @@ export default function MatchLiveKit({ sessionId, onReturnToMatch }: MatchLiveKi
     return () => {
       cancelled = true;
     };
-  }, [livekitUrl, sessionId, supabase]);
+  }, [livekitUrl, onMatchExpired, sessionId, supabase]);
 
   if (status === "error" || status === "disconnected") {
     return (
