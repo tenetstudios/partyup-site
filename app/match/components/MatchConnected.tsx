@@ -3,7 +3,7 @@ import React from "react";
 import VideoPanel from "./VideoPanel";
 import MatchControls from "./MatchControls";
 
-export default function MatchConnected() {
+export default function MatchConnected({ sessionId }: { sessionId?: string | null }) {
   return (
     <div className="h-[80vh] w-full">
       <div className="relative h-full w-full">
@@ -13,6 +13,15 @@ export default function MatchConnected() {
 
         <div className="absolute right-4 top-4">
           <VideoPanel label="You" small />
+        </div>
+
+        <div className="absolute left-4 top-4 rounded-md border border-emerald-300/20 bg-black/50 px-4 py-3 backdrop-blur">
+          <p className="text-sm font-black uppercase tracking-[0.14em] text-emerald-200">Matched</p>
+          {sessionId && (
+            <p className="mt-1 max-w-[18rem] truncate text-xs text-zinc-400">
+              Dev session: {sessionId}
+            </p>
+          )}
         </div>
 
         <div className="absolute left-0 bottom-6 right-0 flex justify-center px-4">
