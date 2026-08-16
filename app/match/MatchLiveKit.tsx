@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { FunctionsHttpError } from "@supabase/supabase-js";
 import {
   LiveKitRoom,
   ParticipantTile,
@@ -32,6 +33,21 @@ type MatchLiveKitProps = {
   sessionId: string;
   onReturnToMatch: () => void;
 };
+
+async function getFunctionErrorMessage(error: Error) {
+  if (error instanceof FunctionsHttpError) {
+    try {
+      const body = await error.context.json();
+      const message = typeof body?.error === "string" ? body.error : error.message;
+
+      return `${error.context.status}: ${message}`;
+    } catch {
+      return `${error.context.status}: ${error.message}`;
+    }
+  }
+
+  return error.message || "Could not request Match video access.";
+}
 
 export default function MatchLiveKit({ sessionId, onReturnToMatch }: MatchLiveKitProps) {
   const [token, setToken] = useState<string | null>(null);
@@ -73,7 +89,7 @@ export default function MatchLiveKit({ sessionId, onReturnToMatch }: MatchLiveKi
 
       if (error) {
         setStatus("error");
-        setMessage(error.message || "Could not request Match video access.");
+        setMessage(await getFunctionErrorMessage(error));
         return;
       }
 
