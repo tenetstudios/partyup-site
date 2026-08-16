@@ -25,6 +25,7 @@ export default function MatchScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [session, setSession] = useState<MatchSession | null>(null);
+  const [searchIdentityId, setSearchIdentityId] = useState<string | null>(null);
   const supabase = useMemo(() => createSupabaseClient(), []);
   const channelRef = useRef<RealtimeChannel | null>(null);
 
@@ -40,6 +41,7 @@ export default function MatchScreen() {
       clearSubscription();
       setError(message);
       setSession(null);
+      setSearchIdentityId(null);
       setState("idle");
     },
     [clearSubscription],
@@ -51,6 +53,7 @@ export default function MatchScreen() {
         const matchedSession = await getMatchSession(supabase, sessionId);
         clearSubscription();
         setSession(matchedSession);
+        setSearchIdentityId(null);
         setError(null);
         setState("connected");
       } catch (reason) {
@@ -103,6 +106,17 @@ export default function MatchScreen() {
     [clearSubscription, fail, supabase, transitionToMatched],
   );
 
+  const checkCurrentQueueForMatch = useCallback(
+    async (identityId: string) => {
+      const queueState = await getCurrentMatchQueueState(supabase, identityId);
+
+      if (queueState?.status === "matched" && queueState.match_session_id) {
+        await transitionToMatched(queueState.match_session_id);
+      }
+    },
+    [supabase, transitionToMatched],
+  );
+
   useEffect(() => {
     let mounted = true;
 
@@ -131,6 +145,7 @@ export default function MatchScreen() {
       if (!nextUser) {
         clearSubscription();
         setSession(null);
+        setSearchIdentityId(null);
         setBusy(false);
         setState("idle");
         setError("Sign in to use PartyUp Match.");
@@ -144,10 +159,27 @@ export default function MatchScreen() {
     };
   }, [clearSubscription, supabase]);
 
+  useEffect(() => {
+    if (state !== "searching" || !searchIdentityId) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void checkCurrentQueueForMatch(searchIdentityId).catch((reason) => {
+        fail(reason instanceof Error ? reason.message : "Matchmaking updates could not be checked.");
+      });
+    }, 2000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [checkCurrentQueueForMatch, fail, searchIdentityId, state]);
+
   async function startMatching() {
     setBusy(true);
     setError(null);
     setSession(null);
+    setSearchIdentityId(null);
 
     try {
       const { data } = await supabase.auth.getUser();
@@ -179,12 +211,9 @@ export default function MatchScreen() {
       }
 
       setState("searching");
+      setSearchIdentityId(partyUpIdentity.id);
       await subscribeToQueue(partyUpIdentity.id);
-
-      const queueState = await getCurrentMatchQueueState(supabase, partyUpIdentity.id);
-      if (queueState?.status === "matched" && queueState.match_session_id) {
-        await transitionToMatched(queueState.match_session_id);
-      }
+      await checkCurrentQueueForMatch(partyUpIdentity.id);
     } catch (reason) {
       fail(reason instanceof Error ? reason.message : "Matchmaking could not be started.");
     } finally {
@@ -203,6 +232,7 @@ export default function MatchScreen() {
     } finally {
       clearSubscription();
       setSession(null);
+      setSearchIdentityId(null);
       setState("idle");
       setBusy(false);
     }
