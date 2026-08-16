@@ -3,8 +3,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { RealtimeChannel, User } from "@supabase/supabase-js";
 import MatchIdle from "./components/MatchIdle";
 import MatchSearching from "./components/MatchSearching";
-import MatchConnected from "./components/MatchConnected";
 import MatchDisconnected from "./components/MatchDisconnected";
+import MatchLiveKit from "./MatchLiveKit";
 import { createSupabaseClient } from "@/lib/supabase";
 import {
   cancelMatchSearch,
@@ -247,6 +247,14 @@ export default function MatchScreen() {
     });
   }
 
+  function returnToMatch() {
+    clearSubscription();
+    setSession(null);
+    setSearchIdentityId(null);
+    setBusy(false);
+    setState("idle");
+  }
+
   return (
     <div className="min-h-[70vh]">
       {state === "idle" && (
@@ -260,7 +268,9 @@ export default function MatchScreen() {
         />
       )}
       {state === "searching" && <MatchSearching busy={busy} onCancel={cancelSearch} />}
-      {state === "connected" && <MatchConnected sessionId={session?.id ?? null} />}
+      {state === "connected" && session?.id && (
+        <MatchLiveKit sessionId={session.id} onReturnToMatch={returnToMatch} />
+      )}
       {state === "disconnected" && <MatchDisconnected onRematch={startMatching} />}
     </div>
   );
