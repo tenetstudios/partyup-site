@@ -11,6 +11,7 @@ import {
 import { getActiveRoomAnnouncement } from "@/lib/roomAnnouncements";
 import EventMatchButton from "./EventMatchButton";
 import JoinRoomButton from "./JoinRoomButton";
+import LeaveRoomContextButton from "./LeaveRoomContextButton";
 import ManageRoomLink from "./ManageRoomLink";
 import RoomAnnouncementBanner from "./RoomAnnouncementBanner";
 import RoomChat from "./RoomChat";
@@ -136,6 +137,7 @@ function RoomInfoBar({ room }: { room: RoomRecord }) {
       <p className="min-w-[180px] flex-1 text-[15px] leading-6 text-[#d8d1e2]">
         {getRoomDescription(room)}
       </p>
+      <LeaveRoomContextButton roomId={String(room.id)} />
       <JoinRoomButton roomId={String(room.id)} />
     </section>
   );

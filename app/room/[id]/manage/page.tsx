@@ -5,6 +5,7 @@ import { createSupabaseClient } from "@/lib/supabase";
 import ObsStreamPanel from "./ObsStreamPanel";
 import RoomAnnouncementManager from "./RoomAnnouncementManager";
 import RoomDetailsEditor from "./RoomDetailsEditor";
+import RoomEntryLinkPanel from "./RoomEntryLinkPanel";
 
 export default async function ManageRoomPage({
   params,
@@ -45,6 +46,7 @@ const { data: room } = await supabase
         </p>
         
         <RoomDetailsEditor roomId={id} />
+        <RoomEntryLinkPanel roomId={id} />
         <RoomAnnouncementManager roomId={id} />
         <RoomManagePanel roomId={id} />
         <ObsStreamPanel roomId={id} />
