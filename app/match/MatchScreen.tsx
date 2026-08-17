@@ -136,6 +136,27 @@ export default function MatchScreen() {
     [supabase, transitionToMatched],
   );
 
+  const transitionToDisconnected = useCallback((message: string) => {
+    setSession(null);
+    setSearchIdentityId(null);
+    setNextBusy(false);
+    setDisconnectedMessage(message);
+    setState("disconnected");
+  }, []);
+
+  const checkCurrentSessionEnded = useCallback(
+    async (sessionId: string) => {
+      const currentSession = await getMatchSession(supabase, sessionId);
+
+      if (currentSession.status === "ended" && !nextBusy) {
+        transitionToDisconnected(
+          currentSession.ended_reason === "next" ? "They moved on." : "Connection ended.",
+        );
+      }
+    },
+    [nextBusy, supabase, transitionToDisconnected],
+  );
+
   useEffect(() => {
     let mounted = true;
 
@@ -214,20 +235,23 @@ export default function MatchScreen() {
           const row = payload.new as { status?: string; ended_reason?: string | null };
 
           if (row.status === "ended" && !nextBusy) {
-            setSession(null);
-            setSearchIdentityId(null);
-            setNextBusy(false);
-            setDisconnectedMessage(row.ended_reason === "next" ? "They moved on." : "Connection ended.");
-            setState("disconnected");
+            transitionToDisconnected(row.ended_reason === "next" ? "They moved on." : "Connection ended.");
           }
         },
       )
       .subscribe();
 
+    const intervalId = window.setInterval(() => {
+      void checkCurrentSessionEnded(session.id).catch(() => {
+        // Realtime is primary; polling is only a fallback for missed session updates.
+      });
+    }, 2000);
+
     return () => {
+      window.clearInterval(intervalId);
       supabase.removeChannel(channel);
     };
-  }, [nextBusy, session?.id, state, supabase]);
+  }, [checkCurrentSessionEnded, nextBusy, session?.id, state, supabase, transitionToDisconnected]);
 
   async function startMatching() {
     setBusy(true);

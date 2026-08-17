@@ -11,6 +11,7 @@ export type MatchPool = {
 
 export type MatchSession = {
   id: string;
+  ended_reason: string | null;
   expires_at: string | null;
   status: string | null;
 };
@@ -153,7 +154,7 @@ export async function getMatchSession(
 ): Promise<MatchSession> {
   const { data, error } = await supabase
     .from("match_sessions")
-    .select("id, expires_at, status")
+    .select("id, ended_reason, expires_at, status")
     .eq("id", sessionId)
     .maybeSingle();
 

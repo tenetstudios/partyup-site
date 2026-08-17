@@ -102,7 +102,7 @@ begin
       )
       and (b.expires_at is null or b.expires_at > now())
     )
-  order by q.created_at asc
+  order by q.identity_id asc
   for update skip locked
   limit 1;
 
@@ -122,6 +122,7 @@ begin
 
   insert into public.match_sessions (
     id,
+    pool_id,
     participant_a_identity,
     participant_b_identity,
     livekit_room_name,
@@ -130,6 +131,7 @@ begin
   )
   values (
     v_session_id,
+    p_pool_id,
     v_opponent_identity_id,
     v_identity_id,
     v_room_name,
