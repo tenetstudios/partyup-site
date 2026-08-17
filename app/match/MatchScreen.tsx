@@ -8,19 +8,27 @@ import MatchLiveKit from "./MatchLiveKit";
 import { createSupabaseClient } from "@/lib/supabase";
 import {
   cancelMatchSearch,
+  claimGuestIdentity,
+  createGuestSession,
   enqueueAndMatch,
   ensurePartyUpIdentity,
+  guestCancelMatchSearch,
+  guestEnqueueAndMatch,
+  guestGetCurrentMatchQueueState,
+  guestNextMatch,
   getCurrentMatchQueueState,
   getGlobalMatchPool,
   getMatchSession,
   getMatchPool,
   isMatchSessionExpired,
   nextMatch,
+  readStoredGuestSession,
   type MatchPool,
   type MatchSession,
 } from "@/lib/matchmaking";
 
 export type MatchState = "idle" | "searching" | "connected" | "disconnected";
+type MatchIdentityMode = "account" | "guest";
 
 export default function MatchScreen({ initialPoolId = null }: { initialPoolId?: string | null }) {
   const [state, setState] = useState<MatchState>("idle");
@@ -29,6 +37,10 @@ export default function MatchScreen({ initialPoolId = null }: { initialPoolId?: 
   const [busy, setBusy] = useState(false);
   const [poolLoading, setPoolLoading] = useState(Boolean(initialPoolId));
   const [activePool, setActivePool] = useState<MatchPool | null>(null);
+  const [identityMode, setIdentityMode] = useState<MatchIdentityMode>("account");
+  const [guestToken, setGuestToken] = useState<string | null>(null);
+  const [guestIdentityId, setGuestIdentityId] = useState<string | null>(null);
+  const [guestClaimMessage, setGuestClaimMessage] = useState<string | null>(null);
   const [nextBusy, setNextBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [disconnectedMessage, setDisconnectedMessage] = useState<string | null>(null);
@@ -38,6 +50,7 @@ export default function MatchScreen({ initialPoolId = null }: { initialPoolId?: 
   const channelRef = useRef<RealtimeChannel | null>(null);
   const isEventMatch = Boolean(initialPoolId);
   const poolContextLabel = isEventMatch ? "Matching with people here" : null;
+  const isGuest = identityMode === "guest";
 
   const clearSubscription = useCallback(() => {
     if (channelRef.current) {
@@ -58,17 +71,24 @@ export default function MatchScreen({ initialPoolId = null }: { initialPoolId?: 
     [clearSubscription],
   );
 
+  const cancelCurrentSearch = useCallback(async () => {
+    if (isGuest && guestToken) {
+      await guestCancelMatchSearch(supabase, guestToken);
+      return;
+    }
+
+    await cancelMatchSearch(supabase);
+  }, [guestToken, isGuest, supabase]);
+
   const transitionToMatched = useCallback(
     async (sessionId: string) => {
       try {
         const matchedSession = await getMatchSession(supabase, sessionId);
 
         if (isMatchSessionExpired(matchedSession)) {
-          try {
-            await cancelMatchSearch(supabase);
-          } catch {
+          await cancelCurrentSearch().catch(() => {
             // The stale matched queue row may not be cancellable by the current RPC.
-          }
+          });
 
           throw new Error(
             "The matchmaking RPC returned an expired Match session. Clear the stale match_queue row for this user, then start matching again.",
@@ -85,7 +105,7 @@ export default function MatchScreen({ initialPoolId = null }: { initialPoolId?: 
         fail(reason instanceof Error ? reason.message : "The matched session could not be loaded.");
       }
     },
-    [clearSubscription, fail, supabase],
+    [cancelCurrentSearch, clearSubscription, fail, supabase],
   );
 
   const subscribeToQueue = useCallback(
@@ -133,13 +153,16 @@ export default function MatchScreen({ initialPoolId = null }: { initialPoolId?: 
 
   const checkCurrentQueueForMatch = useCallback(
     async (identityId: string) => {
-      const queueState = await getCurrentMatchQueueState(supabase, identityId);
+      const queueState =
+        isGuest && guestToken
+          ? await guestGetCurrentMatchQueueState(supabase, guestToken)
+          : await getCurrentMatchQueueState(supabase, identityId);
 
       if (queueState?.status === "matched" && queueState.match_session_id) {
         await transitionToMatched(queueState.match_session_id);
       }
     },
-    [supabase, transitionToMatched],
+    [guestToken, isGuest, supabase, transitionToMatched],
   );
 
   const transitionToDisconnected = useCallback((message: string) => {
@@ -177,8 +200,38 @@ export default function MatchScreen({ initialPoolId = null }: { initialPoolId?: 
         setError(authError.message);
       }
 
+      const storedGuest = readStoredGuestSession();
+      if (storedGuest) {
+        setGuestToken(storedGuest.guestToken);
+        setGuestIdentityId(storedGuest.identityId);
+      }
+
       setUser(data.user ?? null);
       setAuthLoading(false);
+
+      if (data.user && storedGuest?.guestToken) {
+        try {
+          const claim = await claimGuestIdentity(supabase, storedGuest.guestToken);
+
+          if (!mounted) {
+            return;
+          }
+
+          if (claim.claimed) {
+            setGuestToken(null);
+            setGuestIdentityId(null);
+            setIdentityMode("account");
+            setGuestClaimMessage("Your guest Match history is saved to this Google account.");
+            return;
+          }
+
+          if (claim.conflict) {
+            setGuestClaimMessage(claim.message ?? "Guest history attachment needs review.");
+          }
+        } catch {
+          // Claiming should not block normal authenticated Match.
+        }
+      }
     }
 
     loadUser();
@@ -194,8 +247,9 @@ export default function MatchScreen({ initialPoolId = null }: { initialPoolId?: 
         setSearchIdentityId(null);
         setNextBusy(false);
         setBusy(false);
+        setIdentityMode(readStoredGuestSession() ? "guest" : "account");
         setState("idle");
-        setError("Sign in to use PartyUp Match.");
+        setError(null);
       }
     });
 
@@ -318,28 +372,36 @@ export default function MatchScreen({ initialPoolId = null }: { initialPoolId?: 
       const { data } = await supabase.auth.getUser();
       const currentUser = data.user;
 
-      if (!currentUser) {
-        setUser(null);
-        setState("idle");
-        setError("Sign in to use PartyUp Match.");
-        return;
-      }
-
-      setUser(currentUser);
+      setUser(currentUser ?? null);
 
       try {
-        await cancelMatchSearch(supabase);
+        await cancelCurrentSearch();
       } catch {
         // Starting a new search should not be blocked if there was no active search to cancel.
       }
 
-      const [partyUpIdentity, pool] = await Promise.all([
-        ensurePartyUpIdentity(supabase),
-        initialPoolId ? getMatchPool(supabase, initialPoolId) : getGlobalMatchPool(supabase),
-      ]);
+      const pool = initialPoolId
+        ? await getMatchPool(supabase, initialPoolId)
+        : await getGlobalMatchPool(supabase);
+
+      let identityId: string;
+      let result;
+
+      if (currentUser) {
+        setIdentityMode("account");
+        const partyUpIdentity = await ensurePartyUpIdentity(supabase);
+        identityId = partyUpIdentity.id;
+        result = await enqueueAndMatch(supabase, pool.id);
+      } else {
+        const guestSession = await createGuestSession(supabase);
+        setIdentityMode("guest");
+        setGuestToken(guestSession.guestToken);
+        setGuestIdentityId(guestSession.identityId);
+        identityId = guestSession.identityId;
+        result = await guestEnqueueAndMatch(supabase, pool.id, guestSession.guestToken);
+      }
 
       setActivePool(pool);
-      const result = await enqueueAndMatch(supabase, pool.id);
 
       if (result.matched) {
         if (!result.session_id) {
@@ -351,9 +413,11 @@ export default function MatchScreen({ initialPoolId = null }: { initialPoolId?: 
       }
 
       setState("searching");
-      setSearchIdentityId(partyUpIdentity.id);
-      await subscribeToQueue(partyUpIdentity.id);
-      await checkCurrentQueueForMatch(partyUpIdentity.id);
+      setSearchIdentityId(identityId);
+      if (currentUser) {
+        await subscribeToQueue(identityId);
+      }
+      await checkCurrentQueueForMatch(identityId);
     } catch (reason) {
       fail(reason instanceof Error ? reason.message : "Matchmaking could not be started.");
     } finally {
@@ -366,7 +430,7 @@ export default function MatchScreen({ initialPoolId = null }: { initialPoolId?: 
     setError(null);
 
     try {
-      await cancelMatchSearch(supabase);
+      await cancelCurrentSearch();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "The match search could not be cancelled.");
     } finally {
@@ -389,7 +453,10 @@ export default function MatchScreen({ initialPoolId = null }: { initialPoolId?: 
     setDisconnectedMessage(null);
 
     try {
-      const result = await nextMatch(supabase, sessionId);
+      const result =
+        isGuest && guestToken
+          ? await guestNextMatch(supabase, sessionId, guestToken)
+          : await nextMatch(supabase, sessionId);
       setSession(null);
 
       if (result.matched) {
@@ -401,11 +468,14 @@ export default function MatchScreen({ initialPoolId = null }: { initialPoolId?: 
         return;
       }
 
-      const identity = await ensurePartyUpIdentity(supabase);
+      const identityId =
+        isGuest && guestIdentityId ? guestIdentityId : (await ensurePartyUpIdentity(supabase)).id;
       setState("searching");
-      setSearchIdentityId(identity.id);
-      await subscribeToQueue(identity.id);
-      await checkCurrentQueueForMatch(identity.id);
+      setSearchIdentityId(identityId);
+      if (!isGuest) {
+        await subscribeToQueue(identityId);
+      }
+      await checkCurrentQueueForMatch(identityId);
     } catch (reason) {
       fail(reason instanceof Error ? reason.message : "Could not move to the next Match.");
     } finally {
@@ -436,7 +506,7 @@ export default function MatchScreen({ initialPoolId = null }: { initialPoolId?: 
   }
 
   const handleMatchExpired = useCallback(() => {
-    void cancelMatchSearch(supabase).finally(() => {
+    void cancelCurrentSearch().finally(() => {
       clearSubscription();
       setSession(null);
       setSearchIdentityId(null);
@@ -445,7 +515,7 @@ export default function MatchScreen({ initialPoolId = null }: { initialPoolId?: 
       setError("That match session expired. Start matching again to create a fresh connection.");
       setState("idle");
     });
-  }, [clearSubscription, supabase]);
+  }, [cancelCurrentSearch, clearSubscription]);
 
   return (
     <div className="min-h-[70vh]">
@@ -455,6 +525,8 @@ export default function MatchScreen({ initialPoolId = null }: { initialPoolId?: 
           busy={busy || poolLoading}
           error={error}
           contextLabel={poolContextLabel}
+          guestClaimMessage={guestClaimMessage}
+          hasGuestSession={Boolean(guestToken)}
           isAuthenticated={Boolean(user)}
           onSignIn={signIn}
           onStart={startMatching}
@@ -470,6 +542,9 @@ export default function MatchScreen({ initialPoolId = null }: { initialPoolId?: 
       {state === "connected" && session?.id && (
         <MatchLiveKit
           nextBusy={nextBusy}
+          guestToken={isGuest ? guestToken : null}
+          isGuest={isGuest}
+          onGuestSignIn={signIn}
           onMatchExpired={handleMatchExpired}
           onNextMatch={handleNextMatch}
           sessionId={session.id}

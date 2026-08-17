@@ -30,6 +30,7 @@ export type EnqueueMatchResult = {
   matched: boolean;
   session_id: string | null;
   opponent_identity_id: string | null;
+  identity_id?: string | null;
 };
 
 export type MatchConnectionResult = {
@@ -42,6 +43,19 @@ export type EventMatchPoolResult = {
   poolId: string;
   name: string | null;
   sourceEventRoomId: string;
+};
+
+export type GuestSession = {
+  guestToken: string;
+  identityId: string;
+  expiresAt?: string | null;
+};
+
+export type ClaimGuestIdentityResult = {
+  claimed: boolean;
+  identityId: string | null;
+  conflict: boolean;
+  message: string | null;
 };
 
 type UnknownRecord = Record<string, unknown>;
@@ -100,6 +114,7 @@ export function normalizeEnqueueResult(data: unknown): EnqueueMatchResult {
     matched: readBoolean(record, ["matched"]),
     session_id: readString(record, ["session_id", "match_session_id"]),
     opponent_identity_id: readString(record, ["opponent_identity_id"]),
+    identity_id: readString(record, ["identity_id"]),
   };
 }
 
@@ -137,6 +152,78 @@ export function normalizeEventMatchPoolResult(data: unknown): EventMatchPoolResu
     name: readString(record, ["name"]),
     sourceEventRoomId,
   };
+}
+
+export function normalizeGuestSession(data: unknown): GuestSession {
+  if (!data || typeof data !== "object") {
+    throw new Error("Guest session returned an unexpected response.");
+  }
+
+  const record = data as UnknownRecord;
+  const guestToken = readString(record, ["guestToken", "guest_token"]);
+  const identityId = readString(record, ["identityId", "identity_id"]);
+
+  if (!guestToken || !identityId) {
+    throw new Error("Guest session returned an incomplete response.");
+  }
+
+  return {
+    guestToken,
+    identityId,
+    expiresAt: readString(record, ["expiresAt", "expires_at"]),
+  };
+}
+
+export function normalizeClaimGuestIdentityResult(data: unknown): ClaimGuestIdentityResult {
+  const row = firstRow(data);
+  if (!row || typeof row !== "object") {
+    throw new Error("Guest claim returned an unexpected response.");
+  }
+
+  const record = row as UnknownRecord;
+
+  return {
+    claimed: readBoolean(record, ["claimed"]),
+    identityId: readString(record, ["identity_id", "identityId"]),
+    conflict: readBoolean(record, ["conflict"]),
+    message: readString(record, ["message"]),
+  };
+}
+
+const guestTokenStorageKey = "partyup_guest_token";
+const guestIdentityStorageKey = "partyup_guest_identity_id";
+
+export function readStoredGuestSession(): GuestSession | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const guestToken = window.localStorage.getItem(guestTokenStorageKey);
+  const identityId = window.localStorage.getItem(guestIdentityStorageKey);
+
+  if (!guestToken || !identityId) {
+    return null;
+  }
+
+  return { guestToken, identityId };
+}
+
+export function storeGuestSession(session: GuestSession) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(guestTokenStorageKey, session.guestToken);
+  window.localStorage.setItem(guestIdentityStorageKey, session.identityId);
+}
+
+export function clearStoredGuestSession() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.removeItem(guestTokenStorageKey);
+  window.localStorage.removeItem(guestIdentityStorageKey);
 }
 
 export async function ensurePartyUpIdentity(supabase: SupabaseClient): Promise<PartyUpIdentity> {
@@ -242,11 +329,63 @@ export async function enqueueAndMatch(
   return normalizeEnqueueResult(data);
 }
 
+export async function createGuestSession(supabase: SupabaseClient): Promise<GuestSession> {
+  const existing = readStoredGuestSession();
+  const { data, error } = await supabase.functions.invoke("create-guest-session", {
+    body: {
+      guestToken: existing?.guestToken,
+    },
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const session = normalizeGuestSession(data);
+  storeGuestSession(session);
+
+  return session;
+}
+
+export async function guestEnqueueAndMatch(
+  supabase: SupabaseClient,
+  poolId: string,
+  guestToken: string,
+): Promise<EnqueueMatchResult> {
+  const { data, error } = await supabase.rpc("guest_enqueue_and_match", {
+    p_pool_id: poolId,
+    p_guest_token: guestToken,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return normalizeEnqueueResult(data);
+}
+
 export async function nextMatch(
   supabase: SupabaseClient,
   sessionId: string,
 ): Promise<EnqueueMatchResult> {
   const { data, error } = await supabase.rpc("next_match", { p_match_session_id: sessionId });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return normalizeEnqueueResult(data);
+}
+
+export async function guestNextMatch(
+  supabase: SupabaseClient,
+  sessionId: string,
+  guestToken: string,
+): Promise<EnqueueMatchResult> {
+  const { data, error } = await supabase.rpc("guest_next_match", {
+    p_match_session_id: sessionId,
+    p_guest_token: guestToken,
+  });
 
   if (error) {
     throw new Error(error.message);
@@ -261,6 +400,23 @@ export async function keepMatchConnection(
 ): Promise<MatchConnectionResult> {
   const { data, error } = await supabase.rpc("keep_match_connection", {
     p_match_session_id: sessionId,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return normalizeMatchConnectionResult(data);
+}
+
+export async function guestKeepMatchConnection(
+  supabase: SupabaseClient,
+  sessionId: string,
+  guestToken: string,
+): Promise<MatchConnectionResult> {
+  const { data, error } = await supabase.rpc("guest_keep_match_connection", {
+    p_match_session_id: sessionId,
+    p_guest_token: guestToken,
   });
 
   if (error) {
@@ -285,12 +441,63 @@ export async function getMatchConnectionState(
   return normalizeMatchConnectionResult(data);
 }
 
+export async function guestGetMatchConnectionState(
+  supabase: SupabaseClient,
+  sessionId: string,
+  guestToken: string,
+): Promise<MatchConnectionResult> {
+  const { data, error } = await supabase.rpc("guest_get_match_connection_state", {
+    p_match_session_id: sessionId,
+    p_guest_token: guestToken,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return normalizeMatchConnectionResult(data);
+}
+
 export async function cancelMatchSearch(supabase: SupabaseClient): Promise<void> {
   const { error } = await supabase.rpc("cancel_match_search");
 
   if (error) {
     throw new Error(error.message);
   }
+}
+
+export async function guestCancelMatchSearch(
+  supabase: SupabaseClient,
+  guestToken: string,
+): Promise<void> {
+  const { error } = await supabase.rpc("guest_cancel_match_search", {
+    p_guest_token: guestToken,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function claimGuestIdentity(
+  supabase: SupabaseClient,
+  guestToken: string,
+): Promise<ClaimGuestIdentityResult> {
+  const { data, error } = await supabase.rpc("claim_guest_identity", {
+    p_guest_token: guestToken,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const result = normalizeClaimGuestIdentityResult(data);
+
+  if (result.claimed) {
+    clearStoredGuestSession();
+  }
+
+  return result;
 }
 
 export async function getMatchSession(
@@ -343,4 +550,21 @@ export async function getCurrentMatchQueueState(
   }
 
   return data as MatchQueueState | null;
+}
+
+export async function guestGetCurrentMatchQueueState(
+  supabase: SupabaseClient,
+  guestToken: string,
+): Promise<MatchQueueState | null> {
+  const { data, error } = await supabase.rpc("guest_get_current_match_queue_state", {
+    p_guest_token: guestToken,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const row = firstRow(data);
+
+  return (row as MatchQueueState | null) ?? null;
 }

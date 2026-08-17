@@ -12,7 +12,12 @@ import {
 } from "@livekit/components-react";
 import { Track } from "livekit-client";
 import { createSupabaseClient } from "@/lib/supabase";
-import { getMatchConnectionState, keepMatchConnection } from "@/lib/matchmaking";
+import {
+  getMatchConnectionState,
+  guestGetMatchConnectionState,
+  guestKeepMatchConnection,
+  keepMatchConnection,
+} from "@/lib/matchmaking";
 import MatchControls from "./components/MatchControls";
 
 type MatchLiveKitTokenResponse = {
@@ -30,7 +35,10 @@ type MatchLiveKitStatus =
   | "disconnected";
 
 type MatchLiveKitProps = {
+  guestToken?: string | null;
+  isGuest?: boolean;
   nextBusy: boolean;
+  onGuestSignIn?: () => void;
   onMatchExpired: () => void;
   onNextMatch: (sessionId: string) => Promise<void>;
   sessionId: string;
@@ -53,7 +61,10 @@ async function getFunctionErrorMessage(error: Error, response?: Response) {
 }
 
 export default function MatchLiveKit({
+  guestToken = null,
+  isGuest = false,
   nextBusy,
+  onGuestSignIn,
   onMatchExpired,
   onNextMatch,
   sessionId,
@@ -83,14 +94,26 @@ export default function MatchLiveKit({
       setRoomName(null);
       setParticipantIdentity(null);
 
-      const { data, error, response } = await supabase.functions.invoke<MatchLiveKitTokenResponse>(
-        "match-livekit-token",
-        {
-          body: {
+      const functionName = isGuest ? "guest-match-livekit-token" : "match-livekit-token";
+      const body = isGuest
+        ? {
+            guestToken,
             matchSessionId: sessionId,
-          },
-        },
-      );
+          }
+        : {
+            matchSessionId: sessionId,
+          };
+
+      if (isGuest && !guestToken) {
+        setStatus("error");
+        setMessage("Guest session is missing. Return to Match and try again.");
+        return;
+      }
+
+      const { data, error, response } =
+        await supabase.functions.invoke<MatchLiveKitTokenResponse>(functionName, {
+          body,
+        });
 
       if (cancelled) {
         return;
@@ -124,7 +147,7 @@ export default function MatchLiveKit({
     return () => {
       cancelled = true;
     };
-  }, [livekitUrl, onMatchExpired, sessionId, supabase]);
+  }, [guestToken, isGuest, livekitUrl, onMatchExpired, sessionId, supabase]);
 
   if (status === "error" || status === "disconnected") {
     return (
@@ -180,6 +203,9 @@ export default function MatchLiveKit({
       <MatchRoomView
         key={sessionId}
         nextBusy={nextBusy}
+        guestToken={guestToken}
+        isGuest={isGuest}
+        onGuestSignIn={onGuestSignIn}
         onNextMatch={onNextMatch}
         participantIdentity={participantIdentity}
         roomName={roomName}
@@ -193,6 +219,9 @@ export default function MatchLiveKit({
 
 function MatchRoomView({
   nextBusy,
+  guestToken,
+  isGuest,
+  onGuestSignIn,
   onNextMatch,
   participantIdentity,
   roomName,
@@ -201,6 +230,9 @@ function MatchRoomView({
   message,
 }: {
   nextBusy: boolean;
+  guestToken: string | null;
+  isGuest: boolean;
+  onGuestSignIn?: () => void;
   onNextMatch: (sessionId: string) => Promise<void>;
   participantIdentity: string | null;
   roomName: string | null;
@@ -286,7 +318,10 @@ function MatchRoomView({
 
     async function checkConnectionState() {
       try {
-        const result = await getMatchConnectionState(supabase, sessionId);
+        const result =
+          isGuest && guestToken
+            ? await guestGetMatchConnectionState(supabase, sessionId, guestToken)
+            : await getMatchConnectionState(supabase, sessionId);
 
         if (!cancelled && result.mutual) {
           setKeepInTouchStatus("connected");
@@ -324,7 +359,7 @@ function MatchRoomView({
       window.clearInterval(intervalId);
       supabase.removeChannel(channel);
     };
-  }, [keepInTouchStatus, sessionId, supabase]);
+  }, [guestToken, isGuest, keepInTouchStatus, sessionId, supabase]);
 
   async function toggleMicrophone() {
     const next = !microphoneEnabled;
@@ -367,7 +402,10 @@ function MatchRoomView({
     setKeepInTouchMessage(null);
 
     try {
-      const result = await keepMatchConnection(supabase, sessionId);
+      const result =
+        isGuest && guestToken
+          ? await guestKeepMatchConnection(supabase, sessionId, guestToken)
+          : await keepMatchConnection(supabase, sessionId);
 
       if (result.mutual) {
         setKeepInTouchStatus("connected");
@@ -445,7 +483,15 @@ function MatchRoomView({
 
       {keepInTouchMessage && (
         <div className="absolute left-1/2 bottom-24 max-w-md -translate-x-1/2 rounded-md border border-white/15 bg-black/70 px-4 py-3 text-sm font-bold text-white backdrop-blur">
-          {keepInTouchMessage}
+          <span>{keepInTouchMessage}</span>
+          {isGuest && keepInTouchStatus === "connected" && onGuestSignIn && (
+            <button
+              onClick={onGuestSignIn}
+              className="ml-3 rounded-md bg-pink-500 px-3 py-2 text-xs font-black text-white hover:bg-pink-600"
+            >
+              Save this connection
+            </button>
+          )}
         </div>
       )}
 

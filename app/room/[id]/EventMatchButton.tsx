@@ -20,16 +20,6 @@ export default function EventMatchButton({ roomId }: { roomId: string }) {
 
     try {
       const supabase = createSupabaseClient();
-      const { data: userData, error: userError } = await supabase.auth.getUser();
-
-      if (userError) {
-        throw new Error(userError.message);
-      }
-
-      if (!userData.user) {
-        throw new Error("Sign in to Match with people here.");
-      }
-
       const pool = await getOrCreateEventMatchPool(supabase, roomId);
       router.push(`/match?pool=${encodeURIComponent(pool.poolId)}`);
     } catch (reason) {

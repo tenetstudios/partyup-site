@@ -7,6 +7,8 @@ type MatchIdleProps = {
   busy?: boolean;
   contextLabel?: string | null;
   error?: string | null;
+  guestClaimMessage?: string | null;
+  hasGuestSession?: boolean;
   isAuthenticated?: boolean;
   onSignIn?: () => void;
   onStart: () => void;
@@ -17,6 +19,8 @@ export default function MatchIdle({
   busy = false,
   contextLabel = null,
   error,
+  guestClaimMessage,
+  hasGuestSession = false,
   isAuthenticated = false,
   onSignIn,
   onStart,
@@ -33,8 +37,10 @@ export default function MatchIdle({
 
         {!isAuthenticated && !authLoading && (
           <div className="mt-5 rounded-md border border-purple-300/20 bg-purple-950/30 p-4 text-sm text-zinc-200">
-            <p className="font-bold text-white">Sign in to start matching.</p>
-            <p className="mt-1 text-zinc-300">PartyUp Match is limited to signed-in users for this phase.</p>
+            <p className="font-bold text-white">Continue as a guest.</p>
+            <p className="mt-1 text-zinc-300">
+              You can sign in with Google later to save your connections.
+            </p>
           </div>
         )}
 
@@ -44,7 +50,20 @@ export default function MatchIdle({
           </div>
         )}
 
-        <div className="mt-8 flex items-center gap-4">
+        {guestClaimMessage && (
+          <div className="mt-5 rounded-md border border-emerald-300/20 bg-emerald-950/30 p-4 text-sm font-bold text-emerald-100">
+            {guestClaimMessage}
+          </div>
+        )}
+
+        {!isAuthenticated && hasGuestSession && (
+          <div className="mt-5 rounded-md border border-pink-300/20 bg-pink-950/20 p-4 text-sm text-zinc-200">
+            <p className="font-bold text-white">You have guest Match activity on this browser.</p>
+            <p className="mt-1 text-zinc-300">Sign in with Google later to keep it attached.</p>
+          </div>
+        )}
+
+        <div className="mt-8 flex flex-wrap items-center gap-4">
           {isAuthenticated ? (
             <button
               disabled={disabled}
@@ -56,10 +75,19 @@ export default function MatchIdle({
           ) : (
             <button
               disabled={disabled}
-              onClick={onSignIn}
+              onClick={onStart}
               className="rounded-full bg-pink-500 px-6 py-3 font-black text-white hover:bg-pink-600 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {authLoading ? "Checking sign-in..." : "Sign in to Match"}
+              {authLoading ? "Checking sign-in..." : "Continue as Guest"}
+            </button>
+          )}
+          {!isAuthenticated && onSignIn && (
+            <button
+              disabled={disabled}
+              onClick={onSignIn}
+              className="rounded-full border border-white/15 px-6 py-3 font-black text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Continue with Google
             </button>
           )}
           <Link href="/" className="text-sm font-bold text-zinc-300 hover:underline">
