@@ -4,25 +4,30 @@ import React from "react";
 type MatchControlsProps = {
   cameraEnabled?: boolean;
   microphoneEnabled?: boolean;
+  nextBusy?: boolean;
   onCameraToggle?: () => void;
   onLeave?: () => void;
   onMicrophoneToggle?: () => void;
+  onNext?: () => void;
 };
 
 export default function MatchControls({
   cameraEnabled = false,
   microphoneEnabled = false,
+  nextBusy = false,
   onCameraToggle,
   onLeave,
   onMicrophoneToggle,
+  onNext,
 }: MatchControlsProps) {
   return (
     <div className="flex items-center justify-center gap-4 rounded-md bg-black/30 p-3">
       <button
-        disabled
-        className="rounded-md bg-[#1f1a2b] px-3 py-2 text-sm font-bold opacity-50"
+        disabled={!onNext || nextBusy}
+        onClick={onNext}
+        className="rounded-md bg-[#9146ff] px-3 py-2 text-sm font-black text-white hover:bg-[#7b31e8] disabled:cursor-not-allowed disabled:opacity-50"
       >
-        Next
+        {nextBusy ? "Finding..." : "Next"}
       </button>
       <button
         onClick={onMicrophoneToggle}

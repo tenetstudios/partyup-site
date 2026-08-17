@@ -13,6 +13,8 @@ import {
   getCurrentMatchQueueState,
   getGlobalMatchPool,
   getMatchSession,
+  isMatchSessionExpired,
+  nextMatch,
   type MatchSession,
 } from "@/lib/matchmaking";
 
@@ -23,7 +25,9 @@ export default function MatchScreen() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [nextBusy, setNextBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [disconnectedMessage, setDisconnectedMessage] = useState<string | null>(null);
   const [session, setSession] = useState<MatchSession | null>(null);
   const [searchIdentityId, setSearchIdentityId] = useState<string | null>(null);
   const supabase = useMemo(() => createSupabaseClient(), []);
@@ -42,6 +46,7 @@ export default function MatchScreen() {
       setError(message);
       setSession(null);
       setSearchIdentityId(null);
+      setNextBusy(false);
       setState("idle");
     },
     [clearSubscription],
@@ -51,9 +56,23 @@ export default function MatchScreen() {
     async (sessionId: string) => {
       try {
         const matchedSession = await getMatchSession(supabase, sessionId);
+
+        if (isMatchSessionExpired(matchedSession)) {
+          try {
+            await cancelMatchSearch(supabase);
+          } catch {
+            // The stale matched queue row may not be cancellable by the current RPC.
+          }
+
+          throw new Error(
+            "The matchmaking RPC returned an expired Match session. Clear the stale match_queue row for this user, then start matching again.",
+          );
+        }
+
         clearSubscription();
         setSession(matchedSession);
         setSearchIdentityId(null);
+        setDisconnectedMessage(null);
         setError(null);
         setState("connected");
       } catch (reason) {
@@ -146,6 +165,7 @@ export default function MatchScreen() {
         clearSubscription();
         setSession(null);
         setSearchIdentityId(null);
+        setNextBusy(false);
         setBusy(false);
         setState("idle");
         setError("Sign in to use PartyUp Match.");
@@ -175,11 +195,47 @@ export default function MatchScreen() {
     };
   }, [checkCurrentQueueForMatch, fail, searchIdentityId, state]);
 
+  useEffect(() => {
+    if (state !== "connected" || !session?.id) {
+      return;
+    }
+
+    const channel = supabase
+      .channel(`match-session:${session.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "match_sessions",
+          filter: `id=eq.${session.id}`,
+        },
+        (payload) => {
+          const row = payload.new as { status?: string; ended_reason?: string | null };
+
+          if (row.status === "ended" && !nextBusy) {
+            setSession(null);
+            setSearchIdentityId(null);
+            setNextBusy(false);
+            setDisconnectedMessage(row.ended_reason === "next" ? "They moved on." : "Connection ended.");
+            setState("disconnected");
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [nextBusy, session?.id, state, supabase]);
+
   async function startMatching() {
     setBusy(true);
     setError(null);
+    setDisconnectedMessage(null);
     setSession(null);
     setSearchIdentityId(null);
+    setNextBusy(false);
     clearSubscription();
 
     try {
@@ -240,8 +296,43 @@ export default function MatchScreen() {
       clearSubscription();
       setSession(null);
       setSearchIdentityId(null);
+      setNextBusy(false);
       setState("idle");
       setBusy(false);
+    }
+  }
+
+  async function handleNextMatch(sessionId: string) {
+    if (nextBusy) {
+      return;
+    }
+
+    setNextBusy(true);
+    setError(null);
+    setDisconnectedMessage(null);
+
+    try {
+      const result = await nextMatch(supabase, sessionId);
+      setSession(null);
+
+      if (result.matched) {
+        if (!result.session_id) {
+          throw new Error("Matchmaking returned a match without a session.");
+        }
+
+        await transitionToMatched(result.session_id);
+        return;
+      }
+
+      const identity = await ensurePartyUpIdentity(supabase);
+      setState("searching");
+      setSearchIdentityId(identity.id);
+      await subscribeToQueue(identity.id);
+      await checkCurrentQueueForMatch(identity.id);
+    } catch (reason) {
+      fail(reason instanceof Error ? reason.message : "Could not move to the next Match.");
+    } finally {
+      setNextBusy(false);
     }
   }
 
@@ -258,6 +349,7 @@ export default function MatchScreen() {
     clearSubscription();
     setSession(null);
     setSearchIdentityId(null);
+    setNextBusy(false);
     setBusy(false);
     setState("idle");
   }
@@ -267,6 +359,7 @@ export default function MatchScreen() {
       clearSubscription();
       setSession(null);
       setSearchIdentityId(null);
+      setNextBusy(false);
       setBusy(false);
       setError("That match session expired. Start matching again to create a fresh connection.");
       setState("idle");
@@ -288,12 +381,19 @@ export default function MatchScreen() {
       {state === "searching" && <MatchSearching busy={busy} onCancel={cancelSearch} />}
       {state === "connected" && session?.id && (
         <MatchLiveKit
+          nextBusy={nextBusy}
           onMatchExpired={handleMatchExpired}
+          onNextMatch={handleNextMatch}
           sessionId={session.id}
           onReturnToMatch={returnToMatch}
         />
       )}
-      {state === "disconnected" && <MatchDisconnected onRematch={startMatching} />}
+      {state === "disconnected" && (
+        <MatchDisconnected
+          message={disconnectedMessage ?? undefined}
+          onRematch={startMatching}
+        />
+      )}
     </div>
   );
 }

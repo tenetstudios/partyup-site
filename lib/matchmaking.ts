@@ -11,6 +11,8 @@ export type MatchPool = {
 
 export type MatchSession = {
   id: string;
+  expires_at: string | null;
+  status: string | null;
 };
 
 export type MatchQueueState = {
@@ -124,6 +126,19 @@ export async function enqueueAndMatch(
   return normalizeEnqueueResult(data);
 }
 
+export async function nextMatch(
+  supabase: SupabaseClient,
+  sessionId: string,
+): Promise<EnqueueMatchResult> {
+  const { data, error } = await supabase.rpc("next_match", { p_match_session_id: sessionId });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return normalizeEnqueueResult(data);
+}
+
 export async function cancelMatchSearch(supabase: SupabaseClient): Promise<void> {
   const { error } = await supabase.rpc("cancel_match_search");
 
@@ -138,7 +153,7 @@ export async function getMatchSession(
 ): Promise<MatchSession> {
   const { data, error } = await supabase
     .from("match_sessions")
-    .select("id")
+    .select("id, expires_at, status")
     .eq("id", sessionId)
     .maybeSingle();
 
@@ -151,6 +166,20 @@ export async function getMatchSession(
   }
 
   return data as MatchSession;
+}
+
+export function isMatchSessionExpired(session: MatchSession): boolean {
+  if (!session.expires_at) {
+    return false;
+  }
+
+  const expiresAtMs = Date.parse(session.expires_at);
+
+  if (Number.isNaN(expiresAtMs)) {
+    return true;
+  }
+
+  return expiresAtMs <= Date.now();
 }
 
 export async function getCurrentMatchQueueState(

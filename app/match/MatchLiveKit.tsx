@@ -29,7 +29,9 @@ type MatchLiveKitStatus =
   | "disconnected";
 
 type MatchLiveKitProps = {
+  nextBusy: boolean;
   onMatchExpired: () => void;
+  onNextMatch: (sessionId: string) => Promise<void>;
   sessionId: string;
   onReturnToMatch: () => void;
 };
@@ -50,7 +52,9 @@ async function getFunctionErrorMessage(error: Error, response?: Response) {
 }
 
 export default function MatchLiveKit({
+  nextBusy,
   onMatchExpired,
+  onNextMatch,
   sessionId,
   onReturnToMatch,
 }: MatchLiveKitProps) {
@@ -173,6 +177,8 @@ export default function MatchLiveKit({
       }}
     >
       <MatchRoomView
+        nextBusy={nextBusy}
+        onNextMatch={onNextMatch}
         participantIdentity={participantIdentity}
         roomName={roomName}
         sessionId={sessionId}
@@ -184,12 +190,16 @@ export default function MatchLiveKit({
 }
 
 function MatchRoomView({
+  nextBusy,
+  onNextMatch,
   participantIdentity,
   roomName,
   sessionId,
   status,
   message,
 }: {
+  nextBusy: boolean;
+  onNextMatch: (sessionId: string) => Promise<void>;
   participantIdentity: string | null;
   roomName: string | null;
   sessionId: string;
@@ -286,6 +296,11 @@ function MatchRoomView({
     }
   }
 
+  async function moveNext() {
+    await onNextMatch(sessionId);
+    room.disconnect();
+  }
+
   return (
     <div className="relative h-[80vh] w-full overflow-hidden rounded-lg bg-black">
       <RoomAudioRenderer />
@@ -351,6 +366,8 @@ function MatchRoomView({
             microphoneEnabled={microphoneEnabled}
             onCameraToggle={toggleCamera}
             onMicrophoneToggle={toggleMicrophone}
+            nextBusy={nextBusy}
+            onNext={moveNext}
             onLeave={() => room.disconnect()}
           />
         </div>
