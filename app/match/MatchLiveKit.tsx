@@ -12,6 +12,7 @@ import {
 } from "@livekit/components-react";
 import { Track } from "livekit-client";
 import { createSupabaseClient } from "@/lib/supabase";
+import { getMatchConnectionState, keepMatchConnection } from "@/lib/matchmaking";
 import MatchControls from "./components/MatchControls";
 
 type MatchLiveKitTokenResponse = {
@@ -177,6 +178,7 @@ export default function MatchLiveKit({
       }}
     >
       <MatchRoomView
+        key={sessionId}
         nextBusy={nextBusy}
         onNextMatch={onNextMatch}
         participantIdentity={participantIdentity}
@@ -210,8 +212,13 @@ function MatchRoomView({
   const participants = useParticipants();
   const room = useRoomContext();
   const [cameraEnabled, setCameraEnabled] = useState(false);
+  const [keepInTouchStatus, setKeepInTouchStatus] = useState<
+    "idle" | "saving" | "saved" | "connected"
+  >("idle");
+  const [keepInTouchMessage, setKeepInTouchMessage] = useState<string | null>(null);
   const [microphoneEnabled, setMicrophoneEnabled] = useState(false);
   const [mediaMessage, setMediaMessage] = useState<string | null>(null);
+  const supabase = useMemo(() => createSupabaseClient(), []);
 
   const tracks = useTracks(
     [{ source: Track.Source.Camera, withPlaceholder: true }],
@@ -270,6 +277,55 @@ function MatchRoomView({
     };
   }, [localParticipant]);
 
+  useEffect(() => {
+    if (keepInTouchStatus !== "saved") {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function checkConnectionState() {
+      try {
+        const result = await getMatchConnectionState(supabase, sessionId);
+
+        if (!cancelled && result.mutual) {
+          setKeepInTouchStatus("connected");
+          setKeepInTouchMessage("You're connected.");
+        }
+      } catch {
+        // Connection polling is only a fallback; the saved vote remains valid.
+      }
+    }
+
+    const channel = supabase
+      .channel(`match-connection:${sessionId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "partyup_connections",
+          filter: `source_match_session_id=eq.${sessionId}`,
+        },
+        () => {
+          void checkConnectionState();
+        },
+      )
+      .subscribe();
+
+    void checkConnectionState();
+
+    const intervalId = window.setInterval(() => {
+      void checkConnectionState();
+    }, 2000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      supabase.removeChannel(channel);
+    };
+  }, [keepInTouchStatus, sessionId, supabase]);
+
   async function toggleMicrophone() {
     const next = !microphoneEnabled;
 
@@ -299,6 +355,34 @@ function MatchRoomView({
   async function moveNext() {
     await onNextMatch(sessionId);
     room.disconnect();
+  }
+
+  async function saveKeepInTouch() {
+    if (keepInTouchStatus === "saving" || keepInTouchStatus === "connected") {
+      return;
+    }
+
+    const previousStatus = keepInTouchStatus;
+    setKeepInTouchStatus("saving");
+    setKeepInTouchMessage(null);
+
+    try {
+      const result = await keepMatchConnection(supabase, sessionId);
+
+      if (result.mutual) {
+        setKeepInTouchStatus("connected");
+        setKeepInTouchMessage("You're connected.");
+        return;
+      }
+
+      setKeepInTouchStatus("saved");
+      setKeepInTouchMessage("Saved. You'll connect if they choose the same.");
+    } catch (reason) {
+      setKeepInTouchStatus(previousStatus);
+      setKeepInTouchMessage(
+        reason instanceof Error ? reason.message : "Could not save Keep in Touch.",
+      );
+    }
   }
 
   return (
@@ -359,12 +443,20 @@ function MatchRoomView({
         </div>
       )}
 
+      {keepInTouchMessage && (
+        <div className="absolute left-1/2 bottom-24 max-w-md -translate-x-1/2 rounded-md border border-white/15 bg-black/70 px-4 py-3 text-sm font-bold text-white backdrop-blur">
+          {keepInTouchMessage}
+        </div>
+      )}
+
       <div className="absolute bottom-6 left-0 right-0 flex justify-center px-4">
         <div className="w-full max-w-3xl">
           <MatchControls
             cameraEnabled={cameraEnabled}
+            keepInTouchStatus={keepInTouchStatus}
             microphoneEnabled={microphoneEnabled}
             onCameraToggle={toggleCamera}
+            onKeepInTouch={saveKeepInTouch}
             onMicrophoneToggle={toggleMicrophone}
             nextBusy={nextBusy}
             onNext={moveNext}

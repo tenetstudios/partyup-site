@@ -18,6 +18,65 @@ create index if not exists match_pair_blocks_identity_b_idx
 create index if not exists match_pair_blocks_expires_at_idx
   on public.match_pair_blocks(expires_at);
 
+create table if not exists public.match_connection_votes (
+  id uuid primary key default gen_random_uuid(),
+  match_session_id uuid not null references public.match_sessions(id) on delete cascade,
+  identity_id uuid not null references public.partyup_identities(id) on delete cascade,
+  wants_connection boolean not null default true,
+  created_at timestamptz not null default now(),
+  constraint match_connection_votes_one_vote unique (match_session_id, identity_id)
+);
+
+create index if not exists match_connection_votes_match_session_id_idx
+  on public.match_connection_votes(match_session_id);
+
+create index if not exists match_connection_votes_identity_id_idx
+  on public.match_connection_votes(identity_id);
+
+create table if not exists public.partyup_connections (
+  id uuid primary key default gen_random_uuid(),
+  identity_a uuid not null references public.partyup_identities(id) on delete cascade,
+  identity_b uuid not null references public.partyup_identities(id) on delete cascade,
+  source_match_session_id uuid null references public.match_sessions(id) on delete set null,
+  source_pool_id uuid null references public.match_pools(id) on delete set null,
+  created_at timestamptz not null default now(),
+  constraint partyup_connections_distinct_identities check (identity_a <> identity_b),
+  constraint partyup_connections_normalized_pair check (identity_a < identity_b)
+);
+
+create unique index if not exists partyup_connections_identity_pair_idx
+  on public.partyup_connections(identity_a, identity_b);
+
+create index if not exists partyup_connections_identity_a_idx
+  on public.partyup_connections(identity_a);
+
+create index if not exists partyup_connections_identity_b_idx
+  on public.partyup_connections(identity_b);
+
+create index if not exists partyup_connections_source_match_session_id_idx
+  on public.partyup_connections(source_match_session_id);
+
+alter table public.match_connection_votes enable row level security;
+alter table public.partyup_connections enable row level security;
+
+revoke all on public.match_connection_votes from anon, authenticated;
+revoke all on public.partyup_connections from anon, authenticated;
+grant select on public.partyup_connections to authenticated;
+
+drop policy if exists partyup_connections_select_own on public.partyup_connections;
+create policy partyup_connections_select_own
+  on public.partyup_connections
+  for select
+  to authenticated
+  using (
+    exists (
+      select 1
+      from public.partyup_identities identity
+      where identity.user_id = auth.uid()
+        and identity.id in (partyup_connections.identity_a, partyup_connections.identity_b)
+    )
+  );
+
 alter table public.match_sessions
   add column if not exists ended_at timestamptz,
   add column if not exists ended_reason text,
@@ -154,6 +213,181 @@ begin
 end;
 $$;
 
+create or replace function public.keep_match_connection(p_match_session_id uuid)
+returns table (
+  saved boolean,
+  mutual boolean,
+  connection_id uuid
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id uuid := auth.uid();
+  v_identity_id uuid;
+  v_other_identity_id uuid;
+  v_identity_a uuid;
+  v_identity_b uuid;
+  v_session record;
+  v_connection_id uuid;
+  v_mutual boolean := false;
+begin
+  if v_user_id is null then
+    raise exception 'Authentication required';
+  end if;
+
+  select id
+  into v_identity_id
+  from public.partyup_identities
+  where user_id = v_user_id;
+
+  if v_identity_id is null then
+    raise exception 'PartyUp identity not found';
+  end if;
+
+  select *
+  into v_session
+  from public.match_sessions
+  where id = p_match_session_id
+  for update;
+
+  if not found then
+    raise exception 'Match session not found';
+  end if;
+
+  if v_identity_id not in (v_session.participant_a_identity, v_session.participant_b_identity) then
+    raise exception 'Not authorized for this Match session';
+  end if;
+
+  v_other_identity_id := case
+    when v_session.participant_a_identity = v_identity_id then v_session.participant_b_identity
+    else v_session.participant_a_identity
+  end;
+
+  if v_other_identity_id is null then
+    raise exception 'Match session is missing another participant';
+  end if;
+
+  v_identity_a := least(v_identity_id, v_other_identity_id);
+  v_identity_b := greatest(v_identity_id, v_other_identity_id);
+
+  insert into public.match_connection_votes (
+    match_session_id,
+    identity_id,
+    wants_connection
+  )
+  values (
+    p_match_session_id,
+    v_identity_id,
+    true
+  )
+  on conflict (match_session_id, identity_id)
+  do update
+    set wants_connection = true;
+
+  select count(*) = 2
+  into v_mutual
+  from public.match_connection_votes
+  where match_session_id = p_match_session_id
+    and identity_id in (v_identity_id, v_other_identity_id)
+    and wants_connection = true;
+
+  if v_mutual then
+    insert into public.partyup_connections (
+      identity_a,
+      identity_b,
+      source_match_session_id,
+      source_pool_id
+    )
+    values (
+      v_identity_a,
+      v_identity_b,
+      p_match_session_id,
+      v_session.pool_id
+    )
+    on conflict (identity_a, identity_b)
+    do nothing
+    returning id into v_connection_id;
+
+    if v_connection_id is null then
+      select id
+      into v_connection_id
+      from public.partyup_connections
+      where identity_a = v_identity_a
+        and identity_b = v_identity_b;
+    end if;
+  end if;
+
+  saved := true;
+  mutual := v_mutual;
+  connection_id := v_connection_id;
+  return next;
+end;
+$$;
+
+create or replace function public.get_match_connection_state(p_match_session_id uuid)
+returns table (
+  mutual boolean,
+  connection_id uuid
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id uuid := auth.uid();
+  v_identity_id uuid;
+  v_other_identity_id uuid;
+  v_identity_a uuid;
+  v_identity_b uuid;
+  v_session record;
+begin
+  if v_user_id is null then
+    raise exception 'Authentication required';
+  end if;
+
+  select id
+  into v_identity_id
+  from public.partyup_identities
+  where user_id = v_user_id;
+
+  if v_identity_id is null then
+    raise exception 'PartyUp identity not found';
+  end if;
+
+  select *
+  into v_session
+  from public.match_sessions
+  where id = p_match_session_id;
+
+  if not found then
+    raise exception 'Match session not found';
+  end if;
+
+  if v_identity_id not in (v_session.participant_a_identity, v_session.participant_b_identity) then
+    raise exception 'Not authorized for this Match session';
+  end if;
+
+  v_other_identity_id := case
+    when v_session.participant_a_identity = v_identity_id then v_session.participant_b_identity
+    else v_session.participant_a_identity
+  end;
+
+  v_identity_a := least(v_identity_id, v_other_identity_id);
+  v_identity_b := greatest(v_identity_id, v_other_identity_id);
+
+  select connections.id
+  into connection_id
+  from public.partyup_connections connections
+  where connections.identity_a = v_identity_a
+    and connections.identity_b = v_identity_b;
+
+  mutual := connection_id is not null;
+  return next;
+end;
+$$;
+
 create or replace function public.next_match(p_match_session_id uuid)
 returns table (
   matched boolean,
@@ -272,3 +506,5 @@ $$;
 
 grant execute on function public.next_match(uuid) to authenticated;
 grant execute on function public.enqueue_and_match(uuid) to authenticated;
+grant execute on function public.keep_match_connection(uuid) to authenticated;
+grant execute on function public.get_match_connection_state(uuid) to authenticated;
