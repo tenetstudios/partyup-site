@@ -83,7 +83,11 @@ export default function MatchScreen({ initialPoolId = null }: { initialPoolId?: 
   const transitionToMatched = useCallback(
     async (sessionId: string) => {
       try {
-        const matchedSession = await getMatchSession(supabase, sessionId);
+        const matchedSession = await getMatchSession(
+          supabase,
+          sessionId,
+          isGuest ? guestToken : null,
+        );
 
         if (isMatchSessionExpired(matchedSession)) {
           await cancelCurrentSearch().catch(() => {
@@ -105,7 +109,7 @@ export default function MatchScreen({ initialPoolId = null }: { initialPoolId?: 
         fail(reason instanceof Error ? reason.message : "The matched session could not be loaded.");
       }
     },
-    [cancelCurrentSearch, clearSubscription, fail, supabase],
+    [cancelCurrentSearch, clearSubscription, fail, guestToken, isGuest, supabase],
   );
 
   const subscribeToQueue = useCallback(
@@ -175,7 +179,11 @@ export default function MatchScreen({ initialPoolId = null }: { initialPoolId?: 
 
   const checkCurrentSessionEnded = useCallback(
     async (sessionId: string) => {
-      const currentSession = await getMatchSession(supabase, sessionId);
+      const currentSession = await getMatchSession(
+        supabase,
+        sessionId,
+        isGuest ? guestToken : null,
+      );
 
       if (currentSession.status === "ended" && !nextBusy) {
         transitionToDisconnected(
@@ -183,7 +191,7 @@ export default function MatchScreen({ initialPoolId = null }: { initialPoolId?: 
         );
       }
     },
-    [nextBusy, supabase, transitionToDisconnected],
+    [guestToken, isGuest, nextBusy, supabase, transitionToDisconnected],
   );
 
   useEffect(() => {

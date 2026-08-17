@@ -487,22 +487,28 @@ export async function claimGuestIdentity(
 export async function getMatchSession(
   supabase: SupabaseClient,
   sessionId: string,
+  guestToken?: string | null,
 ): Promise<MatchSession> {
-  const { data, error } = await supabase
-    .from("match_sessions")
-    .select("id, ended_reason, expires_at, status")
-    .eq("id", sessionId)
-    .maybeSingle();
+  const { data, error } = guestToken
+    ? await supabase.rpc("guest_get_match_session", {
+        p_match_session_id: sessionId,
+        p_guest_token: guestToken,
+      })
+    : await supabase.rpc("get_match_session_for_current_identity", {
+        p_match_session_id: sessionId,
+      });
 
   if (error) {
     throw new Error(error.message);
   }
 
-  if (!data?.id) {
+  const row = firstRow(data);
+
+  if (!row || typeof row !== "object") {
     throw new Error("The matched session could not be loaded.");
   }
 
-  return data as MatchSession;
+  return row as MatchSession;
 }
 
 export function isMatchSessionExpired(session: MatchSession): boolean {
