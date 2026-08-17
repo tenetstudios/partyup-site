@@ -8,9 +8,11 @@ import {
   getRoomTitle,
   type LiveRoom,
 } from "@/lib/homeHelpers";
+import { getActiveRoomAnnouncement } from "@/lib/roomAnnouncements";
 import EventMatchButton from "./EventMatchButton";
 import JoinRoomButton from "./JoinRoomButton";
 import ManageRoomLink from "./ManageRoomLink";
+import RoomAnnouncementBanner from "./RoomAnnouncementBanner";
 import RoomChat from "./RoomChat";
 import WebLiveKitRoom from "./WebLiveKitRoom";
 
@@ -101,49 +103,6 @@ function RoomHeader({
   );
 }
 
-function RoomBanner({ room }: { room: RoomRecord }) {
-  const title =
-    asText(room.banner_title) ??
-    asText(room.announcement_title) ??
-    `${getRoomTitle(room)} room update`;
-  const body =
-    asText(room.banner_body) ??
-    asText(room.announcement) ??
-    "Come hang out, go live, meet new people, and match.";
-  const href = asText(room.banner_url) ?? asText(room.info_url);
-
-  const action = href ? (
-    <Link
-      href={href}
-      className="rounded-[6px] bg-[#9146ff] px-5 py-3 text-sm font-black text-white hover:bg-[#7b31e8]"
-    >
-      Learn More
-    </Link>
-  ) : (
-    <span className="rounded-[6px] bg-[#9146ff] px-5 py-3 text-sm font-black text-white">
-      Learn More
-    </span>
-  );
-
-  return (
-    <section className="flex items-center gap-5 rounded-[10px] border border-[#7f3dff]/45 bg-[linear-gradient(90deg,rgba(45,12,78,0.92),rgba(31,7,55,0.78))] px-6 py-5">
-      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-black/20 text-[#ff4daa]">
-        <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" aria-hidden="true">
-          <path d="M5 21 19 7M7 7l10 10M14 4l1 4 4 1-4 1-1 4-1-4-4-1 4-1 1-4ZM5 5l1.5 1.5M3 12h2M12 21v-2" />
-        </svg>
-      </div>
-      <div className="min-w-0 flex-1">
-        <h2 className="truncate text-[18px] font-black text-white">{title}</h2>
-        <p className="mt-1 line-clamp-2 text-[16px] leading-6 text-[#d8d1e2]">{body}</p>
-      </div>
-      <div className="hidden shrink-0 items-center gap-5 sm:flex">
-        {action}
-        <span className="text-3xl leading-none text-[#d8d1e2]">x</span>
-      </div>
-    </section>
-  );
-}
-
 function RoomInfoBar({ room }: { room: RoomRecord }) {
   const tags = [
     getCategory(room),
@@ -206,6 +165,7 @@ export default async function RoomPage({
 
   const typedRoom = room as RoomRecord;
   const onlineCount = asNumber(typedRoom.current_users) ?? 0;
+  const activeAnnouncement = await getActiveRoomAnnouncement(supabase, id);
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_50%_-20%,rgba(77,35,132,0.28),transparent_32%),#07000f] text-white">
@@ -218,7 +178,7 @@ export default async function RoomPage({
           </div>
 
           <div className="order-1 flex min-w-0 flex-col gap-5 xl:order-2">
-            <RoomBanner room={typedRoom} />
+            <RoomAnnouncementBanner roomId={id} initialAnnouncement={activeAnnouncement} />
             <section className="aspect-video min-h-[360px] overflow-hidden rounded-[12px] border border-[#7f3dff]/45 bg-black shadow-[0_24px_70px_rgba(0,0,0,0.38)]">
               <WebLiveKitRoom roomId={id} />
             </section>
