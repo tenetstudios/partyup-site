@@ -258,21 +258,21 @@ export async function getMatchPool(
   supabase: SupabaseClient,
   poolId: string,
 ): Promise<MatchPool> {
-  const { data, error } = await supabase
-    .from("match_pools")
-    .select("id, slug, pool_type, name, source_id, status, expires_at")
-    .eq("id", poolId)
-    .maybeSingle();
+  const { data, error } = await supabase.rpc("get_match_pool_for_match", {
+    p_pool_id: poolId,
+  });
 
   if (error) {
     throw new Error(error.message);
   }
 
-  if (!data?.id) {
+  const row = firstRow(data);
+
+  if (!row || typeof row !== "object") {
     throw new Error("That Match pool was not found.");
   }
 
-  const pool = data as MatchPool;
+  const pool = row as MatchPool;
 
   if (pool.status !== "active") {
     throw new Error("That Match pool is not active.");
@@ -280,22 +280,6 @@ export async function getMatchPool(
 
   if (pool.expires_at && Date.parse(pool.expires_at) <= Date.now()) {
     throw new Error("That Match pool has ended.");
-  }
-
-  if (pool.pool_type === "event" && pool.source_id) {
-    const { data: room, error: roomError } = await supabase
-      .from("event_rooms")
-      .select("id")
-      .eq("id", pool.source_id)
-      .maybeSingle();
-
-    if (roomError) {
-      throw new Error(roomError.message);
-    }
-
-    if (!room?.id) {
-      throw new Error("The event room for that Match pool was not found.");
-    }
   }
 
   return pool;
