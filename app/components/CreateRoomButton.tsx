@@ -159,7 +159,7 @@ console.timeEnd("attendeeUpsert");
     <>
       <button
         onClick={() => setOpen(true)}
-        className="rounded-md bg-[#9146ff] px-6 py-3 font-black hover:bg-[#7b31e8]"
+        className="h-10 rounded-md bg-[#8b3dff] px-6 text-[15px] font-black shadow-[0_0_22px_rgba(139,61,255,0.35)] hover:bg-[#7b31e8]"
       >
         Open a Room
       </button>

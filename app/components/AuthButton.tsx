@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createSupabaseClient } from "@/lib/supabase";
 
 type Profile = {
@@ -11,9 +11,9 @@ type Profile = {
 export default function AuthButton() {
   const [email, setEmail] = useState<string | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
-  const supabase = createSupabaseClient();
+  const supabase = useMemo(() => createSupabaseClient(), []);
 
-  async function loadUserAndProfile() {
+  const loadUserAndProfile = useCallback(async () => {
     const { data } = await supabase.auth.getUser();
     const user = data.user;
 
@@ -31,19 +31,22 @@ export default function AuthButton() {
       .maybeSingle();
 
     setProfile(profileData);
-  }
+  }, [supabase]);
 
   useEffect(() => {
-    loadUserAndProfile();
+    const timeout = window.setTimeout(() => {
+      void loadUserAndProfile();
+    }, 0);
 
     const { data: listener } = supabase.auth.onAuthStateChange(() => {
-      loadUserAndProfile();
+      void loadUserAndProfile();
     });
 
     return () => {
+      window.clearTimeout(timeout);
       listener.subscription.unsubscribe();
     };
-  }, []);
+  }, [loadUserAndProfile, supabase]);
 
   async function signInWithGoogle() {
     await supabase.auth.signInWithOAuth({
@@ -63,27 +66,28 @@ export default function AuthButton() {
   if (email) {
     return (
       <div className="flex items-center gap-3">
-        <div className="hidden items-center gap-2 rounded-md border border-white/15 px-3 py-2 sm:flex">
+        <div className="hidden h-10 items-center gap-3 sm:flex">
           {profile?.avatar_url ? (
             <img
               src={profile.avatar_url}
               alt=""
-              className="h-6 w-6 rounded-full object-cover"
+              className="h-8 w-8 rounded-full object-cover"
             />
           ) : (
-            <div className="grid h-6 w-6 place-items-center rounded-full bg-[#9146ff] text-xs font-black">
+            <div className="grid h-8 w-8 place-items-center rounded-full bg-[#8b3dff] text-sm font-black shadow-[0_0_18px_rgba(139,61,255,0.5)]">
               {(profile?.username || "P").slice(0, 1).toUpperCase()}
             </div>
           )}
 
-          <span className="max-w-24 truncate text-sm font-black">
+          <span className="max-w-32 truncate text-[15px] font-black">
             {profile?.username || "PartyUp User"}
           </span>
+          <span className="text-[#777384]">⌄</span>
         </div>
 
         <button
           onClick={signOut}
-          className="rounded-md border border-white/15 px-4 py-2 text-sm font-black text-white hover:bg-white/10"
+          className="hidden rounded-md border border-white/10 px-3 py-2 text-sm font-black text-white hover:bg-white/10 lg:block"
         >
           Sign out
         </button>
@@ -94,7 +98,7 @@ export default function AuthButton() {
   return (
     <button
       onClick={signInWithGoogle}
-      className="rounded-md border border-white/15 px-4 py-2 text-sm font-black text-white hover:bg-white/10"
+      className="rounded-md border border-white/10 px-4 py-2 text-sm font-black text-white hover:bg-white/10"
     >
       Sign in
     </button>
