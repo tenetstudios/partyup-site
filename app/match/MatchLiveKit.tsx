@@ -423,6 +423,20 @@ function MatchRoomView({
     }
   }
 
+  function signInToSaveGuestConnection() {
+    if (!onGuestSignIn) {
+      return;
+    }
+
+    const shouldContinue = window.confirm(
+      "Signing in with Google will leave this Match call. You can also keep talking and sign in later from this browser.",
+    );
+
+    if (shouldContinue) {
+      onGuestSignIn();
+    }
+  }
+
   return (
     <div className="relative h-[80vh] w-full overflow-hidden rounded-lg bg-black">
       <RoomAudioRenderer />
@@ -486,10 +500,10 @@ function MatchRoomView({
           <span>{keepInTouchMessage}</span>
           {isGuest && keepInTouchStatus === "connected" && onGuestSignIn && (
             <button
-              onClick={onGuestSignIn}
+              onClick={signInToSaveGuestConnection}
               className="ml-3 rounded-md bg-pink-500 px-3 py-2 text-xs font-black text-white hover:bg-pink-600"
             >
-              Save this connection
+              Sign in to save
             </button>
           )}
         </div>
