@@ -13,18 +13,22 @@ import {
   getCurrentMatchQueueState,
   getGlobalMatchPool,
   getMatchSession,
+  getMatchPool,
   isMatchSessionExpired,
   nextMatch,
+  type MatchPool,
   type MatchSession,
 } from "@/lib/matchmaking";
 
 export type MatchState = "idle" | "searching" | "connected" | "disconnected";
 
-export default function MatchScreen() {
+export default function MatchScreen({ initialPoolId = null }: { initialPoolId?: string | null }) {
   const [state, setState] = useState<MatchState>("idle");
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [poolLoading, setPoolLoading] = useState(Boolean(initialPoolId));
+  const [activePool, setActivePool] = useState<MatchPool | null>(null);
   const [nextBusy, setNextBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [disconnectedMessage, setDisconnectedMessage] = useState<string | null>(null);
@@ -32,6 +36,8 @@ export default function MatchScreen() {
   const [searchIdentityId, setSearchIdentityId] = useState<string | null>(null);
   const supabase = useMemo(() => createSupabaseClient(), []);
   const channelRef = useRef<RealtimeChannel | null>(null);
+  const isEventMatch = Boolean(initialPoolId);
+  const poolContextLabel = isEventMatch ? "Matching with people here" : null;
 
   const clearSubscription = useCallback(() => {
     if (channelRef.current) {
@@ -201,6 +207,48 @@ export default function MatchScreen() {
   }, [clearSubscription, supabase]);
 
   useEffect(() => {
+    let mounted = true;
+
+    async function resolveInitialPool() {
+      if (!initialPoolId) {
+        setPoolLoading(false);
+        setActivePool(null);
+        return;
+      }
+
+      setPoolLoading(true);
+      setError(null);
+
+      try {
+        const pool = await getMatchPool(supabase, initialPoolId);
+
+        if (!mounted) {
+          return;
+        }
+
+        setActivePool(pool);
+      } catch (reason) {
+        if (!mounted) {
+          return;
+        }
+
+        setActivePool(null);
+        setError(reason instanceof Error ? reason.message : "That Match pool could not be loaded.");
+      } finally {
+        if (mounted) {
+          setPoolLoading(false);
+        }
+      }
+    }
+
+    void resolveInitialPool();
+
+    return () => {
+      mounted = false;
+    };
+  }, [initialPoolId, supabase]);
+
+  useEffect(() => {
     if (state !== "searching" || !searchIdentityId) {
       return;
     }
@@ -254,6 +302,10 @@ export default function MatchScreen() {
   }, [checkCurrentSessionEnded, nextBusy, session?.id, state, supabase, transitionToDisconnected]);
 
   async function startMatching() {
+    if (poolLoading) {
+      return;
+    }
+
     setBusy(true);
     setError(null);
     setDisconnectedMessage(null);
@@ -283,9 +335,10 @@ export default function MatchScreen() {
 
       const [partyUpIdentity, pool] = await Promise.all([
         ensurePartyUpIdentity(supabase),
-        getGlobalMatchPool(supabase),
+        initialPoolId ? getMatchPool(supabase, initialPoolId) : getGlobalMatchPool(supabase),
       ]);
 
+      setActivePool(pool);
       const result = await enqueueAndMatch(supabase, pool.id);
 
       if (result.matched) {
@@ -361,10 +414,14 @@ export default function MatchScreen() {
   }
 
   async function signIn() {
+    const matchPath = initialPoolId
+      ? `/match?pool=${encodeURIComponent(initialPoolId)}`
+      : "/match";
+
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/match`,
+        redirectTo: `${window.location.origin}${matchPath}`,
       },
     });
   }
@@ -395,14 +452,21 @@ export default function MatchScreen() {
       {state === "idle" && (
         <MatchIdle
           authLoading={authLoading}
-          busy={busy}
+          busy={busy || poolLoading}
           error={error}
+          contextLabel={poolContextLabel}
           isAuthenticated={Boolean(user)}
           onSignIn={signIn}
           onStart={startMatching}
         />
       )}
-      {state === "searching" && <MatchSearching busy={busy} onCancel={cancelSearch} />}
+      {state === "searching" && (
+        <MatchSearching
+          busy={busy}
+          contextLabel={activePool?.pool_type === "event" ? "Matching with people here" : null}
+          onCancel={cancelSearch}
+        />
+      )}
       {state === "connected" && session?.id && (
         <MatchLiveKit
           nextBusy={nextBusy}

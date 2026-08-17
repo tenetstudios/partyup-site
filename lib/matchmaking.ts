@@ -6,7 +6,12 @@ export type PartyUpIdentity = {
 
 export type MatchPool = {
   id: string;
+  name?: string | null;
+  pool_type?: string | null;
   slug: string;
+  source_id?: string | null;
+  status?: string | null;
+  expires_at?: string | null;
 };
 
 export type MatchSession = {
@@ -31,6 +36,12 @@ export type MatchConnectionResult = {
   saved?: boolean;
   mutual: boolean;
   connectionId: string | null;
+};
+
+export type EventMatchPoolResult = {
+  poolId: string;
+  name: string | null;
+  sourceEventRoomId: string;
 };
 
 type UnknownRecord = Record<string, unknown>;
@@ -107,6 +118,27 @@ export function normalizeMatchConnectionResult(data: unknown): MatchConnectionRe
   };
 }
 
+export function normalizeEventMatchPoolResult(data: unknown): EventMatchPoolResult {
+  const row = firstRow(data);
+  if (!row || typeof row !== "object") {
+    throw new Error("Event Match pool returned an unexpected response.");
+  }
+
+  const record = row as UnknownRecord;
+  const poolId = readString(record, ["pool_id", "id"]);
+  const sourceEventRoomId = readString(record, ["source_event_room_id", "source_id"]);
+
+  if (!poolId || !sourceEventRoomId) {
+    throw new Error("Event Match pool returned an incomplete response.");
+  }
+
+  return {
+    poolId,
+    name: readString(record, ["name"]),
+    sourceEventRoomId,
+  };
+}
+
 export async function ensurePartyUpIdentity(supabase: SupabaseClient): Promise<PartyUpIdentity> {
   const { data, error } = await supabase.rpc("ensure_partyup_identity");
 
@@ -133,6 +165,68 @@ export async function getGlobalMatchPool(supabase: SupabaseClient): Promise<Matc
   }
 
   return data as MatchPool;
+}
+
+export async function getMatchPool(
+  supabase: SupabaseClient,
+  poolId: string,
+): Promise<MatchPool> {
+  const { data, error } = await supabase
+    .from("match_pools")
+    .select("id, slug, pool_type, name, source_id, status, expires_at")
+    .eq("id", poolId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (!data?.id) {
+    throw new Error("That Match pool was not found.");
+  }
+
+  const pool = data as MatchPool;
+
+  if (pool.status !== "active") {
+    throw new Error("That Match pool is not active.");
+  }
+
+  if (pool.expires_at && Date.parse(pool.expires_at) <= Date.now()) {
+    throw new Error("That Match pool has ended.");
+  }
+
+  if (pool.pool_type === "event" && pool.source_id) {
+    const { data: room, error: roomError } = await supabase
+      .from("event_rooms")
+      .select("id")
+      .eq("id", pool.source_id)
+      .maybeSingle();
+
+    if (roomError) {
+      throw new Error(roomError.message);
+    }
+
+    if (!room?.id) {
+      throw new Error("The event room for that Match pool was not found.");
+    }
+  }
+
+  return pool;
+}
+
+export async function getOrCreateEventMatchPool(
+  supabase: SupabaseClient,
+  eventRoomId: string,
+): Promise<EventMatchPoolResult> {
+  const { data, error } = await supabase.rpc("get_or_create_event_match_pool", {
+    p_event_room_id: eventRoomId,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return normalizeEventMatchPoolResult(data);
 }
 
 export async function enqueueAndMatch(

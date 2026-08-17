@@ -1,9 +1,11 @@
 "use client";
+import Link from "next/link";
 import React from "react";
 
 type MatchIdleProps = {
   authLoading?: boolean;
   busy?: boolean;
+  contextLabel?: string | null;
   error?: string | null;
   isAuthenticated?: boolean;
   onSignIn?: () => void;
@@ -13,6 +15,7 @@ type MatchIdleProps = {
 export default function MatchIdle({
   authLoading = false,
   busy = false,
+  contextLabel = null,
   error,
   isAuthenticated = false,
   onSignIn,
@@ -24,7 +27,9 @@ export default function MatchIdle({
     <div className="mx-auto max-w-3xl p-6">
       <div className="rounded-xl bg-gradient-to-br from-[#0b0410]/80 via-[#12051e]/60 to-[#0b0410]/80 p-8">
         <h1 className="text-4xl font-extrabold">Meet someone new.</h1>
-        <p className="mt-3 text-lg text-zinc-300">Match connects you with another person for a 1-on-1 conversation.</p>
+        <p className="mt-3 text-lg text-zinc-300">
+          {contextLabel ?? "Match connects you with another person for a 1-on-1 conversation."}
+        </p>
 
         {!isAuthenticated && !authLoading && (
           <div className="mt-5 rounded-md border border-purple-300/20 bg-purple-950/30 p-4 text-sm text-zinc-200">
@@ -46,7 +51,7 @@ export default function MatchIdle({
               onClick={onStart}
               className="rounded-full bg-pink-500 px-6 py-3 font-black text-white hover:bg-pink-600 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {busy ? "Starting..." : "Start Matching"}
+              {busy ? "Starting..." : contextLabel ? "Start Event Match" : "Start Matching"}
             </button>
           ) : (
             <button
@@ -57,7 +62,9 @@ export default function MatchIdle({
               {authLoading ? "Checking sign-in..." : "Sign in to Match"}
             </button>
           )}
-          <a href="/" className="text-sm font-bold text-zinc-300 hover:underline">Back to PartyUp</a>
+          <Link href="/" className="text-sm font-bold text-zinc-300 hover:underline">
+            Back to PartyUp
+          </Link>
         </div>
       </div>
     </div>

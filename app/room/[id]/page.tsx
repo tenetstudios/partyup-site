@@ -4,6 +4,7 @@ import JoinRoomButton from "./JoinRoomButton";
 import WebLiveKitRoom from "./WebLiveKitRoom";
 import RoomChat from "./RoomChat";
 import ManageRoomLink from "./ManageRoomLink";
+import EventMatchButton from "./EventMatchButton";
 
 export default async function RoomPage({
   params,
@@ -96,6 +97,8 @@ export default async function RoomPage({
             </div>
 
             <JoinRoomButton roomId={id} />
+
+            <EventMatchButton roomId={id} />
 
             <RoomChat roomId={id} />
 
