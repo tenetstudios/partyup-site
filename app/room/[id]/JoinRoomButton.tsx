@@ -68,7 +68,7 @@ export default function JoinRoomButton({ roomId }: { roomId: string }) {
     <button
       onClick={joinRoom}
       disabled={loading || joined}
-      className="mt-8 rounded-md bg-[#9146ff] px-6 py-3 font-black hover:bg-[#7b31e8] disabled:cursor-not-allowed disabled:opacity-50"
+      className="rounded-[6px] bg-[#9146ff] px-4 py-2 text-sm font-black text-white hover:bg-[#7b31e8] disabled:cursor-not-allowed disabled:opacity-50"
     >
       {joined ? "Joined" : loading ? "Joining..." : "Join Room"}
     </button>

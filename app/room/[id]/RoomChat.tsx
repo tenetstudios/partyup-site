@@ -12,7 +12,41 @@ type ChatMessage = {
   display_name: string | null;
 };
 
-export default function RoomChat({ roomId }: { roomId: string }) {
+function messageTime(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function avatarTone(seed: string) {
+  const tones = [
+    "from-[#7c3dff] to-[#9a62ff]",
+    "from-[#f03291] to-[#ff6aa9]",
+    "from-[#2bbd66] to-[#5fd083]",
+    "from-[#d8a800] to-[#ffd233]",
+    "from-[#19b8c9] to-[#39d8e7]",
+  ];
+  const total = seed.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0);
+
+  return tones[total % tones.length];
+}
+
+export default function RoomChat({
+  roomId,
+  onlineCount = 0,
+  hostId,
+}: {
+  roomId: string;
+  onlineCount?: number;
+  hostId?: string | null;
+}) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -98,44 +132,83 @@ export default function RoomChat({ roomId }: { roomId: string }) {
   }
 
   return (
-    <section className="mt-6 rounded-xl border border-white/10 bg-[#0b0213]">
-      <div className="border-b border-white/10 px-4 py-3">
-        <h2 className="font-black">Live Chat</h2>
+    <section className="flex h-full min-h-[520px] flex-col rounded-[10px] border border-white/10 bg-[linear-gradient(180deg,rgba(19,13,29,0.96),rgba(8,5,14,0.98))] shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
+      <div className="flex items-start justify-between px-6 py-6">
+        <div>
+          <h2 className="text-[22px] font-black leading-none text-white">Room Chat</h2>
+          <div className="mt-3 flex items-center gap-2 text-sm text-[#aaa4b8]">
+            <span className="h-2 w-2 rounded-full bg-[#19e68c]" />
+            <span>{onlineCount} online</span>
+          </div>
+        </div>
+        <svg viewBox="0 0 24 24" className="h-7 w-7 text-[#a675ff]" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" aria-hidden="true">
+          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+          <circle cx="9" cy="7" r="4" />
+          <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+        </svg>
       </div>
 
-      <div className="flex h-72 flex-col gap-3 overflow-y-auto p-4">
+      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-5 pb-4 pt-4">
         {messages.length === 0 ? (
-          <p className="text-sm text-zinc-500">No messages yet.</p>
+          <div className="grid h-full place-items-center rounded-lg border border-dashed border-white/10 bg-black/15 p-6 text-center text-sm text-[#aaa4b8]">
+            No messages yet.
+          </div>
         ) : (
           messages.map((msg) => (
-            <div key={msg.id} className="text-sm">
-              <span className="font-black text-purple-300">
-                {msg.display_name || "Guest"}:
-              </span>{" "}
-              <span className="text-zinc-200">{msg.message}</span>
+            <div key={msg.id} className="grid grid-cols-[44px_1fr] gap-x-3 text-sm">
+              <time className="pt-1 text-[11px] font-bold uppercase text-[#aaa4b8]">
+                {messageTime(msg.created_at)}
+              </time>
+              <div className="flex min-w-0 gap-3">
+                <div className={`grid h-8 w-8 shrink-0 place-items-center rounded-full bg-gradient-to-br ${avatarTone(msg.user_id || msg.display_name || msg.id)} text-sm font-black text-white`}>
+                  {(msg.display_name || "Guest").slice(0, 1).toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="truncate font-black text-[#d4b6ff]">
+                      {msg.display_name || "Guest"}
+                    </span>
+                    {hostId && msg.user_id === hostId && (
+                      <span className="rounded-full bg-[#7f3dff]/20 px-2 py-0.5 text-[11px] font-black text-[#b587ff]">
+                        Host
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 break-words text-[16px] leading-6 text-white">{msg.message}</p>
+                </div>
+              </div>
             </div>
           ))
         )}
       </div>
 
-      <div className="flex gap-2 border-t border-white/10 p-3">
-        <input
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") sendMessage();
-          }}
-          placeholder="Send a message..."
-          className="min-w-0 flex-1 rounded-md bg-black px-3 py-2 text-sm text-white outline-none placeholder:text-zinc-500"
-        />
+      <div className="p-4">
+        <div className="rounded-[8px] border border-white/10 bg-white/[0.04] p-3">
+          <div className="flex items-center gap-2">
+            <input
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") sendMessage();
+              }}
+              placeholder="Send a message..."
+              className="min-w-0 flex-1 bg-transparent px-1 py-2 text-sm text-white outline-none placeholder:text-[#aaa4b8]"
+            />
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-white/25 text-lg text-[#d9d3e7]">
+              :)
+            </span>
+          </div>
 
-        <button
-          onClick={sendMessage}
-          disabled={sending}
-          className="rounded-md bg-[#9146ff] px-4 py-2 text-sm font-black hover:bg-[#7b31e8] disabled:opacity-50"
-        >
-          Send
-        </button>
+          <div className="mt-2 flex justify-end">
+            <button
+              onClick={sendMessage}
+              disabled={sending}
+              className="rounded-[6px] bg-[#9146ff] px-5 py-2 text-sm font-black text-white hover:bg-[#7b31e8] disabled:opacity-50"
+            >
+              Send
+            </button>
+          </div>
+        </div>
       </div>
     </section>
   );

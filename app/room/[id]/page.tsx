@@ -1,10 +1,186 @@
 import Link from "next/link";
 import { createSupabaseClient } from "@/lib/supabase";
-import JoinRoomButton from "./JoinRoomButton";
-import WebLiveKitRoom from "./WebLiveKitRoom";
-import RoomChat from "./RoomChat";
-import ManageRoomLink from "./ManageRoomLink";
+import {
+  asNumber,
+  asText,
+  getCategory,
+  getRoomDescription,
+  getRoomTitle,
+  type LiveRoom,
+} from "@/lib/homeHelpers";
 import EventMatchButton from "./EventMatchButton";
+import JoinRoomButton from "./JoinRoomButton";
+import ManageRoomLink from "./ManageRoomLink";
+import RoomChat from "./RoomChat";
+import WebLiveKitRoom from "./WebLiveKitRoom";
+
+type RoomRecord = LiveRoom & {
+  host_id?: string | null;
+  current_users?: number | string | null;
+  mode?: string | null;
+  status?: string | null;
+  type?: string | null;
+};
+
+function labelize(value: string | null) {
+  if (!value) return null;
+
+  return value.replace(/_/g, " ");
+}
+
+function isVerified(room: RoomRecord) {
+  return Boolean(room.verified || room.is_verified || room.verified_at);
+}
+
+function RoomStatusBadge({ status }: { status: string | null }) {
+  const normalized = status?.toLowerCase() ?? "live";
+  const className =
+    normalized === "ended"
+      ? "bg-zinc-600/70 text-zinc-100"
+      : normalized === "scheduled"
+        ? "bg-blue-600/35 text-blue-100"
+        : "bg-[#ef2f82]/30 text-[#ff6fad]";
+
+  return (
+    <span className={`rounded-full px-3 py-1 text-xs font-black uppercase ${className}`}>
+      {normalized}
+    </span>
+  );
+}
+
+function VerifiedBadge() {
+  return (
+    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#7f3dff] text-white">
+      <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+        <path d="M8.7 13.7 5.2 10.2l1.4-1.4 2.1 2.1 4.7-4.7 1.4 1.4-6.1 6.1Z" />
+      </svg>
+    </span>
+  );
+}
+
+function RoomHeader({
+  room,
+  onlineCount,
+}: {
+  room: RoomRecord;
+  onlineCount: number;
+}) {
+  const mode = labelize(asText(room.mode)) ?? "livestream";
+
+  return (
+    <header className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+      <div className="flex min-w-0 items-start gap-6">
+        <Link
+          href="/"
+          className="inline-flex min-h-12 shrink-0 items-center gap-2 rounded-[8px] bg-[#9146ff] px-5 text-base font-black text-white shadow-[0_12px_34px_rgba(145,70,255,0.24)] hover:bg-[#7b31e8]"
+        >
+          <span className="text-2xl leading-none">&lt;</span>
+          Back
+        </Link>
+
+        <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-3">
+            <h1 className="truncate text-[30px] font-black leading-none text-white">
+              {getRoomTitle(room)}
+            </h1>
+            {isVerified(room) && <VerifiedBadge />}
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-3 text-[15px] font-bold text-white">
+            <span className="flex items-center gap-2">
+              <span className="h-3 w-3 rounded-full bg-[#19e68c]" />
+              {onlineCount} online now
+            </span>
+            <span className="h-1 w-1 rounded-full bg-white/70" />
+            <span className="uppercase">{mode}</span>
+          </div>
+        </div>
+      </div>
+
+      <ManageRoomLink roomId={String(room.id)} hostId={room.host_id ?? ""} />
+    </header>
+  );
+}
+
+function RoomBanner({ room }: { room: RoomRecord }) {
+  const title =
+    asText(room.banner_title) ??
+    asText(room.announcement_title) ??
+    `${getRoomTitle(room)} room update`;
+  const body =
+    asText(room.banner_body) ??
+    asText(room.announcement) ??
+    "Come hang out, go live, meet new people, and match.";
+  const href = asText(room.banner_url) ?? asText(room.info_url);
+
+  const action = href ? (
+    <Link
+      href={href}
+      className="rounded-[6px] bg-[#9146ff] px-5 py-3 text-sm font-black text-white hover:bg-[#7b31e8]"
+    >
+      Learn More
+    </Link>
+  ) : (
+    <span className="rounded-[6px] bg-[#9146ff] px-5 py-3 text-sm font-black text-white">
+      Learn More
+    </span>
+  );
+
+  return (
+    <section className="flex items-center gap-5 rounded-[10px] border border-[#7f3dff]/45 bg-[linear-gradient(90deg,rgba(45,12,78,0.92),rgba(31,7,55,0.78))] px-6 py-5">
+      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-black/20 text-[#ff4daa]">
+        <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" aria-hidden="true">
+          <path d="M5 21 19 7M7 7l10 10M14 4l1 4 4 1-4 1-1 4-1-4-4-1 4-1 1-4ZM5 5l1.5 1.5M3 12h2M12 21v-2" />
+        </svg>
+      </div>
+      <div className="min-w-0 flex-1">
+        <h2 className="truncate text-[18px] font-black text-white">{title}</h2>
+        <p className="mt-1 line-clamp-2 text-[16px] leading-6 text-[#d8d1e2]">{body}</p>
+      </div>
+      <div className="hidden shrink-0 items-center gap-5 sm:flex">
+        {action}
+        <span className="text-3xl leading-none text-[#d8d1e2]">x</span>
+      </div>
+    </section>
+  );
+}
+
+function RoomInfoBar({ room }: { room: RoomRecord }) {
+  const tags = [
+    getCategory(room),
+    labelize(asText(room.mode)),
+    labelize(asText(room.status)),
+  ].filter((tag): tag is string => Boolean(tag));
+
+  return (
+    <section className="flex flex-col gap-4 rounded-[10px] border border-white/10 bg-white/[0.04] px-5 py-4 md:flex-row md:items-center">
+      <h2 className="shrink-0 text-[18px] font-black text-[#d8d1e2]">Room Info</h2>
+      <div className="flex flex-wrap items-center gap-2">
+        {tags.map((tag, index) =>
+          index === 2 ? (
+            <RoomStatusBadge key={`${tag}-${index}`} status={tag} />
+          ) : (
+            <span
+              key={`${tag}-${index}`}
+              className="rounded-full bg-[#7f3dff]/20 px-3 py-1 text-xs font-black uppercase text-[#b587ff]"
+            >
+              {tag}
+            </span>
+          ),
+        )}
+        {isVerified(room) && (
+          <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 text-xs font-black text-[#d8d1e2]">
+            <VerifiedBadge />
+            Verified
+          </span>
+        )}
+      </div>
+      <p className="min-w-[180px] flex-1 text-[15px] leading-6 text-[#d8d1e2]">
+        {getRoomDescription(room)}
+      </p>
+      <JoinRoomButton roomId={String(room.id)} />
+    </section>
+  );
+}
 
 export default async function RoomPage({
   params,
@@ -12,7 +188,6 @@ export default async function RoomPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-
   const supabase = createSupabaseClient();
 
   const { data: room } = await supabase
@@ -29,80 +204,29 @@ export default async function RoomPage({
     );
   }
 
-  return (
-    <main className="min-h-screen bg-[#07000f] text-white">
-      <div className="mx-auto max-w-5xl px-5 py-10">
-        <Link
-          href="/"
-          className="mb-6 inline-flex rounded-md bg-[#9146ff] px-4 py-2 text-sm font-black"
-        >
-          Back
-        </Link>
+  const typedRoom = room as RoomRecord;
+  const onlineCount = asNumber(typedRoom.current_users) ?? 0;
 
-        <div className="overflow-hidden rounded-xl border border-white/10 bg-[#12051e]">
-          <div className="h-[520px] bg-black md:h-[620px]">
-            <WebLiveKitRoom roomId={id} />
+  return (
+    <main className="min-h-screen bg-[radial-gradient(circle_at_50%_-20%,rgba(77,35,132,0.28),transparent_32%),#07000f] text-white">
+      <div className="mx-auto flex min-h-screen max-w-[1760px] flex-col gap-8 px-5 py-8 lg:px-7">
+        <RoomHeader room={typedRoom} onlineCount={onlineCount} />
+
+        <div className="grid flex-1 gap-5 xl:grid-cols-[280px_minmax(0,1fr)_350px]">
+          <div className="order-2 xl:order-1">
+            <EventMatchButton roomId={id} />
           </div>
 
-          <div className="p-6">
-            <div className="mb-3 flex items-center gap-3">
-              {room.status === "scheduled" ? (
-  <span className="rounded bg-blue-600 px-2 py-1 text-xs font-black">
-    SCHEDULED
-  </span>
-) : room.status === "ended" ? (
-  <span className="rounded bg-zinc-600 px-2 py-1 text-xs font-black">
-    ENDED
-  </span>
-) : (
-  <span className="rounded bg-red-600 px-2 py-1 text-xs font-black">
-    LIVE
-  </span>
-)}
+          <div className="order-1 flex min-w-0 flex-col gap-5 xl:order-2">
+            <RoomBanner room={typedRoom} />
+            <section className="aspect-video min-h-[360px] overflow-hidden rounded-[12px] border border-[#7f3dff]/45 bg-black shadow-[0_24px_70px_rgba(0,0,0,0.38)]">
+              <WebLiveKitRoom roomId={id} />
+            </section>
+            <RoomInfoBar room={typedRoom} />
+          </div>
 
-              <span className="text-sm text-zinc-400">
-                {room.current_users ?? 0} users
-              </span>
-            </div>
-
-            <h1 className="text-4xl font-black">{room.title}</h1>
-            
-              {room.status === "scheduled" && room.scheduled_at && (
-  <p className="mt-2 text-purple-300 font-bold">
-    Starts{" "}
-    {new Date(room.scheduled_at).toLocaleString("en-CA", {
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    })}
-  </p>
-)}
-
-            <div className="mt-6 grid gap-4 md:grid-cols-3">
-              <div className="rounded-lg bg-black/30 p-4">
-                <div className="text-sm text-zinc-500">Type</div>
-                <div className="mt-1 font-black">{room.type}</div>
-              </div>
-
-              <div className="rounded-lg bg-black/30 p-4">
-                <div className="text-sm text-zinc-500">Mode</div>
-                <div className="mt-1 font-black">{room.mode}</div>
-              </div>
-
-              <div className="rounded-lg bg-black/30 p-4">
-                <div className="text-sm text-zinc-500">Status</div>
-                <div className="mt-1 font-black">{room.status}</div>
-              </div>
-            </div>
-
-            <JoinRoomButton roomId={id} />
-
-            <EventMatchButton roomId={id} />
-
-            <RoomChat roomId={id} />
-
-            <ManageRoomLink roomId={id} hostId={room.host_id} />
+          <div className="order-3">
+            <RoomChat roomId={id} onlineCount={onlineCount} hostId={typedRoom.host_id ?? null} />
           </div>
         </div>
       </div>
