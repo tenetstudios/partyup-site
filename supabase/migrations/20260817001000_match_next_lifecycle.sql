@@ -481,7 +481,8 @@ begin
     v_identity_b,
     p_match_session_id,
     'next',
-    now() + interval '30 minutes'
+    -- Temporary for Match connection testing. Restore to interval '30 minutes' before shipping.
+    now() + interval '5 seconds'
   where not exists (
     select 1
     from public.match_pair_blocks
