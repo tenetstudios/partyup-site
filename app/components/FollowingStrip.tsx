@@ -1,4 +1,5 @@
 import React from "react";
+import Link from "next/link";
 import { HostProfile } from "@/lib/homeHelpers";
 
 export default function FollowingStrip({ profiles }: { profiles?: HostProfile[] }) {
@@ -8,7 +9,9 @@ export default function FollowingStrip({ profiles }: { profiles?: HostProfile[] 
     <div className="min-h-[203px] rounded-[10px] border border-white/[0.08] bg-[linear-gradient(180deg,rgba(17,17,27,0.94),rgba(11,11,19,0.96))] p-5 shadow-[0_18px_44px_rgba(0,0,0,0.2)]">
       <div className="flex items-center justify-between">
         <h4 className="text-[18px] font-black text-white">People You Follow</h4>
-        <a className="text-[15px] text-[#c35dff] hover:text-white" href="#">View all</a>
+        <Link className="text-[15px] text-[#c35dff] hover:text-white" href="/connections">
+          View all
+        </Link>
       </div>
 
       <div className="mt-4">

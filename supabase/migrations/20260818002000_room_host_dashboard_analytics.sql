@@ -153,20 +153,20 @@ begin
   into v_waiting_to_stream
   from public.event_attendees
   where event_room_id = p_room_id
-    and status in ('pending', 'waiting', 'requested', 'queued');
+    and status::text in ('pending', 'waiting', 'requested', 'queued');
 
   select count(*)::integer
   into v_streamers
   from public.event_attendees
   where event_room_id = p_room_id
     and stream_status is not null
-    and stream_status <> 'off';
+    and stream_status::text <> 'off';
 
   select count(*)::integer
   into v_bouncers
   from public.event_attendees
   where event_room_id = p_room_id
-    and room_role = 'bouncer';
+    and room_role::text = 'bouncer';
 
   select exists (
     select 1
