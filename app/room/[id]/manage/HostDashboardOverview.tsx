@@ -36,11 +36,6 @@ function formatDateTime(value: string | null | undefined) {
   });
 }
 
-function conversion(current: number, previous: number | null) {
-  if (!previous || previous <= 0) return null;
-  return `${Math.round((current / previous) * 100)}%`;
-}
-
 function MetricCard({
   label,
   value,
@@ -90,15 +85,12 @@ export default function HostDashboardOverview({ roomId }: { roomId: string }) {
   const funnelDisplayRows = useMemo(() => {
     if (!dashboard) return [];
 
-    return funnelRows.map((row, index) => {
+    return funnelRows.map((row) => {
       const value = dashboard.funnel[row.key] ?? 0;
-      const previousKey = index > 0 ? funnelRows[index - 1].key : null;
-      const previousValue = previousKey ? (dashboard.funnel[previousKey] ?? 0) : null;
 
       return {
         ...row,
         value,
-        percentage: conversion(value, previousValue),
       };
     });
   }, [dashboard]);
@@ -290,7 +282,6 @@ export default function HostDashboardOverview({ roomId }: { roomId: string }) {
             {funnelDisplayRows.map((row) => (
               <div key={row.key} className="flex items-center gap-3 rounded-[6px] bg-white/[0.04] px-3 py-2">
                 <span className="min-w-0 flex-1 text-sm font-bold text-zinc-300">{row.label}</span>
-                {row.percentage && <span className="text-xs font-black text-[#ff9ace]">{row.percentage}</span>}
                 <span className="w-16 text-right text-lg font-black text-white">{formatNumber(row.value)}</span>
               </div>
             ))}
