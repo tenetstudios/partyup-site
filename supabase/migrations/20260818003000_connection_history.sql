@@ -19,6 +19,21 @@ create index if not exists partyup_connections_removed_at_idx
   on public.partyup_connections(removed_at)
   where removed_at is not null;
 
+drop policy if exists partyup_connections_select_own on public.partyup_connections;
+create policy partyup_connections_select_own
+  on public.partyup_connections
+  for select
+  to authenticated
+  using (
+    removed_at is null
+    and exists (
+      select 1
+      from public.partyup_identities identity
+      where identity.user_id = auth.uid()
+        and identity.id in (partyup_connections.identity_a, partyup_connections.identity_b)
+    )
+  );
+
 create or replace function public.keep_match_connection_for_identity(
   p_identity_id uuid,
   p_match_session_id uuid
@@ -392,5 +407,192 @@ $$;
 
 revoke all on function public.get_profile_social_state(uuid) from public, anon, authenticated;
 grant execute on function public.get_profile_social_state(uuid) to anon, authenticated;
+
+create or replace function public.claim_guest_identity(p_guest_token text)
+returns table (
+  claimed boolean,
+  identity_id uuid,
+  conflict boolean,
+  message text
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id uuid := auth.uid();
+  v_guest_identity_id uuid;
+  v_existing_identity_id uuid;
+begin
+  if v_user_id is null then
+    raise exception 'Authentication required';
+  end if;
+
+  v_guest_identity_id := public.resolve_guest_identity(p_guest_token);
+
+  select id
+  into v_existing_identity_id
+  from public.partyup_identities
+  where user_id = v_user_id
+    and id <> v_guest_identity_id
+  limit 1;
+
+  if v_existing_identity_id is not null then
+    perform pg_advisory_xact_lock(hashtext('partyup-claim-guest:' || v_guest_identity_id::text));
+
+    insert into public.match_connection_votes (
+      match_session_id,
+      identity_id,
+      wants_connection,
+      created_at
+    )
+    select
+      votes.match_session_id,
+      v_existing_identity_id,
+      votes.wants_connection,
+      votes.created_at
+    from public.match_connection_votes votes
+    where votes.identity_id = v_guest_identity_id
+    on conflict (match_session_id, identity_id)
+    do update
+      set wants_connection = public.match_connection_votes.wants_connection or excluded.wants_connection;
+
+    delete from public.match_connection_votes
+    where identity_id = v_guest_identity_id;
+
+    update public.match_sessions
+    set participant_a_identity = v_existing_identity_id
+    where participant_a_identity = v_guest_identity_id
+      and participant_b_identity <> v_existing_identity_id;
+
+    update public.match_sessions
+    set participant_b_identity = v_existing_identity_id
+    where participant_b_identity = v_guest_identity_id
+      and participant_a_identity <> v_existing_identity_id;
+
+    update public.match_sessions
+    set ended_by_identity = v_existing_identity_id
+    where ended_by_identity = v_guest_identity_id;
+
+    with guest_connections as (
+      select
+        connections.*,
+        case
+          when connections.identity_a = v_guest_identity_id then connections.identity_b
+          else connections.identity_a
+        end as other_identity_id
+      from public.partyup_connections connections
+      where v_guest_identity_id in (connections.identity_a, connections.identity_b)
+    )
+    insert into public.partyup_connections (
+      identity_a,
+      identity_b,
+      source_match_session_id,
+      source_pool_id,
+      created_at,
+      connected_at,
+      origin_type,
+      origin_label,
+      removed_at,
+      removed_by_identity
+    )
+    select
+      least(v_existing_identity_id, other_identity_id),
+      greatest(v_existing_identity_id, other_identity_id),
+      source_match_session_id,
+      source_pool_id,
+      created_at,
+      coalesce(connected_at, created_at),
+      origin_type,
+      origin_label,
+      removed_at,
+      case
+        when removed_by_identity = v_guest_identity_id then v_existing_identity_id
+        else removed_by_identity
+      end
+    from guest_connections
+    where other_identity_id <> v_existing_identity_id
+    on conflict (identity_a, identity_b)
+    do update
+      set source_match_session_id = coalesce(public.partyup_connections.source_match_session_id, excluded.source_match_session_id),
+          source_pool_id = coalesce(public.partyup_connections.source_pool_id, excluded.source_pool_id),
+          connected_at = case
+            when public.partyup_connections.removed_at is not null and excluded.removed_at is null then excluded.connected_at
+            when public.partyup_connections.connected_at is null then excluded.connected_at
+            when excluded.connected_at is null then public.partyup_connections.connected_at
+            else least(public.partyup_connections.connected_at, excluded.connected_at)
+          end,
+          origin_type = coalesce(public.partyup_connections.origin_type, excluded.origin_type),
+          origin_label = coalesce(public.partyup_connections.origin_label, excluded.origin_label),
+          removed_at = case
+            when excluded.removed_at is null then null
+            else public.partyup_connections.removed_at
+          end,
+          removed_by_identity = case
+            when excluded.removed_at is null then null
+            when public.partyup_connections.removed_by_identity = v_guest_identity_id then v_existing_identity_id
+            else public.partyup_connections.removed_by_identity
+          end;
+
+    delete from public.partyup_connections
+    where v_guest_identity_id in (identity_a, identity_b);
+
+    update public.match_pair_blocks
+    set identity_a = least(v_existing_identity_id, identity_b),
+        identity_b = greatest(v_existing_identity_id, identity_b)
+    where identity_a = v_guest_identity_id
+      and identity_b <> v_existing_identity_id;
+
+    update public.match_pair_blocks
+    set identity_a = least(identity_a, v_existing_identity_id),
+        identity_b = greatest(identity_a, v_existing_identity_id)
+    where identity_b = v_guest_identity_id
+      and identity_a <> v_existing_identity_id;
+
+    delete from public.match_queue
+    where identity_id = v_guest_identity_id;
+
+    update public.room_analytics_events
+    set identity_id = v_existing_identity_id
+    where identity_id = v_guest_identity_id;
+
+    update public.partyup_guest_sessions
+    set revoked_at = now()
+    where identity_id = v_guest_identity_id
+      and token_hash = encode(extensions.digest(p_guest_token, 'sha256'), 'hex');
+
+    claimed := true;
+    identity_id := v_existing_identity_id;
+    conflict := false;
+    message := 'Guest Match history is saved to this Google account.';
+    return next;
+    return;
+  end if;
+
+  update public.partyup_identities
+  set user_id = v_user_id,
+      identity_type = 'account'
+  where id = v_guest_identity_id
+    and user_id is null
+    and identity_type = 'guest';
+
+  if not found then
+    raise exception 'Guest identity is already claimed';
+  end if;
+
+  update public.partyup_guest_sessions
+  set revoked_at = now()
+  where identity_id = v_guest_identity_id
+    and token_hash = encode(extensions.digest(p_guest_token, 'sha256'), 'hex');
+
+  claimed := true;
+  identity_id := v_guest_identity_id;
+  conflict := false;
+  message := 'Guest identity claimed.';
+  return next;
+end;
+$$;
+
+grant execute on function public.claim_guest_identity(text) to authenticated;
 
 notify pgrst, 'reload schema';

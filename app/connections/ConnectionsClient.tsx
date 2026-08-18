@@ -12,6 +12,7 @@ import {
   removePartyUpConnection,
   type PartyUpConnection,
 } from "@/lib/connections";
+import { claimGuestIdentity, readStoredGuestSession } from "@/lib/matchmaking";
 import { createSupabaseClient } from "@/lib/supabase";
 
 type SocialTab = "connections" | "following" | "followers";
@@ -67,6 +68,14 @@ export default function ConnectionsClient() {
         setFollowers([]);
         setFollowing([]);
         return;
+      }
+
+      const storedGuest = readStoredGuestSession();
+      if (storedGuest?.guestToken) {
+        const claim = await claimGuestIdentity(supabase, storedGuest.guestToken).catch(() => null);
+        if (claim?.claimed) {
+          setMessage("Your guest Match history is saved to this Google account.");
+        }
       }
 
       const [connectionRows, followingRows, followerRows] = await Promise.all([
@@ -206,6 +215,9 @@ export default function ConnectionsClient() {
             <h1 className="mt-2 text-4xl font-black tracking-normal md:text-5xl">
               Connections
             </h1>
+            <p className="mt-3 max-w-2xl text-sm font-bold leading-6 text-[#aaa4b8]">
+              Connections are mutual Keep in Touch moments from Match. Following stays separate.
+            </p>
           </div>
 
           <Link
