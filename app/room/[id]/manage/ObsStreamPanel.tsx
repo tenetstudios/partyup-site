@@ -96,7 +96,7 @@ export default function ObsStreamPanel({ roomId }: { roomId: string }) {
   }
 
   return (
-    <section className="mt-8 rounded-xl border border-white/10 bg-[#12051e]">
+    <section id="streaming" className="mt-8 rounded-xl border border-white/10 bg-[#12051e]">
       <div className="border-b border-white/10 p-4">
         <h2 className="font-black">OBS Streaming</h2>
         <p className="mt-1 text-sm text-zinc-400">

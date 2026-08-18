@@ -148,7 +148,7 @@ const accepted = attendees.filter(
 );
 
   return (
-    <section className="mt-8 rounded-xl border border-white/10 bg-[#12051e]">
+    <section id="people-queue" className="mt-8 rounded-xl border border-white/10 bg-[#12051e]">
       <div className="border-b border-white/10 p-4">
         <h2 className="font-black">Queue & Members</h2>
       </div>

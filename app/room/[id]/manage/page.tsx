@@ -6,6 +6,7 @@ import ObsStreamPanel from "./ObsStreamPanel";
 import RoomAnnouncementManager from "./RoomAnnouncementManager";
 import RoomDetailsEditor from "./RoomDetailsEditor";
 import RoomEntryLinkPanel from "./RoomEntryLinkPanel";
+import HostDashboardOverview from "./HostDashboardOverview";
 
 export default async function ManageRoomPage({
   params,
@@ -40,11 +41,12 @@ const { data: room } = await supabase
           Back to room
         </Link>
 
-        <h1 className="text-4xl font-black">Manage Room</h1>
+        <h1 className="text-4xl font-black">Room Settings</h1>
         <p className="mt-2 text-zinc-400">
-          Approve streamers, remove users, and manage the room queue.
+          Host dashboard, room tools, and live operations for this event.
         </p>
         
+        <HostDashboardOverview roomId={id} />
         <RoomDetailsEditor roomId={id} />
         <RoomEntryLinkPanel roomId={id} />
         <RoomAnnouncementManager roomId={id} />

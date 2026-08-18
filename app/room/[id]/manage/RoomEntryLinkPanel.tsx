@@ -169,7 +169,7 @@ export default function RoomEntryLinkPanel({ roomId }: { roomId: string }) {
   }
 
   return (
-    <section className="mt-8 rounded-xl border border-white/10 bg-[#12051e]">
+    <section id="qr-poster" className="mt-8 rounded-xl border border-white/10 bg-[#12051e]">
       <div className="border-b border-white/10 p-4">
         <h2 className="font-black">Venue Entry Link</h2>
         <p className="mt-1 text-sm text-zinc-400">

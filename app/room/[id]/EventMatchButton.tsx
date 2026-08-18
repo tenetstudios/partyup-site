@@ -21,7 +21,9 @@ export default function EventMatchButton({ roomId }: { roomId: string }) {
     try {
       const supabase = createSupabaseClient();
       const pool = await getOrCreateEventMatchPool(supabase, roomId);
-      router.push(`/match?pool=${encodeURIComponent(pool.poolId)}`);
+      router.push(
+        `/match?pool=${encodeURIComponent(pool.poolId)}&roomId=${encodeURIComponent(roomId)}`,
+      );
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not start event Match.");
       setLoading(false);

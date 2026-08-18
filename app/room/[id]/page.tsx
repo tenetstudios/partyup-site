@@ -13,6 +13,7 @@ import EventMatchButton from "./EventMatchButton";
 import JoinRoomButton from "./JoinRoomButton";
 import LeaveRoomContextButton from "./LeaveRoomContextButton";
 import ManageRoomLink from "./ManageRoomLink";
+import RoomAnalyticsTracker from "./RoomAnalyticsTracker";
 import RoomAnnouncementBanner from "./RoomAnnouncementBanner";
 import RoomChat from "./RoomChat";
 import WebLiveKitRoom from "./WebLiveKitRoom";
@@ -171,6 +172,7 @@ export default async function RoomPage({
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_50%_-20%,rgba(77,35,132,0.28),transparent_32%),#07000f] text-white">
+      <RoomAnalyticsTracker roomId={id} eventType="room_entry" />
       <div className="mx-auto flex min-h-screen max-w-[1760px] flex-col gap-8 px-5 py-8 lg:px-7">
         <RoomHeader room={typedRoom} onlineCount={onlineCount} />
 

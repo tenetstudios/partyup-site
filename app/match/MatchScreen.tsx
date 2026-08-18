@@ -6,6 +6,7 @@ import MatchSearching from "./components/MatchSearching";
 import MatchDisconnected from "./components/MatchDisconnected";
 import MatchLiveKit from "./MatchLiveKit";
 import { createSupabaseClient } from "@/lib/supabase";
+import { recordRoomAnalyticsEvent, readRoomAnalyticsSessionId } from "@/lib/roomAnalytics";
 import {
   cancelMatchSearch,
   claimGuestIdentity,
@@ -30,7 +31,13 @@ import {
 export type MatchState = "idle" | "searching" | "connected" | "disconnected";
 type MatchIdentityMode = "account" | "guest";
 
-export default function MatchScreen({ initialPoolId = null }: { initialPoolId?: string | null }) {
+export default function MatchScreen({
+  initialPoolId = null,
+  initialRoomId = null,
+}: {
+  initialPoolId?: string | null;
+  initialRoomId?: string | null;
+}) {
   const [state, setState] = useState<MatchState>("idle");
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -51,6 +58,7 @@ export default function MatchScreen({ initialPoolId = null }: { initialPoolId?: 
   const isEventMatch = Boolean(initialPoolId);
   const poolContextLabel = isEventMatch ? "Matching with people here" : null;
   const isGuest = identityMode === "guest";
+  const analyticsRoomId = initialRoomId && initialPoolId ? initialRoomId : null;
 
   const clearSubscription = useCallback(() => {
     if (channelRef.current) {
@@ -80,6 +88,32 @@ export default function MatchScreen({ initialPoolId = null }: { initialPoolId?: 
     await cancelMatchSearch(supabase);
   }, [guestToken, isGuest, supabase]);
 
+  const recordMatchAnalytics = useCallback(
+    async (eventType: "match_started" | "match_connected" | "match_next", sessionId?: string | null) => {
+      if (!analyticsRoomId) {
+        return;
+      }
+
+      const analyticsSessionId = readRoomAnalyticsSessionId();
+      if (!analyticsSessionId) {
+        return;
+      }
+
+      const idempotencyKey =
+        sessionId && (eventType === "match_connected" || eventType === "match_next")
+          ? `room-analytics:${eventType}:${analyticsRoomId}:${sessionId}`
+          : `room-analytics:${eventType}:${analyticsRoomId}:${analyticsSessionId}:${Date.now()}`;
+
+      await recordRoomAnalyticsEvent(supabase, {
+        roomId: analyticsRoomId,
+        eventType,
+        sessionId,
+        idempotencyKey,
+      });
+    },
+    [analyticsRoomId, supabase],
+  );
+
   const transitionToMatched = useCallback(
     async (sessionId: string) => {
       try {
@@ -105,11 +139,14 @@ export default function MatchScreen({ initialPoolId = null }: { initialPoolId?: 
         setDisconnectedMessage(null);
         setError(null);
         setState("connected");
+        await recordMatchAnalytics("match_connected", sessionId).catch(() => {
+          // Analytics must not block Match.
+        });
       } catch (reason) {
         fail(reason instanceof Error ? reason.message : "The matched session could not be loaded.");
       }
     },
-    [cancelCurrentSearch, clearSubscription, fail, guestToken, isGuest, supabase],
+    [cancelCurrentSearch, clearSubscription, fail, guestToken, isGuest, recordMatchAnalytics, supabase],
   );
 
   const subscribeToQueue = useCallback(
@@ -392,6 +429,10 @@ export default function MatchScreen({ initialPoolId = null }: { initialPoolId?: 
         ? await getMatchPool(supabase, initialPoolId)
         : await getGlobalMatchPool(supabase);
 
+      await recordMatchAnalytics("match_started").catch(() => {
+        // Analytics must not block Match.
+      });
+
       let identityId: string;
       let result;
 
@@ -465,6 +506,9 @@ export default function MatchScreen({ initialPoolId = null }: { initialPoolId?: 
         isGuest && guestToken
           ? await guestNextMatch(supabase, sessionId, guestToken)
           : await nextMatch(supabase, sessionId);
+      await recordMatchAnalytics("match_next", sessionId).catch(() => {
+        // Analytics must not block Next.
+      });
       setSession(null);
 
       if (result.matched) {
@@ -493,7 +537,9 @@ export default function MatchScreen({ initialPoolId = null }: { initialPoolId?: 
 
   async function signIn() {
     const matchPath = initialPoolId
-      ? `/match?pool=${encodeURIComponent(initialPoolId)}`
+      ? `/match?pool=${encodeURIComponent(initialPoolId)}${
+          analyticsRoomId ? `&roomId=${encodeURIComponent(analyticsRoomId)}` : ""
+        }`
       : "/match";
 
     await supabase.auth.signInWithOAuth({
@@ -555,6 +601,7 @@ export default function MatchScreen({ initialPoolId = null }: { initialPoolId?: 
           onGuestSignIn={signIn}
           onMatchExpired={handleMatchExpired}
           onNextMatch={handleNextMatch}
+          analyticsRoomId={analyticsRoomId}
           sessionId={session.id}
           onReturnToMatch={returnToMatch}
         />

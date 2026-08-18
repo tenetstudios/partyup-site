@@ -5,10 +5,11 @@ import MatchScreen from "@/app/match/MatchScreen";
 export default async function MatchPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ pool?: string | string[] }>;
+  searchParams?: Promise<{ pool?: string | string[]; roomId?: string | string[] }>;
 }) {
   const params = await searchParams;
   const poolParam = Array.isArray(params?.pool) ? params.pool[0] : params?.pool;
+  const roomIdParam = Array.isArray(params?.roomId) ? params.roomId[0] : params?.roomId;
 
   return (
     <main className="min-h-screen bg-[#07000f] text-white">
@@ -20,7 +21,7 @@ export default async function MatchPage({
           <h1 className="mt-2 text-3xl font-black">PartyUp Match</h1>
         </div>
 
-        <MatchScreen initialPoolId={poolParam ?? null} />
+        <MatchScreen initialPoolId={poolParam ?? null} initialRoomId={roomIdParam ?? null} />
       </section>
     </main>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   LiveKitRoom,
   ParticipantTile,
@@ -12,8 +12,11 @@ import {
 } from "@livekit/components-react";
 import { Track } from "livekit-client";
 import { createSupabaseClient } from "@/lib/supabase";
+import { recordRoomAnalyticsEvent, readRoomAnalyticsSessionId } from "@/lib/roomAnalytics";
 import {
+  endMatchSession,
   getMatchConnectionState,
+  guestEndMatchSession,
   guestGetMatchConnectionState,
   guestKeepMatchConnection,
   keepMatchConnection,
@@ -35,6 +38,7 @@ type MatchLiveKitStatus =
   | "disconnected";
 
 type MatchLiveKitProps = {
+  analyticsRoomId?: string | null;
   guestToken?: string | null;
   isGuest?: boolean;
   nextBusy: boolean;
@@ -61,6 +65,7 @@ async function getFunctionErrorMessage(error: Error, response?: Response) {
 }
 
 export default function MatchLiveKit({
+  analyticsRoomId = null,
   guestToken = null,
   isGuest = false,
   nextBusy,
@@ -77,6 +82,23 @@ export default function MatchLiveKit({
   const [message, setMessage] = useState<string | null>(null);
   const supabase = useMemo(() => createSupabaseClient(), []);
   const livekitUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL;
+
+  const endCurrentMatch = useCallback(async () => {
+    if (isGuest && !guestToken) {
+      return;
+    }
+
+    try {
+      if (isGuest && guestToken) {
+        await guestEndMatchSession(supabase, sessionId, guestToken);
+        return;
+      }
+
+      await endMatchSession(supabase, sessionId);
+    } catch {
+      // Keep local disconnect responsive; the RPC is idempotent and may already have run.
+    }
+  }, [guestToken, isGuest, sessionId, supabase]);
 
   useEffect(() => {
     let cancelled = false;
@@ -184,6 +206,7 @@ export default function MatchLiveKit({
         setMessage(null);
       }}
       onDisconnected={() => {
+        void endCurrentMatch();
         setStatus("disconnected");
         setMessage("You left the Match video room.");
       }}
@@ -202,6 +225,7 @@ export default function MatchLiveKit({
     >
       <MatchRoomView
         key={sessionId}
+        analyticsRoomId={analyticsRoomId}
         nextBusy={nextBusy}
         guestToken={guestToken}
         isGuest={isGuest}
@@ -212,28 +236,33 @@ export default function MatchLiveKit({
         sessionId={sessionId}
         status={status}
         message={message}
+        onEndMatch={endCurrentMatch}
       />
     </LiveKitRoom>
   );
 }
 
 function MatchRoomView({
+  analyticsRoomId,
   nextBusy,
   guestToken,
   isGuest,
   onGuestSignIn,
   onNextMatch,
+  onEndMatch,
   participantIdentity,
   roomName,
   sessionId,
   status,
   message,
 }: {
+  analyticsRoomId: string | null;
   nextBusy: boolean;
   guestToken: string | null;
   isGuest: boolean;
   onGuestSignIn?: () => void;
   onNextMatch: (sessionId: string) => Promise<void>;
+  onEndMatch: () => Promise<void>;
   participantIdentity: string | null;
   roomName: string | null;
   sessionId: string;
@@ -250,6 +279,7 @@ function MatchRoomView({
   const [keepInTouchMessage, setKeepInTouchMessage] = useState<string | null>(null);
   const [microphoneEnabled, setMicrophoneEnabled] = useState(false);
   const [mediaMessage, setMediaMessage] = useState<string | null>(null);
+  const hasSeenRemoteParticipantRef = useRef(false);
   const supabase = useMemo(() => createSupabaseClient(), []);
 
   const tracks = useTracks(
@@ -266,6 +296,29 @@ function MatchRoomView({
   const localTrack = tracks.find(
     (trackRef) => trackRef.participant.identity === localParticipant.identity,
   );
+
+  useEffect(() => {
+    if (remoteParticipant) {
+      hasSeenRemoteParticipantRef.current = true;
+      return;
+    }
+
+    if (
+      (status !== "connected" && status !== "permission-warning") ||
+      !hasSeenRemoteParticipantRef.current ||
+      nextBusy
+    ) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void onEndMatch();
+    }, 1500);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [nextBusy, onEndMatch, remoteParticipant, status]);
 
   useEffect(() => {
     let cancelled = false;
@@ -407,7 +460,34 @@ function MatchRoomView({
           ? await guestKeepMatchConnection(supabase, sessionId, guestToken)
           : await keepMatchConnection(supabase, sessionId);
 
+      if (analyticsRoomId) {
+        const analyticsSessionId = readRoomAnalyticsSessionId();
+        const baseKey = analyticsSessionId
+          ? `room-analytics:keep_in_touch:${analyticsRoomId}:${sessionId}:${analyticsSessionId}`
+          : null;
+
+        await recordRoomAnalyticsEvent(supabase, {
+          roomId: analyticsRoomId,
+          eventType: "keep_in_touch",
+          sessionId,
+          idempotencyKey: baseKey,
+        }).catch(() => {
+          // Analytics must not block Keep in Touch.
+        });
+      }
+
       if (result.mutual) {
+        if (analyticsRoomId) {
+          await recordRoomAnalyticsEvent(supabase, {
+            roomId: analyticsRoomId,
+            eventType: "mutual_connection",
+            sessionId,
+            idempotencyKey: `room-analytics:mutual_connection:${analyticsRoomId}:${sessionId}`,
+          }).catch(() => {
+            // Analytics must not block connection completion.
+          });
+        }
+
         setKeepInTouchStatus("connected");
         setKeepInTouchMessage("You're connected.");
         return;
@@ -520,7 +600,11 @@ function MatchRoomView({
             onMicrophoneToggle={toggleMicrophone}
             nextBusy={nextBusy}
             onNext={moveNext}
-            onLeave={() => room.disconnect()}
+            onLeave={() => {
+              void onEndMatch().finally(() => {
+                room.disconnect();
+              });
+            }}
           />
         </div>
       </div>
