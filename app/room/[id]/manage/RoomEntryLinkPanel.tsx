@@ -131,33 +131,6 @@ export default function RoomEntryLinkPanel({ roomId }: { roomId: string }) {
     URL.revokeObjectURL(url);
   }
 
-  async function printQrPoster() {
-    const posterDataUrl = await composePosterPngDataUrl();
-    if (!posterDataUrl) return;
-
-    const printWindow = window.open("", "_blank", "noopener,noreferrer,width=720,height=900");
-    if (!printWindow) return;
-
-    printWindow.document.write(`
-      <!doctype html>
-      <html>
-        <head>
-          <title>PartyUp Room Poster</title>
-          <style>
-            body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #fff; }
-            img { display: block; max-width: 100%; height: auto; }
-            @media print { @page { margin: 0.25in; } img { width: 100%; } }
-          </style>
-        </head>
-        <body><img src="${posterDataUrl}" alt="PartyUp room poster" /></body>
-      </html>
-    `);
-    printWindow.document.close();
-    window.setTimeout(() => {
-      printWindow.print();
-    }, 250);
-  }
-
   async function downloadPosterPng() {
     const posterDataUrl = await composePosterPngDataUrl();
     if (!posterDataUrl) return;
@@ -239,13 +212,6 @@ export default function RoomEntryLinkPanel({ roomId }: { roomId: string }) {
               className="rounded-md border border-white/10 px-4 py-2 text-sm font-black text-white hover:bg-white/10"
             >
               Download QR
-            </button>
-            <button
-              type="button"
-              onClick={printQrPoster}
-              className="rounded-md border border-white/10 px-4 py-2 text-sm font-black text-white hover:bg-white/10"
-            >
-              Print CTA Poster
             </button>
             <button
               type="button"
