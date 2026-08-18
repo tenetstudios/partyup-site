@@ -95,6 +95,7 @@ function CustomStreamView({ onLeave }: { onLeave: () => void }) {
   const participants = useParticipants();
   const viewerCount = participants.length;
   const [selectedTrackKey, setSelectedTrackKey] = useState<string | null>(null);
+  const [showStreamerControls, setShowStreamerControls] = useState(false);
 
   const tracks = useTracks(
     [
@@ -117,7 +118,7 @@ function CustomStreamView({ onLeave }: { onLeave: () => void }) {
     videoTracks[0];
 
   return (
-    <PlayerFrame viewerCount={viewerCount}>
+    <PlayerFrame viewerCount={viewerCount} onHoverChange={setShowStreamerControls}>
       {selectedTrack ? (
         <div className="grid h-full w-full place-items-center bg-black">
           <div className="h-full max-h-[620px] w-full max-w-[1100px] overflow-hidden bg-black [&_.lk-participant-tile]:h-full [&_.lk-participant-tile]:w-full [&_video]:h-full [&_video]:w-full [&_video]:object-contain">
@@ -153,20 +154,37 @@ function CustomStreamView({ onLeave }: { onLeave: () => void }) {
         </div>
       )}
 
-      <CustomControls onLeave={onLeave} />
+      <CustomControls onLeave={onLeave} visible={showStreamerControls} />
     </PlayerFrame>
   );
 }
 
 function PlayerFrame({
   children,
+  onHoverChange,
   viewerCount,
 }: {
   children: React.ReactNode;
+  onHoverChange?: (hovered: boolean) => void;
   viewerCount: number;
 }) {
   return (
-    <div className="group/player relative flex h-full w-full flex-col overflow-hidden bg-[radial-gradient(circle_at_70%_74%,rgba(95,42,174,0.18),transparent_30%),#050409]">
+    <div
+      className="relative flex h-full w-full flex-col overflow-hidden bg-[radial-gradient(circle_at_70%_74%,rgba(95,42,174,0.18),transparent_30%),#050409]"
+      onPointerEnter={() => onHoverChange?.(true)}
+      onPointerMove={() => onHoverChange?.(true)}
+      onPointerLeave={() => onHoverChange?.(false)}
+    >
+      {onHoverChange && (
+        <div
+          className="absolute inset-0 z-40"
+          onPointerEnter={() => onHoverChange(true)}
+          onPointerMove={() => onHoverChange(true)}
+          onPointerLeave={() => onHoverChange(false)}
+          aria-hidden="true"
+        />
+      )}
+
       <div className="absolute left-5 top-5 z-30 flex items-center gap-3">
         <span className="rounded-[6px] bg-[#ef2f82] px-4 py-2 text-sm font-black uppercase leading-none text-white">
           Live
@@ -201,7 +219,7 @@ function PlayerFrame({
 
           document.documentElement.requestFullscreen();
         }}
-        className="absolute bottom-5 right-5 z-30 grid h-8 w-8 place-items-center rounded-full text-white hover:bg-white/10"
+        className="absolute bottom-5 right-5 z-50 grid h-8 w-8 place-items-center rounded-full text-white hover:bg-white/10"
         aria-label="Fullscreen livestream"
       >
         <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" aria-hidden="true">
@@ -261,7 +279,13 @@ function StreamIcon() {
   );
 }
 
-function CustomControls({ onLeave }: { onLeave: () => void }) {
+function CustomControls({
+  onLeave,
+  visible,
+}: {
+  onLeave: () => void;
+  visible: boolean;
+}) {
   const room = useRoomContext();
   const { localParticipant } = useLocalParticipant();
 
@@ -324,7 +348,12 @@ function CustomControls({ onLeave }: { onLeave: () => void }) {
   }
 
   return (
-    <div className="absolute bottom-4 left-1/2 z-[100] flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/10 bg-black/80 p-2 opacity-0 shadow-2xl backdrop-blur transition duration-150 group-focus-within/player:opacity-100 group-hover/player:opacity-100">
+    <div
+      className={`absolute bottom-4 left-1/2 z-[999] flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/10 bg-black/80 p-2 shadow-2xl backdrop-blur transition duration-150 ${
+        visible ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
+      }`}
+      style={{ zIndex: 999 }}
+    >
       <ControlButton
         label={micOn ? "Mute Microphone" : "Unmute Microphone"}
         active={micOn}
