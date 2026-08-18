@@ -166,7 +166,7 @@ function PlayerFrame({
   viewerCount: number;
 }) {
   return (
-    <div className="relative flex h-full w-full flex-col overflow-hidden bg-[radial-gradient(circle_at_70%_74%,rgba(95,42,174,0.18),transparent_30%),#050409]">
+    <div className="group/player relative flex h-full w-full flex-col overflow-hidden bg-[radial-gradient(circle_at_70%_74%,rgba(95,42,174,0.18),transparent_30%),#050409]">
       <div className="absolute left-5 top-5 z-30 flex items-center gap-3">
         <span className="rounded-[6px] bg-[#ef2f82] px-4 py-2 text-sm font-black uppercase leading-none text-white">
           Live
@@ -282,6 +282,16 @@ function CustomControls({ onLeave }: { onLeave: () => void }) {
     if (!next) setObsOn(false);
   }
 
+  async function endLive() {
+    await Promise.all([
+      localParticipant.setCameraEnabled(false),
+      localParticipant.setMicrophoneEnabled(false),
+    ]);
+    setCamOn(false);
+    setMicOn(false);
+    setObsOn(false);
+  }
+
   function leaveRoom() {
     room.disconnect();
     onLeave();
@@ -314,7 +324,7 @@ function CustomControls({ onLeave }: { onLeave: () => void }) {
   }
 
   return (
-    <div className="absolute bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/10 bg-black/75 p-2 shadow-2xl backdrop-blur">
+    <div className="absolute bottom-4 left-1/2 z-[100] flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/10 bg-black/80 p-2 opacity-0 shadow-2xl backdrop-blur transition duration-150 group-focus-within/player:opacity-100 group-hover/player:opacity-100">
       <ControlButton
         label={micOn ? "Mute Microphone" : "Unmute Microphone"}
         active={micOn}
@@ -324,9 +334,8 @@ function CustomControls({ onLeave }: { onLeave: () => void }) {
       </ControlButton>
 
       <ControlButton
-        label={camOn ? "End Live" : "Go Live"}
+        label={camOn ? "Camera Off" : "Camera On"}
         active={camOn}
-        intent={camOn ? "danger" : "default"}
         onClick={toggleCam}
       >
         {camOn ? <VideoOffIcon /> : <VideoOnIcon />}
@@ -339,6 +348,12 @@ function CustomControls({ onLeave }: { onLeave: () => void }) {
       >
         <ObsIcon />
       </ControlButton>
+
+      {(camOn || obsOn) && (
+        <ControlButton label="End Live" intent="danger" onClick={endLive}>
+          <EndLiveIcon />
+        </ControlButton>
+      )}
 
       <ControlButton label="Leave" intent="danger" onClick={leaveRoom}>
         <LeaveIcon />
@@ -441,6 +456,14 @@ function LeaveIcon() {
       <path d="M10 17 5 12l5-5" />
       <path d="M5 12h12" />
       <path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4" />
+    </svg>
+  );
+}
+
+function EndLiveIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" aria-hidden="true">
+      <rect x="6" y="6" width="12" height="12" rx="2" />
     </svg>
   );
 }
