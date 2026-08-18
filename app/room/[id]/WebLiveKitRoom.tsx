@@ -19,6 +19,12 @@ export default function WebLiveKitRoom({ roomId }: { roomId: string }) {
   const [shouldConnect, setShouldConnect] = useState(false);
   const livekitUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL;
 
+  function resetConnection() {
+    setShouldConnect(false);
+    setToken("");
+    setError("");
+  }
+
   useEffect(() => {
     if (!shouldConnect) return;
 
@@ -72,13 +78,20 @@ export default function WebLiveKitRoom({ roomId }: { roomId: string }) {
   if (!token) return <StreamMessage text="Connecting to livestream..." />;
 
   return (
-    <LiveKitRoom serverUrl={livekitUrl} token={token} connect={true} audio={false} video={false}>
-      <CustomStreamView />
+    <LiveKitRoom
+      serverUrl={livekitUrl}
+      token={token}
+      connect={true}
+      audio={false}
+      video={false}
+      onDisconnected={resetConnection}
+    >
+      <CustomStreamView onLeave={resetConnection} />
     </LiveKitRoom>
   );
 }
 
-function CustomStreamView() {
+function CustomStreamView({ onLeave }: { onLeave: () => void }) {
   const participants = useParticipants();
   const viewerCount = participants.length;
   const [selectedTrackKey, setSelectedTrackKey] = useState<string | null>(null);
@@ -140,7 +153,7 @@ function CustomStreamView() {
         </div>
       )}
 
-      <CustomControls />
+      <CustomControls onLeave={onLeave} />
     </PlayerFrame>
   );
 }
@@ -248,7 +261,7 @@ function StreamIcon() {
   );
 }
 
-function CustomControls() {
+function CustomControls({ onLeave }: { onLeave: () => void }) {
   const room = useRoomContext();
   const { localParticipant } = useLocalParticipant();
 
@@ -266,10 +279,12 @@ function CustomControls() {
     const next = !camOn;
     await localParticipant.setCameraEnabled(next);
     setCamOn(next);
+    if (!next) setObsOn(false);
   }
 
   function leaveRoom() {
     room.disconnect();
+    onLeave();
   }
 
   async function useObsVirtualCamera() {
@@ -300,32 +315,134 @@ function CustomControls() {
 
   return (
     <div className="absolute bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/10 bg-black/75 p-2 shadow-2xl backdrop-blur">
-      <button onClick={toggleMic} className={controlClass(micOn)}>
-        {micOn ? "Mic On" : "Mic Off"}
-      </button>
-
-      <button onClick={toggleCam} className={controlClass(camOn)}>
-        {camOn ? "End Live" : "Go Live"}
-      </button>
-
-      <button onClick={useObsVirtualCamera} className={controlClass(obsOn)}>
-        {obsOn ? "OBS On" : "OBS Cam"}
-      </button>
-
-      <button
-        onClick={leaveRoom}
-        className="rounded-full bg-red-600 px-4 py-2 text-sm font-black text-white hover:bg-red-500"
+      <ControlButton
+        label={micOn ? "Mute Microphone" : "Unmute Microphone"}
+        active={micOn}
+        onClick={toggleMic}
       >
-        Leave
-      </button>
+        {micOn ? <MicOnIcon /> : <MicOffIcon />}
+      </ControlButton>
+
+      <ControlButton
+        label={camOn ? "End Live" : "Go Live"}
+        active={camOn}
+        intent={camOn ? "danger" : "default"}
+        onClick={toggleCam}
+      >
+        {camOn ? <VideoOffIcon /> : <VideoOnIcon />}
+      </ControlButton>
+
+      <ControlButton
+        label={obsOn ? "OBS Camera On" : "Use OBS Camera"}
+        active={obsOn}
+        onClick={useObsVirtualCamera}
+      >
+        <ObsIcon />
+      </ControlButton>
+
+      <ControlButton label="Leave" intent="danger" onClick={leaveRoom}>
+        <LeaveIcon />
+      </ControlButton>
     </div>
   );
 }
 
-function controlClass(active: boolean) {
-  return active
-    ? "rounded-full bg-white px-4 py-2 text-sm font-black text-black hover:bg-zinc-200"
-    : "rounded-full bg-zinc-800 px-4 py-2 text-sm font-black text-white hover:bg-zinc-700";
+function ControlButton({
+  active = false,
+  children,
+  intent = "default",
+  label,
+  onClick,
+}: {
+  active?: boolean;
+  children: React.ReactNode;
+  intent?: "default" | "danger";
+  label: string;
+  onClick: () => void;
+}) {
+  const className =
+    intent === "danger"
+      ? active
+        ? "bg-red-600 text-white hover:bg-red-500"
+        : "bg-red-600/90 text-white hover:bg-red-500"
+      : active
+        ? "bg-white text-black hover:bg-zinc-200"
+        : "bg-zinc-800 text-white hover:bg-zinc-700";
+
+  return (
+    <div className="group relative grid h-11 w-11 shrink-0 place-items-center">
+      <button
+        onClick={onClick}
+        className={`grid h-11 w-11 place-items-center rounded-full transition ${className}`}
+        aria-label={label}
+        title={label}
+      >
+        {children}
+      </button>
+      <span className="pointer-events-none absolute bottom-14 left-1/2 max-w-[140px] -translate-x-1/2 whitespace-nowrap rounded-[6px] border border-white/10 bg-black/90 px-3 py-1.5 text-xs font-black text-white opacity-0 shadow-xl transition group-focus-within:opacity-100 group-hover:opacity-100">
+        {label}
+      </span>
+    </div>
+  );
+}
+
+function MicOnIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" aria-hidden="true">
+      <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" />
+      <path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8" />
+    </svg>
+  );
+}
+
+function MicOffIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" aria-hidden="true">
+      <path d="m3 3 18 18" />
+      <path d="M9 9v3a3 3 0 0 0 5.1 2.1M15 9.3V6a3 3 0 0 0-5.1-2.1" />
+      <path d="M5 10v2a7 7 0 0 0 11.7 5.2M19 10v2c0 1-.2 2-.6 2.9M12 19v3M8 22h8" />
+    </svg>
+  );
+}
+
+function VideoOnIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" aria-hidden="true">
+      <rect x="3" y="6" width="13" height="12" rx="2" />
+      <path d="m16 10 5-3v10l-5-3" />
+    </svg>
+  );
+}
+
+function VideoOffIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" aria-hidden="true">
+      <path d="m3 3 18 18" />
+      <path d="M10.6 6H14a2 2 0 0 1 2 2v3.4l5-3v7.2l-2.2-1.3" />
+      <path d="M15.8 17.8A2 2 0 0 1 14 18H5a2 2 0 0 1-2-2V8a2 2 0 0 1 .2-.8" />
+    </svg>
+  );
+}
+
+function ObsIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" aria-hidden="true">
+      <path d="M7 7.5A5 5 0 0 1 16.3 5" />
+      <path d="M17 16.5A5 5 0 0 1 7.7 19" />
+      <path d="M5.5 9A5 5 0 0 0 8 18.3" />
+      <circle cx="12" cy="12" r="2.5" />
+    </svg>
+  );
+}
+
+function LeaveIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" aria-hidden="true">
+      <path d="M10 17 5 12l5-5" />
+      <path d="M5 12h12" />
+      <path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4" />
+    </svg>
+  );
 }
 
 function StreamMessage({ text }: { text: string }) {
