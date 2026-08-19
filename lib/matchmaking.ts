@@ -237,21 +237,19 @@ export async function ensurePartyUpIdentity(supabase: SupabaseClient): Promise<P
 }
 
 export async function getGlobalMatchPool(supabase: SupabaseClient): Promise<MatchPool> {
-  const { data, error } = await supabase
-    .from("match_pools")
-    .select("id, slug")
-    .eq("slug", "global")
-    .maybeSingle();
+  const { data, error } = await supabase.rpc("get_or_create_global_match_pool");
 
   if (error) {
     throw new Error(error.message);
   }
 
-  if (!data?.id) {
-    throw new Error('The global Match pool was not found.');
+  const row = firstRow(data);
+
+  if (!row || typeof row !== "object") {
+    throw new Error("The global Match pool was not found.");
   }
 
-  return data as MatchPool;
+  return row as MatchPool;
 }
 
 export async function getMatchPool(
