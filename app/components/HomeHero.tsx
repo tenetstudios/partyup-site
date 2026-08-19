@@ -93,8 +93,7 @@ export default function HomeHero({ rooms }: { rooms: LiveRoom[] }) {
     <section className="relative min-h-[474px] overflow-hidden pt-5">
       <RoomVisual rooms={rooms} />
       <div className="relative z-10 max-w-[704px]">
-        <p className="text-sm font-black uppercase tracking-[0.18em] text-[#b995ff]">Live Rooms</p>
-        <h1 className="mt-3 text-[54px] font-black leading-[0.92] tracking-normal text-white sm:text-[66px] lg:text-[72px]">
+        <h1 className="text-[54px] font-black leading-[0.92] tracking-normal text-white sm:text-[66px] lg:text-[72px]">
           Live rooms.
           <span className="block bg-gradient-to-r from-[#8b3dff] via-[#b44dff] to-[#ff3d9f] bg-clip-text text-transparent">
             Real people.
