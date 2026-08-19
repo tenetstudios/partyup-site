@@ -4,7 +4,13 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseClient } from "@/lib/supabase";
 
-export default function CreateRoomButton() {
+export default function CreateRoomButton({
+  className = "",
+  label = "Open a Room",
+}: {
+  className?: string;
+  label?: string;
+}) {
   const router = useRouter();
 
   const [open, setOpen] = useState(false);
@@ -159,9 +165,9 @@ console.timeEnd("attendeeUpsert");
     <>
       <button
         onClick={() => setOpen(true)}
-        className="h-10 rounded-md bg-[#8b3dff] px-6 text-[15px] font-black shadow-[0_0_22px_rgba(139,61,255,0.35)] hover:bg-[#7b31e8]"
+        className={`h-10 rounded-md bg-[#8b3dff] px-6 text-[15px] font-black shadow-[0_0_22px_rgba(139,61,255,0.35)] hover:bg-[#7b31e8] ${className}`}
       >
-        Open a Room
+        {label}
       </button>
 
       {open && (

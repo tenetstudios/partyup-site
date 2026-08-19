@@ -1,6 +1,8 @@
 import React from "react";
+import Link from "next/link";
 import LiveRoomCard from "@/app/components/LiveRoomCard";
 import { LiveRoom, HostProfile } from "@/lib/homeHelpers";
+import CreateRoomButton from "@/app/components/CreateRoomButton";
 
 export default function LiveNowSection({ rooms, profilesById }: { rooms: LiveRoom[]; profilesById: Map<string, HostProfile> }) {
   const liveRooms = rooms.filter((r) => r.status === "live");
@@ -10,7 +12,7 @@ export default function LiveNowSection({ rooms, profilesById }: { rooms: LiveRoo
     <section id="live-now" className="min-w-0 rounded-[10px] border border-white/[0.04] bg-[linear-gradient(180deg,rgba(13,13,23,0.78),rgba(7,7,14,0.78))] p-2 shadow-[0_0_28px_rgba(139,61,255,0.08)]">
       <div className="mb-2 flex items-center justify-between gap-4 px-1">
         <h2 className="text-[20px] font-black leading-none">Live Now</h2>
-        <a href="#live-now" className="text-[15px] font-medium text-[#b45cff] hover:text-white">View all</a>
+        <Link href="/live-now" className="text-[15px] font-medium text-[#b45cff] hover:text-white">View all</Link>
       </div>
 
       {previewRooms.length > 0 ? (
@@ -28,6 +30,13 @@ export default function LiveNowSection({ rooms, profilesById }: { rooms: LiveRoo
           </div>
         </div>
       )}
+
+      <div className="mt-3 flex justify-end md:hidden">
+        <CreateRoomButton
+          label="+ Open a Room"
+          className="h-9 px-4 text-[13px] shadow-[0_0_16px_rgba(139,61,255,0.25)]"
+        />
+      </div>
     </section>
   );
 }

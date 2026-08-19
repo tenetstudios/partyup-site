@@ -1,4 +1,5 @@
 import React from "react";
+import Link from "next/link";
 import { HostProfile, LiveRoom, getActivity, getRoomTitle, getHostName } from "@/lib/homeHelpers";
 
 function getTimestamp(room: LiveRoom) {
@@ -68,7 +69,7 @@ export default function ActivityFeed({
     <aside className="min-h-[535px] rounded-[10px] border border-white/[0.08] bg-[linear-gradient(180deg,rgba(17,17,27,0.94),rgba(11,11,19,0.96))] p-6 shadow-[0_18px_44px_rgba(0,0,0,0.24)]">
       <div className="flex items-center justify-between">
         <h4 className="text-[18px] font-black text-white">Activity Feed</h4>
-        <a className="text-[15px] text-[#c35dff] hover:text-white" href="#">View all</a>
+        <Link className="text-[15px] text-[#c35dff] hover:text-white" href="/activity">View all</Link>
       </div>
 
       <div className="mt-5">

@@ -91,6 +91,35 @@ export function getCategory(room: LiveRoom) {
   );
 }
 
+export function getRoomLocation(room: LiveRoom) {
+  return (
+    asText(room.venue_name) ??
+    asText(room.location) ??
+    asText(room.city) ??
+    asText(room.place) ??
+    asText(room.region) ??
+    null
+  );
+}
+
+export function getRoomCoordinates(room: LiveRoom) {
+  const latitude = asNumber(room.latitude);
+  const longitude = asNumber(room.longitude);
+
+  if (
+    latitude == null ||
+    longitude == null ||
+    latitude < -90 ||
+    latitude > 90 ||
+    longitude < -180 ||
+    longitude > 180
+  ) {
+    return null;
+  }
+
+  return { latitude, longitude };
+}
+
 export function getScheduledText(room: LiveRoom) {
   const rawDate = asText(room.scheduled_at);
 
