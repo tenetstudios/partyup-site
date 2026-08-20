@@ -198,6 +198,27 @@ as $$
   order by memory.created_at desc;
 $$;
 
+create or replace function public.delete_room_memory(p_memory_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'Authentication required';
+  end if;
+
+  if not public.can_delete_room_memory(p_memory_id) then
+    raise exception 'Not allowed to delete this Memory';
+  end if;
+
+  update public.room_memories
+  set deleted_at = coalesce(deleted_at, now())
+  where id = p_memory_id;
+end;
+$$;
+
 grant select, insert on public.room_memories to authenticated;
 revoke update on public.room_memories from authenticated;
 grant update (deleted_at) on public.room_memories to authenticated;
@@ -205,3 +226,4 @@ grant execute on function public.is_room_memory_participant(uuid) to authenticat
 grant execute on function public.current_partyup_identity_id() to authenticated;
 grant execute on function public.can_delete_room_memory(uuid) to authenticated;
 grant execute on function public.get_room_memories(uuid) to authenticated;
+grant execute on function public.delete_room_memory(uuid) to authenticated;
