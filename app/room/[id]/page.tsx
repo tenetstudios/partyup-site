@@ -138,6 +138,12 @@ function RoomInfoBar({ room }: { room: RoomRecord }) {
       <p className="min-w-[180px] flex-1 text-[15px] leading-6 text-[#d8d1e2]">
         {getRoomDescription(room)}
       </p>
+      <Link
+        href={`/room/${room.id}/memories`}
+        className="inline-flex min-h-11 items-center justify-center rounded-md border border-pink-300/30 bg-pink-500/12 px-4 text-sm font-black text-pink-100 hover:bg-pink-500/20"
+      >
+        Memories
+      </Link>
       <LeaveRoomContextButton roomId={String(room.id)} />
       <JoinRoomButton roomId={String(room.id)} />
     </section>
