@@ -218,10 +218,6 @@ export default function ProfileClient({ profileId }: { profileId: string }) {
       <HomeHeader />
 
       <div className="mx-auto w-full max-w-3xl px-5 py-8">
-        <Link href="/connections" className="text-sm font-black text-[#c35dff] hover:text-white">
-          Back to Connections
-        </Link>
-
         {message && (
           <div className="mt-6 rounded-md border border-amber-300/20 bg-amber-950/40 px-4 py-3 text-sm font-bold text-amber-100">
             {message}
