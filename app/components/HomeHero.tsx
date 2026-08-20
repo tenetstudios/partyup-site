@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import React from "react";
 import { LiveRoom } from "@/lib/homeHelpers";
 
@@ -17,11 +18,15 @@ function RoomVisual({ rooms }: { rooms: LiveRoom[] }) {
           <div className="absolute left-[34%] top-[11%] h-[420px] w-[18px] rotate-[18deg] bg-fuchsia-400/35 blur-md" />
           <div className="absolute left-[55%] top-[2%] h-[470px] w-[22px] rotate-[31deg] bg-violet-400/40 blur-md" />
           <div className="absolute left-[73%] top-[7%] h-[430px] w-[18px] rotate-[-22deg] bg-purple-500/35 blur-md" />
-          <div className="absolute bottom-0 left-[43%] h-[178px] w-[74px] rounded-t-full bg-black/55 blur-[1px]" />
-          <div className="absolute bottom-0 left-[59%] h-[225px] w-[96px] rounded-t-full bg-black/60 blur-[1px]" />
-          <div className="absolute bottom-0 left-[74%] h-[190px] w-[82px] rounded-t-full bg-black/55 blur-[1px]" />
-          <div className="absolute bottom-[160px] left-[62%] h-[122px] w-[14px] -rotate-12 rounded-full bg-black/70" />
-          <div className="absolute bottom-[164px] left-[68%] h-[130px] w-[14px] rotate-[13deg] rounded-full bg-black/70" />
+          <Image
+            src="/assets/peace-sign-arm.png"
+            alt=""
+            aria-hidden="true"
+            fill
+            priority
+            sizes="53vw"
+            className="pointer-events-none !left-auto !right-[-2%] !top-auto !bottom-[-9%] !h-[112%] !w-[48%] object-contain object-bottom opacity-90"
+          />
         </div>
       )}
       <div className="absolute inset-0 bg-[linear-gradient(90deg,#05040b_0%,rgba(5,4,11,0.84)_14%,rgba(5,4,11,0.26)_43%,rgba(5,4,11,0.1)_100%)]" />
