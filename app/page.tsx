@@ -34,7 +34,7 @@ export default async function HomePage() {
 
       <div className="mx-auto grid w-full max-w-[1458px] gap-5 px-5 pb-0 pt-0 lg:grid-cols-[minmax(0,1fr)_413px] xl:px-0">
         <div className="min-w-0">
-          <HomeHero rooms={liveRooms.length > 0 ? liveRooms : rooms} />
+          <HomeHero />
 
           <div className="mt-5 grid items-end gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
             <LiveNowSection rooms={rooms} profilesById={profilesById} />

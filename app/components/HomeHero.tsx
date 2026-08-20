@@ -1,37 +1,19 @@
 import Link from "next/link";
-import Image from "next/image";
 import React from "react";
-import { LiveRoom } from "@/lib/homeHelpers";
 
-function RoomVisual({ rooms }: { rooms: LiveRoom[] }) {
-  const image = rooms.find((room) => room.cover_image)?.cover_image;
-
+function RoomVisual() {
   return (
-    <div className="pointer-events-none absolute right-0 top-0 hidden h-[432px] w-[53%] overflow-hidden lg:block">
-      {image ? (
-        <div
-          className="absolute inset-0 bg-cover bg-center opacity-80"
-          style={{ backgroundImage: `url(${image})` }}
-        />
-      ) : (
-        <div className="absolute inset-0 overflow-hidden bg-[radial-gradient(circle_at_68%_15%,rgba(246,61,157,0.5),transparent_9%),radial-gradient(circle_at_56%_30%,rgba(178,100,255,0.58),transparent_8%),radial-gradient(circle_at_76%_25%,rgba(139,61,255,0.72),transparent_18%),linear-gradient(135deg,#1a0828,#080610_70%)]">
-          <div className="absolute left-[34%] top-[11%] h-[420px] w-[18px] rotate-[18deg] bg-fuchsia-400/35 blur-md" />
-          <div className="absolute left-[55%] top-[2%] h-[470px] w-[22px] rotate-[31deg] bg-violet-400/40 blur-md" />
-          <div className="absolute left-[73%] top-[7%] h-[430px] w-[18px] rotate-[-22deg] bg-purple-500/35 blur-md" />
-          <Image
-            src="/assets/peace-sign-arm.png"
-            alt=""
-            aria-hidden="true"
-            width={1024}
-            height={1536}
-            priority
-            className="pointer-events-none absolute bottom-[-31%] right-[4%] h-[126%] w-auto select-none object-contain opacity-90"
-          />
-        </div>
-      )}
-      <div className="absolute inset-0 bg-[linear-gradient(90deg,#05040b_0%,rgba(5,4,11,0.84)_14%,rgba(5,4,11,0.26)_43%,rgba(5,4,11,0.1)_100%)]" />
-      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(5,4,11,0)_0%,rgba(5,4,11,0.2)_58%,#05040b_100%)]" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_58%_18%,rgba(139,61,255,0.34),transparent_34%),radial-gradient(circle_at_76%_22%,rgba(255,45,154,0.18),transparent_24%)]" />
+    <div
+      aria-hidden="true"
+      className="pointer-events-none absolute -right-[30%] top-0 h-full w-[125%] select-none overflow-hidden opacity-45 sm:-right-[18%] sm:w-[112%] md:right-0 md:w-[74%] md:opacity-65 lg:h-[432px] lg:w-[54%] lg:opacity-95"
+    >
+      <div
+        className="absolute inset-0 bg-cover bg-[position:64%_center] md:bg-[position:center_right]"
+        style={{ backgroundImage: "url('/images/hero-concert-crowd.png')" }}
+      />
+      <div className="absolute inset-0 bg-[linear-gradient(90deg,#05040b_0%,rgba(5,4,11,0.9)_19%,rgba(5,4,11,0.42)_47%,rgba(5,4,11,0.08)_100%)] md:bg-[linear-gradient(90deg,#05040b_0%,rgba(5,4,11,0.86)_18%,rgba(5,4,11,0.24)_48%,rgba(5,4,11,0.04)_100%)]" />
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(5,4,11,0)_0%,rgba(5,4,11,0.08)_58%,#05040b_100%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_82%_18%,rgba(255,45,154,0.12),transparent_30%),radial-gradient(circle_at_66%_20%,rgba(139,61,255,0.16),transparent_34%)]" />
     </div>
   );
 }
@@ -93,10 +75,10 @@ function HeroActionCard({
   );
 }
 
-export default function HomeHero({ rooms }: { rooms: LiveRoom[] }) {
+export default function HomeHero() {
   return (
     <section className="relative min-h-[474px] overflow-hidden pt-5">
-      <RoomVisual rooms={rooms} />
+      <RoomVisual />
       <div className="relative z-10 max-w-[704px]">
         <h1 className="text-[54px] font-black leading-[0.92] tracking-normal text-white sm:text-[66px] lg:text-[72px]">
           Live rooms.
