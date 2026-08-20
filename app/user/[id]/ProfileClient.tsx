@@ -175,6 +175,12 @@ export default function ProfileClient({ profileId }: { profileId: string }) {
     });
   }
 
+  async function signOut() {
+    await supabase.auth.signOut();
+    setCurrentUserId(null);
+    window.location.href = "/";
+  }
+
   async function removeSavedMemory(memory: SavedMemory) {
     if (processingMemoryId) {
       return;
@@ -324,7 +330,16 @@ export default function ProfileClient({ profileId }: { profileId: string }) {
                   supabase={supabase}
                 />
               ) : (
-                <p className="mt-6 text-sm font-bold text-[#aaa4b8]">This is your public profile.</p>
+                <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm font-bold text-[#aaa4b8]">This is your public profile.</p>
+                  <button
+                    type="button"
+                    onClick={signOut}
+                    className="inline-flex h-11 items-center justify-center rounded-md border border-white/10 px-5 text-sm font-black text-white hover:bg-white/10"
+                  >
+                    Sign out
+                  </button>
+                </div>
               )
             ) : currentUserId ? (
               <div className="mt-6 flex flex-wrap gap-3">
