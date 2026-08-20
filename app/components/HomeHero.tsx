@@ -87,9 +87,7 @@ export default function HomeHero() {
           </span>
         </h1>
         <p className="mt-5 text-[20px] leading-[1.35] text-[#c9c4d4]">
-          Discover what&apos;s happening around you.
-          <br />
-          Or meet someone new.
+          See what&apos;s happening around you. Be part of it.
         </p>
 
         <div className="mt-6 grid max-w-[684px] gap-5 sm:grid-cols-2">
