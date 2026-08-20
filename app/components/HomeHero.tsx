@@ -22,10 +22,10 @@ function RoomVisual({ rooms }: { rooms: LiveRoom[] }) {
             src="/assets/peace-sign-arm.png"
             alt=""
             aria-hidden="true"
-            fill
+            width={1024}
+            height={1536}
             priority
-            sizes="53vw"
-            className="pointer-events-none !left-auto !right-[-2%] !top-auto !bottom-[-9%] !h-[112%] !w-[48%] object-contain object-bottom opacity-90"
+            className="pointer-events-none absolute bottom-[-24%] right-[4%] h-[132%] w-auto select-none object-contain opacity-90"
           />
         </div>
       )}
