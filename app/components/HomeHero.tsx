@@ -25,7 +25,7 @@ function RoomVisual({ rooms }: { rooms: LiveRoom[] }) {
             width={1024}
             height={1536}
             priority
-            className="pointer-events-none absolute bottom-[-24%] right-[4%] h-[132%] w-auto select-none object-contain opacity-90"
+            className="pointer-events-none absolute bottom-[-31%] right-[4%] h-[126%] w-auto select-none object-contain opacity-90"
           />
         </div>
       )}
