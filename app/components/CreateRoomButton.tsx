@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { createSupabaseClient } from "@/lib/supabase";
 
@@ -275,8 +276,8 @@ console.timeEnd("attendeeUpsert");
         {label}
       </button>
 
-      {open && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/75 px-4 py-10 sm:pt-16 sm:pb-12">
+      {open && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[9999] overflow-y-auto bg-black/75 px-4 py-10 sm:pt-16 sm:pb-12">
           <div className="mx-auto max-h-[calc(100vh-5rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/10 bg-[#12051e] p-5 text-white shadow-2xl shadow-purple-950/50 sm:max-h-[calc(100vh-7rem)]">
             <div className="mb-5 flex items-center justify-between gap-4">
               <div>
@@ -569,7 +570,8 @@ console.timeEnd("attendeeUpsert");
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );
