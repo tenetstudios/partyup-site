@@ -604,43 +604,45 @@ export default function CreateRoomButton({
                     </label>
                   </section>
 
-                  <section className="flex h-full w-full shrink-0 flex-col gap-5 p-5">
+                  <section className="flex h-full w-full shrink-0 flex-col gap-3 p-4">
                     <div>
                       <h3 className="text-xl font-black">Review</h3>
-                      <p className="mt-1 text-sm font-bold text-zinc-500">
+                      <p className="text-sm font-bold text-zinc-500">
                         Make sure everything looks right before opening.
                       </p>
                     </div>
 
                     <div className="grid gap-3">
-                      <div className="rounded-lg border border-white/10 bg-black/35 p-4">
-                        <p className="text-xs font-black uppercase tracking-[0.16em] text-purple-300">Room</p>
-                        <p className="mt-1 text-lg font-black">{title.trim() || "Untitled room"}</p>
-                        <p className="mt-1 text-sm font-bold text-zinc-500">
-                          {roomType} / {roomMode}
-                        </p>
-                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-lg border border-white/10 bg-black/35 p-3">
+                          <p className="text-[11px] font-black uppercase tracking-[0.16em] text-purple-300">Room</p>
+                          <p className="mt-1 truncate text-base font-black">{title.trim() || "Untitled room"}</p>
+                          <p className="mt-0.5 text-xs font-bold text-zinc-500">
+                            {roomType} / {roomMode}
+                          </p>
+                        </div>
 
-                      <div className="rounded-lg border border-white/10 bg-black/35 p-4">
-                        <p className="text-xs font-black uppercase tracking-[0.16em] text-purple-300">When</p>
-                        <p className="mt-1 text-lg font-black">{roomStatus === "live" ? "Live now" : scheduledLabel}</p>
+                        <div className="rounded-lg border border-white/10 bg-black/35 p-3">
+                          <p className="text-[11px] font-black uppercase tracking-[0.16em] text-purple-300">When</p>
+                          <p className="mt-1 text-base font-black">{roomStatus === "live" ? "Live now" : scheduledLabel}</p>
+                        </div>
                       </div>
 
                       <div className="grid gap-3 sm:grid-cols-2">
-                        <div className="rounded-lg border border-white/10 bg-black/35 p-4">
-                          <p className="text-xs font-black uppercase tracking-[0.16em] text-purple-300">Capacity</p>
-                          <p className="mt-1 text-lg font-black">{Number(maxUsers) || 12} people</p>
+                        <div className="rounded-lg border border-white/10 bg-black/35 p-3">
+                          <p className="text-[11px] font-black uppercase tracking-[0.16em] text-purple-300">Capacity</p>
+                          <p className="mt-1 text-base font-black">{Number(maxUsers) || 12} people</p>
                         </div>
-                        <div className="rounded-lg border border-white/10 bg-black/35 p-4">
-                          <p className="text-xs font-black uppercase tracking-[0.16em] text-purple-300">Privacy</p>
-                          <p className="mt-1 text-lg font-black">{isPrivateRoom ? "Private" : "Public"}</p>
+                        <div className="rounded-lg border border-white/10 bg-black/35 p-3">
+                          <p className="text-[11px] font-black uppercase tracking-[0.16em] text-purple-300">Privacy</p>
+                          <p className="mt-1 text-base font-black">{isPrivateRoom ? "Private" : "Public"}</p>
                         </div>
                       </div>
 
-                      <div className="rounded-lg border border-white/10 bg-black/35 p-4">
-                        <p className="text-xs font-black uppercase tracking-[0.16em] text-purple-300">Venue</p>
-                        <p className="mt-1 text-lg font-black">{venueName.trim() || "Not set"}</p>
-                        <p className="mt-1 text-sm font-bold text-zinc-500">
+                      <div className="rounded-lg border border-white/10 bg-black/35 p-3">
+                        <p className="text-[11px] font-black uppercase tracking-[0.16em] text-purple-300">Venue</p>
+                        <p className="mt-1 truncate text-base font-black">{venueName.trim() || "Not set"}</p>
+                        <p className="mt-0.5 truncate text-xs font-bold text-zinc-500">
                           {coverFile ? coverFile.name : "No cover image selected"}
                         </p>
                       </div>
