@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createSupabaseClient } from "@/lib/supabase";
 
@@ -10,6 +11,7 @@ type Profile = {
 
 export default function AuthButton() {
   const [email, setEmail] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const supabase = useMemo(() => createSupabaseClient(), []);
 
@@ -18,6 +20,7 @@ export default function AuthButton() {
     const user = data.user;
 
     setEmail(user?.email ?? null);
+    setUserId(user?.id ?? null);
 
     if (!user) {
       setProfile(null);
@@ -60,13 +63,18 @@ export default function AuthButton() {
   async function signOut() {
     await supabase.auth.signOut();
     setEmail(null);
+    setUserId(null);
     setProfile(null);
   }
 
-  if (email) {
+  if (email && userId) {
     return (
       <div className="flex items-center gap-3">
-        <div className="hidden h-10 items-center gap-3 sm:flex">
+        <Link
+          href={`/user/${userId}`}
+          className="flex h-10 items-center gap-2 rounded-md px-1 text-white hover:bg-white/10 sm:gap-3 sm:px-2"
+          aria-label="Open your profile"
+        >
           {profile?.avatar_url ? (
             <img
               src={profile.avatar_url}
@@ -79,11 +87,10 @@ export default function AuthButton() {
             </div>
           )}
 
-          <span className="max-w-32 truncate text-[15px] font-black">
+          <span className="hidden max-w-32 truncate text-[15px] font-black sm:block">
             {profile?.username || "PartyUp User"}
           </span>
-          <span className="text-[#777384]">⌄</span>
-        </div>
+        </Link>
 
         <button
           onClick={signOut}
