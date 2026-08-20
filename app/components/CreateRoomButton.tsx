@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import { createSupabaseClient } from "@/lib/supabase";
 
 type CreateRoomStatus = "live" | "scheduled";
+type TimePeriod = "AM" | "PM";
 
-const TIME_OPTIONS = ["18:00", "19:00", "20:00", "21:00", "22:00", "23:00", "00:00", "01:00"];
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function pad(value: number) {
@@ -20,6 +20,7 @@ function toDateValue(date: Date) {
 function getDefaultSchedule() {
   const date = new Date();
   const hour = date.getHours();
+  const defaultHour = hour >= 22 ? 20 : 21;
 
   if (hour >= 22) {
     date.setDate(date.getDate() + 1);
@@ -27,8 +28,10 @@ function getDefaultSchedule() {
 
   return {
     date: toDateValue(date),
-    time: hour >= 22 ? "20:00" : "21:00",
+    hour: defaultHour > 12 ? defaultHour - 12 : defaultHour,
+    minute: 0,
     month: new Date(date.getFullYear(), date.getMonth(), 1),
+    period: (defaultHour >= 12 ? "PM" : "AM") as TimePeriod,
   };
 }
 
@@ -59,10 +62,17 @@ function formatDateLabel(dateValue: string) {
   }).format(date);
 }
 
-function formatTimeLabel(timeValue: string) {
-  const [hours, minutes] = timeValue.split(":").map(Number);
+function getTwentyFourHour(hour: number, period: TimePeriod) {
+  if (period === "AM") {
+    return hour === 12 ? 0 : hour;
+  }
+
+  return hour === 12 ? 12 : hour + 12;
+}
+
+function formatTimeLabel(hour: number, minute: number, period: TimePeriod) {
   const date = new Date();
-  date.setHours(hours, minutes, 0, 0);
+  date.setHours(getTwentyFourHour(hour, period), minute, 0, 0);
 
   return new Intl.DateTimeFormat(undefined, {
     hour: "numeric",
@@ -70,11 +80,10 @@ function formatTimeLabel(timeValue: string) {
   }).format(date);
 }
 
-function getScheduledAt(dateValue: string, timeValue: string) {
+function getScheduledAt(dateValue: string, hour: number, minute: number, period: TimePeriod) {
   const [year, month, day] = dateValue.split("-").map(Number);
-  const [hours, minutes] = timeValue.split(":").map(Number);
 
-  return new Date(year, month - 1, day, hours, minutes).toISOString();
+  return new Date(year, month - 1, day, getTwentyFourHour(hour, period), minute).toISOString();
 }
 
 export default function CreateRoomButton({
@@ -97,7 +106,9 @@ export default function CreateRoomButton({
   const [roomStatus, setRoomStatus] = useState<CreateRoomStatus>("live");
   const [venueName, setVenueName] = useState("");
   const [scheduledDate, setScheduledDate] = useState(() => getDefaultSchedule().date);
-  const [scheduledTime, setScheduledTime] = useState(() => getDefaultSchedule().time);
+  const [scheduledHour, setScheduledHour] = useState(() => getDefaultSchedule().hour);
+  const [scheduledMinute, setScheduledMinute] = useState(() => getDefaultSchedule().minute);
+  const [scheduledPeriod, setScheduledPeriod] = useState<TimePeriod>(() => getDefaultSchedule().period);
   const [calendarMonth, setCalendarMonth] = useState(() => getDefaultSchedule().month);
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const calendarDays = getCalendarDays(calendarMonth);
@@ -112,7 +123,9 @@ export default function CreateRoomButton({
     const defaultSchedule = getDefaultSchedule();
 
     setScheduledDate(defaultSchedule.date);
-    setScheduledTime(defaultSchedule.time);
+    setScheduledHour(defaultSchedule.hour);
+    setScheduledMinute(defaultSchedule.minute);
+    setScheduledPeriod(defaultSchedule.period);
     setCalendarMonth(defaultSchedule.month);
   }
   
@@ -182,7 +195,9 @@ const { data: insertedRoom, error: roomError } = await supabase
         mode: roomMode,
         status: roomStatus,
         scheduled_at:
-          roomStatus === "scheduled" ? getScheduledAt(scheduledDate, scheduledTime) : null,
+          roomStatus === "scheduled"
+            ? getScheduledAt(scheduledDate, scheduledHour, scheduledMinute, scheduledPeriod)
+            : null,
         venue_name: venueName.trim() || null,
         latitude: null,
         longitude: null,
@@ -261,8 +276,8 @@ console.timeEnd("attendeeUpsert");
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/75 px-4">
-          <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/10 bg-[#12051e] p-5 text-white shadow-2xl shadow-purple-950/50">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/75 px-4 py-10 sm:pt-16 sm:pb-12">
+          <div className="mx-auto max-h-[calc(100vh-5rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/10 bg-[#12051e] p-5 text-white shadow-2xl shadow-purple-950/50 sm:max-h-[calc(100vh-7rem)]">
             <div className="mb-5 flex items-center justify-between gap-4">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-purple-300">
@@ -343,7 +358,11 @@ console.timeEnd("attendeeUpsert");
                     <span className="text-xs font-bold text-zinc-500">
                       {roomStatus === "live"
                         ? "Start immediately"
-                        : `${formatDateLabel(scheduledDate)} at ${formatTimeLabel(scheduledTime)}`}
+                        : `${formatDateLabel(scheduledDate)} at ${formatTimeLabel(
+                            scheduledHour,
+                            scheduledMinute,
+                            scheduledPeriod,
+                          )}`}
                     </span>
                   </div>
 
@@ -436,22 +455,60 @@ console.timeEnd("attendeeUpsert");
                     </div>
 
                     <div className="mt-4">
-                      <p className="mb-2 text-xs font-black uppercase tracking-[0.16em] text-purple-300">
-                        Time
-                      </p>
-                      <div className="grid grid-cols-4 gap-2">
-                        {TIME_OPTIONS.map((time) => (
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <p className="text-xs font-black uppercase tracking-[0.16em] text-purple-300">
+                          Time
+                        </p>
+                        <p className="rounded-md bg-black/60 px-3 py-2 text-lg font-black text-white">
+                          {formatTimeLabel(scheduledHour, scheduledMinute, scheduledPeriod)}
+                        </p>
+                      </div>
+
+                      <label className="block rounded-lg bg-black/35 p-3">
+                        <span className="mb-2 flex items-center justify-between text-xs font-black uppercase tracking-[0.14em] text-zinc-400">
+                          Hour
+                          <span className="text-purple-200">{scheduledHour}</span>
+                        </span>
+                        <input
+                          type="range"
+                          min="1"
+                          max="12"
+                          step="1"
+                          value={scheduledHour}
+                          onChange={(event) => setScheduledHour(Number(event.target.value))}
+                          className="w-full accent-[#9146ff]"
+                        />
+                      </label>
+
+                      <label className="mt-3 block rounded-lg bg-black/35 p-3">
+                        <span className="mb-2 flex items-center justify-between text-xs font-black uppercase tracking-[0.14em] text-zinc-400">
+                          Minute
+                          <span className="text-purple-200">{pad(scheduledMinute)}</span>
+                        </span>
+                        <input
+                          type="range"
+                          min="0"
+                          max="55"
+                          step="5"
+                          value={scheduledMinute}
+                          onChange={(event) => setScheduledMinute(Number(event.target.value))}
+                          className="w-full accent-[#9146ff]"
+                        />
+                      </label>
+
+                      <div className="mt-3 grid grid-cols-2 rounded-md bg-black p-1 text-sm font-black">
+                        {(["AM", "PM"] as TimePeriod[]).map((period) => (
                           <button
-                            key={time}
+                            key={period}
                             type="button"
-                            onClick={() => setScheduledTime(time)}
-                            className={`rounded-md border px-2 py-2 text-sm font-black ${
-                              scheduledTime === time
-                                ? "border-[#9146ff] bg-[#9146ff] text-white"
-                                : "border-white/10 bg-black/45 text-zinc-300 hover:bg-white/10"
+                            onClick={() => setScheduledPeriod(period)}
+                            className={`rounded px-3 py-2 ${
+                              scheduledPeriod === period
+                                ? "bg-[#9146ff] text-white"
+                                : "text-zinc-400 hover:text-white"
                             }`}
                           >
-                            {formatTimeLabel(time)}
+                            {period}
                           </button>
                         ))}
                       </div>
