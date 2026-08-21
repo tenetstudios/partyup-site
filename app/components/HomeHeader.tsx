@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import React, { useEffect, useRef, useState } from "react";
 import AuthButton from "@/app/components/AuthButton";
 import CreateRoomButton from "@/app/components/CreateRoomButton";
@@ -26,12 +27,17 @@ function NavIcon({ type }: { type: "home" | "map" | "connections" | "activity" }
   );
 }
 
+function isNavActive(pathname: string, href: string) {
+  return href === "/" ? pathname === "/" : pathname.startsWith(href);
+}
+
 export default function HomeHeader({ liveCount }: { liveCount?: number }) {
+  const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const nav = [
-    { href: "/", label: "Home", icon: "home" as const, active: true },
+    { href: "/", label: "Home", icon: "home" as const },
     { href: "/map", label: "Map", icon: "map" as const },
     { href: "/connections", label: "Connections", icon: "connections" as const },
     { href: "/activity", label: "Activity", icon: "activity" as const },
@@ -94,7 +100,7 @@ export default function HomeHeader({ liveCount }: { liveCount?: number }) {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex items-center gap-2 transition hover:text-white ${item.active ? "text-[#9b4dff]" : ""}`}
+              className={`relative flex h-[76px] items-center gap-2 border-b-2 transition hover:text-white ${isNavActive(pathname, item.href) ? "border-[#9b4dff] text-[#a85cff] [text-shadow:0_0_18px_rgba(155,77,255,0.45)]" : "border-transparent"}`}
             >
               <NavIcon type={item.icon} />
               {item.label}
@@ -138,7 +144,7 @@ export default function HomeHeader({ liveCount }: { liveCount?: number }) {
                     href={item.href}
                     role="menuitem"
                     onClick={() => setMenuOpen(false)}
-                    className="flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-black text-[#d6d1df] hover:bg-[#8b3dff]/18 hover:text-white"
+                    className={`flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-black hover:bg-[#8b3dff]/18 hover:text-white ${isNavActive(pathname, item.href) ? "bg-[#8b3dff]/14 text-[#b87aff]" : "text-[#d6d1df]"}`}
                   >
                     <NavIcon type={item.icon} />
                     {item.label}

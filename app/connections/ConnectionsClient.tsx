@@ -42,6 +42,23 @@ function getInitial(name: string) {
   return name.slice(0, 1).toUpperCase();
 }
 
+function PeopleIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" aria-hidden="true">
+      <path d="M8.5 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM15.5 10a3 3 0 1 0 0-6M2.5 20v-1.5a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5V20M15 13.5h1a5 5 0 0 1 5 5V20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden="true">
+      <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="1.8" />
+      <path d="m16 16 4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export default function ConnectionsClient() {
   const supabase = useMemo(() => createSupabaseClient(), []);
   const [activeTab, setActiveTab] = useState<SocialTab>("connections");
@@ -203,10 +220,16 @@ export default function ConnectionsClient() {
   }
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[radial-gradient(ellipse_90%_55%_at_52%_16%,rgba(91,33,182,0.24),transparent_68%),radial-gradient(ellipse_78%_54%_at_96%_76%,rgba(219,39,119,0.16),transparent_72%),linear-gradient(145deg,#05040b_0%,#09071a_48%,#090313_100%)] text-white">
+    <main className="relative isolate min-h-screen overflow-x-hidden bg-[#0d0a20] text-white">
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 bg-[linear-gradient(155deg,#080b1a_0%,#100b27_42%,#180b31_100%)]" />
+      <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[min(960px,100svh)] bg-cover bg-[position:62%_top] opacity-30 mix-blend-screen sm:opacity-36 lg:bg-center lg:opacity-42" style={{ backgroundImage: "url('/images/hero-concert-crowd.png')" }} />
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_62%_80%_at_0%_44%,rgba(72,52,255,0.38),transparent_72%)]" />
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_58%_72%_at_100%_48%,rgba(236,41,148,0.36),transparent_70%)]" />
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 bg-[linear-gradient(90deg,rgba(5,7,18,0.18),rgba(10,8,27,0.68)_42%,rgba(12,7,27,0.42)_70%,rgba(17,5,27,0.12))]" />
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_center,transparent_34%,rgba(4,4,14,0.44)_100%)]" />
       <HomeHeader />
 
-      <div className="relative mx-auto w-full max-w-6xl px-5 py-10 md:py-12">
+      <div className="relative mx-auto w-full max-w-[1280px] px-5 py-10 md:py-12">
         <div className="flex flex-col gap-6 border-b border-purple-200/10 pb-8 md:flex-row md:items-end md:justify-between">
           <div>
             <p className="text-sm font-black uppercase tracking-[0.18em] text-[#c35dff]">
@@ -222,24 +245,28 @@ export default function ConnectionsClient() {
 
           <Link
             href="/match"
-            className="inline-flex h-11 items-center justify-center rounded-md border border-fuchsia-300/25 bg-[linear-gradient(110deg,#7c3aed,#ec2994)] px-5 text-sm font-black text-white shadow-[0_12px_34px_rgba(168,45,255,0.22)] transition hover:border-fuchsia-200/40 hover:brightness-110"
+            className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-fuchsia-300/30 bg-[linear-gradient(110deg,#7c3aed,#ec2994)] px-6 text-sm font-black text-white shadow-[0_14px_38px_rgba(190,35,220,0.3)] transition hover:border-fuchsia-200/50 hover:brightness-110"
           >
+            <PeopleIcon className="h-[18px] w-[18px]" />
             Find a Match
           </Link>
         </div>
 
-        <div className="mt-7 grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:gap-2.5">
+        <div className="mt-7 xl:grid xl:grid-cols-[minmax(0,1fr)_260px] xl:gap-8">
+          <div className="min-w-0">
+        <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:gap-2.5">
           {tabs.map((tab) => (
             <button
               key={tab.key}
               type="button"
               onClick={() => setActiveTab(tab.key)}
-              className={`min-h-11 min-w-0 rounded-md border px-2 py-2 text-xs font-black transition sm:px-5 sm:text-sm ${
+              className={`inline-flex min-h-11 min-w-0 items-center justify-center gap-2 rounded-md border px-2 py-2 text-xs font-black transition sm:px-5 sm:text-sm ${
                 activeTab === tab.key
-                  ? "border-[#b968ff]/75 bg-[linear-gradient(135deg,rgba(139,61,255,0.34),rgba(195,93,255,0.18))] text-white shadow-[0_0_24px_rgba(139,61,255,0.16)]"
-                  : "border-white/10 bg-[#110d21]/55 text-[#aaa4b8] hover:border-purple-300/30 hover:bg-[#17112a]/75 hover:text-white"
+                  ? "border-[#b968ff]/85 bg-[linear-gradient(135deg,rgba(118,46,255,0.56),rgba(207,48,219,0.24))] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_0_26px_rgba(139,61,255,0.24)]"
+                  : "border-purple-100/15 bg-[#17112e]/55 text-[#aaa4b8] backdrop-blur-md hover:border-purple-300/35 hover:bg-[#1b1435]/70 hover:text-white"
               }`}
             >
+              <PeopleIcon />
               {tab.label}
             </button>
           ))}
@@ -252,7 +279,7 @@ export default function ConnectionsClient() {
         )}
 
         {!currentUserId && !loading ? (
-          <section className="mt-8 rounded-lg border border-purple-200/15 bg-[linear-gradient(145deg,rgba(24,18,43,0.9),rgba(12,10,26,0.94))] p-6 shadow-[0_18px_50px_rgba(0,0,0,0.24)] backdrop-blur-sm">
+          <section className="mt-8 rounded-lg border border-purple-200/20 bg-[linear-gradient(145deg,rgba(37,24,65,0.68),rgba(19,14,42,0.72))] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_18px_50px_rgba(0,0,0,0.2)] backdrop-blur-xl">
             <h2 className="text-xl font-black">Sign in to see your Connections.</h2>
             <button
               type="button"
@@ -263,7 +290,7 @@ export default function ConnectionsClient() {
             </button>
           </section>
         ) : loading ? (
-          <div className="mt-8 rounded-lg border border-purple-200/15 bg-[linear-gradient(145deg,rgba(24,18,43,0.9),rgba(12,10,26,0.94))] p-6 text-[#aaa4b8] shadow-[0_18px_50px_rgba(0,0,0,0.24)] backdrop-blur-sm">
+          <div className="mt-8 rounded-lg border border-purple-200/20 bg-[linear-gradient(145deg,rgba(37,24,65,0.68),rgba(19,14,42,0.72))] p-6 text-[#aaa4b8] shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_18px_50px_rgba(0,0,0,0.2)] backdrop-blur-xl">
             Loading...
           </div>
         ) : activeTab === "connections" ? (
@@ -271,13 +298,16 @@ export default function ConnectionsClient() {
             <label className="sr-only" htmlFor="connection-search">
               Search Connections
             </label>
+            <div className="relative">
+              <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-[#a9a1bb]"><SearchIcon /></span>
             <input
               id="connection-search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search Connections"
-              className="h-12 w-full rounded-md border border-purple-200/15 bg-[#090713]/75 px-4 text-sm font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.025)] outline-none transition placeholder:text-[#817b8f] focus:border-[#b968ff]/80 focus:bg-[#0d0918]/90 focus:shadow-[0_0_0_3px_rgba(139,61,255,0.12)]"
+              className="h-12 w-full rounded-md border border-purple-200/20 bg-[#17112d]/60 pl-12 pr-4 text-sm font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_14px_34px_rgba(0,0,0,0.12)] outline-none backdrop-blur-md transition placeholder:text-[#aaa3b7] focus:border-[#b968ff]/85 focus:bg-[#1a1233]/72 focus:shadow-[0_0_0_3px_rgba(139,61,255,0.15),0_14px_34px_rgba(0,0,0,0.12)]"
             />
+            </div>
 
             {filteredConnections.length === 0 ? (
               <div className="mt-5 rounded-lg border border-dashed border-purple-300/25 bg-[#100b20]/65 p-8 text-center backdrop-blur-sm">
@@ -316,6 +346,19 @@ export default function ConnectionsClient() {
             profiles={followers}
           />
         )}
+          </div>
+
+          <aside className="hidden xl:block">
+            <div className="sticky top-28 rounded-lg border border-fuchsia-300/20 bg-[linear-gradient(155deg,rgba(43,16,66,0.58),rgba(21,12,45,0.66))] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_20px_55px_rgba(19,4,43,0.28)] backdrop-blur-xl">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-[#e1c9ff]">Your Connections</p>
+              <p className="mt-4 text-sm font-semibold leading-6 text-[#c3bcd0]">These are people you both chose to Keep in Touch with.</p>
+              <p className="mt-2 text-sm font-semibold leading-6 text-[#a9a1b6]">You can always remove connections or reach out later.</p>
+              <div className="my-6 h-px bg-gradient-to-r from-purple-300/20 via-fuchsia-300/15 to-transparent" />
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-[#ff7cba]">Keep It Real</p>
+              <p className="mt-3 text-sm font-semibold text-[#b8b0c4]">Quality over quantity.</p>
+            </div>
+          </aside>
+        </div>
       </div>
     </main>
   );
@@ -336,7 +379,7 @@ function ConnectionCard({
     : null;
 
   return (
-    <article className="grid gap-4 rounded-lg border border-purple-200/15 bg-[linear-gradient(135deg,rgba(24,18,43,0.9),rgba(13,11,28,0.94))] p-4 shadow-[0_14px_36px_rgba(0,0,0,0.2)] backdrop-blur-sm transition hover:border-purple-300/35 hover:bg-[linear-gradient(135deg,rgba(30,21,52,0.93),rgba(16,12,34,0.96))] sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+    <article className="grid gap-4 rounded-lg border border-purple-200/20 bg-[linear-gradient(135deg,rgba(32,22,59,0.68),rgba(18,14,40,0.72))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_14px_38px_rgba(3,2,15,0.2)] backdrop-blur-xl transition duration-200 hover:-translate-y-px hover:border-purple-300/42 hover:brightness-110 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.09),0_18px_44px_rgba(58,17,110,0.24)] sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
       <div className="flex min-w-0 items-center gap-4">
         {connection.person.avatar_url ? (
           <img
@@ -400,7 +443,7 @@ function ProfileList({ empty, profiles }: { empty: string; profiles: ProfileRow[
         return (
           <article
             key={profile.id}
-            className="flex items-center justify-between gap-4 rounded-lg border border-purple-200/15 bg-[linear-gradient(135deg,rgba(24,18,43,0.9),rgba(13,11,28,0.94))] p-4 shadow-[0_14px_36px_rgba(0,0,0,0.2)] backdrop-blur-sm transition hover:border-purple-300/35"
+            className="flex items-center justify-between gap-4 rounded-lg border border-purple-200/20 bg-[linear-gradient(135deg,rgba(32,22,59,0.68),rgba(18,14,40,0.72))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_14px_38px_rgba(3,2,15,0.2)] backdrop-blur-xl transition duration-200 hover:-translate-y-px hover:border-purple-300/42 hover:brightness-110"
           >
             <div className="flex min-w-0 items-center gap-4">
               {profile.avatar_url ? (
