@@ -43,7 +43,7 @@ export const partyUpTheme = {
 
 export function PartyUpAtmosphere({
   intensity = "standard",
-  crowd = false,
+  crowd = true,
 }: {
   intensity?: PartyUpAtmosphereIntensity;
   crowd?: boolean;
@@ -56,7 +56,7 @@ export function PartyUpAtmosphere({
       {crowd && (
         <div
           className={`absolute inset-x-0 top-0 h-[min(960px,100svh)] bg-cover bg-[position:62%_top] mix-blend-screen lg:bg-center ${classes.crowd}`}
-          style={{ backgroundImage: "url('/images/hero-concert-crowd.png')" }}
+          style={{ backgroundImage: "url('/images/partyup-atmosphere-crowd.png')" }}
         />
       )}
       <div className={`absolute inset-0 bg-[radial-gradient(ellipse_62%_80%_at_0%_44%,var(--partyup-glow-purple),transparent_72%)] ${classes.purple}`} />
@@ -70,7 +70,7 @@ export function PartyUpAtmosphere({
 export function PartyUpPageShell({
   children,
   intensity = "standard",
-  crowd = false,
+  crowd = true,
   className = "",
 }: {
   children: ReactNode;
