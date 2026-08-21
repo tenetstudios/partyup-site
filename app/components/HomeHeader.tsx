@@ -3,6 +3,8 @@ import Link from "next/link";
 import React, { useEffect, useRef, useState } from "react";
 import AuthButton from "@/app/components/AuthButton";
 import CreateRoomButton from "@/app/components/CreateRoomButton";
+import { resolveMyEventRecaps } from "@/lib/recaps";
+import { createSupabaseClient } from "@/lib/supabase";
 
 function NavIcon({ type }: { type: "home" | "map" | "connections" | "activity" }) {
   const paths = {
@@ -26,6 +28,7 @@ function NavIcon({ type }: { type: "home" | "map" | "connections" | "activity" }
 
 export default function HomeHeader({ liveCount }: { liveCount?: number }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const nav = [
     { href: "/", label: "Home", icon: "home" as const, active: true },
@@ -33,6 +36,25 @@ export default function HomeHeader({ liveCount }: { liveCount?: number }) {
     { href: "/connections", label: "Connections", icon: "connections" as const },
     { href: "/activity", label: "Activity", icon: "activity" as const },
   ];
+
+  useEffect(() => {
+    const supabase = createSupabaseClient();
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
+    async function start() {
+      const { data } = await supabase.auth.getUser();
+      if (!data.user) return;
+      try { await resolveMyEventRecaps(supabase); } catch { /* Existing Activity remains usable before migration deployment. */ }
+      const refresh = async () => {
+        const { count } = await supabase.from("notifications").select("id", { count: "exact", head: true }).eq("user_id", data.user!.id).eq("is_read", false);
+        setUnreadCount(count || 0);
+      };
+      await refresh();
+      channel = supabase.channel(`web-notifications-${data.user.id}`).on("postgres_changes", { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${data.user.id}` }, refresh).subscribe();
+    }
+    void start();
+    return () => { if (channel) void supabase.removeChannel(channel); };
+  }, []);
 
   useEffect(() => {
     if (!menuOpen) {
@@ -76,6 +98,7 @@ export default function HomeHeader({ liveCount }: { liveCount?: number }) {
             >
               <NavIcon type={item.icon} />
               {item.label}
+              {item.icon === "activity" && unreadCount > 0 && <span className="grid min-w-5 place-items-center rounded-full bg-[#c35dff] px-1.5 text-[10px] font-black text-white">{unreadCount > 99 ? "99+" : unreadCount}</span>}
             </Link>
           ))}
         </div>
@@ -119,6 +142,7 @@ export default function HomeHeader({ liveCount }: { liveCount?: number }) {
                   >
                     <NavIcon type={item.icon} />
                     {item.label}
+                    {item.icon === "activity" && unreadCount > 0 && <span className="ml-auto grid min-w-5 place-items-center rounded-full bg-[#c35dff] px-1.5 text-[10px] font-black text-white">{unreadCount > 99 ? "99+" : unreadCount}</span>}
                   </Link>
                 ))}
               </div>

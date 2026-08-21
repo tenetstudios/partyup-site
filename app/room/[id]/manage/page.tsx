@@ -7,6 +7,7 @@ import RoomAnnouncementManager from "./RoomAnnouncementManager";
 import RoomDetailsEditor from "./RoomDetailsEditor";
 import RoomEntryLinkPanel from "./RoomEntryLinkPanel";
 import HostDashboardOverview from "./HostDashboardOverview";
+import AfterEventMessageManager from "./AfterEventMessageManager";
 
 export default async function ManageRoomPage({
   params,
@@ -50,6 +51,7 @@ const { data: room } = await supabase
         <RoomDetailsEditor roomId={id} />
         <RoomEntryLinkPanel roomId={id} />
         <RoomAnnouncementManager roomId={id} />
+        <AfterEventMessageManager roomId={id} />
         <RoomManagePanel roomId={id} />
         <ObsStreamPanel roomId={id} />
         <div className="mt-8">
