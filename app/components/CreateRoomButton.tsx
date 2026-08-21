@@ -560,7 +560,7 @@ export default function CreateRoomButton({
                     </div>
                   </section>
 
-                  <section className="flex h-full w-full shrink-0 flex-col gap-5 p-5">
+                  <section className="flex h-full w-full shrink-0 flex-col gap-5 overflow-y-auto overscroll-contain p-5 pb-8">
                     <div>
                       <h3 className="text-xl font-black">Room details</h3>
                       <p className="mt-1 text-sm font-bold text-zinc-500">
