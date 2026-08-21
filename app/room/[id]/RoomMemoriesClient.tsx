@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import HomeHeader from "@/app/components/HomeHeader";
+import { PartyUpPageShell, partyUpTheme } from "@/app/components/PartyUpTheme";
 import {
   formatMemoryTimestamp,
   getMemoryPublicUrl,
@@ -266,7 +267,7 @@ export default function RoomMemoriesClient({ roomId }: { roomId: string }) {
   const ended = room?.status === "ended";
 
   return (
-    <main className="min-h-screen bg-[#05040b] text-white">
+    <PartyUpPageShell intensity="standard">
       <HomeHeader />
 
       <div className="mx-auto w-full max-w-6xl px-5 py-8">
@@ -283,7 +284,7 @@ export default function RoomMemoriesClient({ roomId }: { roomId: string }) {
             </p>
           </div>
 
-          {!ended && <label className={`inline-flex h-11 cursor-pointer items-center justify-center rounded-md bg-pink-500 px-5 text-sm font-black text-white hover:bg-pink-600 ${!currentIdentityId || uploading ? "pointer-events-none opacity-55" : ""}`}>
+          {!ended && <label className={`${partyUpTheme.primaryButton} h-11 cursor-pointer px-5 text-sm ${!currentIdentityId || uploading ? "pointer-events-none opacity-55" : ""}`}>
             {uploading ? "Uploading..." : "Add Memory"}
             <input
               type="file"
@@ -298,7 +299,7 @@ export default function RoomMemoriesClient({ roomId }: { roomId: string }) {
           </label>}
         </div>
 
-        {ended && <div className="mt-6 rounded-md border border-purple-300/20 bg-purple-950/20 px-4 py-3 text-sm font-bold text-purple-100">This event has ended. Its Memories are retained and no new uploads are accepted.</div>}
+        {ended && <div className={`${partyUpTheme.glassElevated} mt-6 px-4 py-3 text-sm font-bold text-purple-100`}>This event has ended. Its Memories are retained and no new uploads are accepted.</div>}
 
         {message && (
           <div className="mt-6 rounded-md border border-amber-300/20 bg-amber-950/40 px-4 py-3 text-sm font-bold text-amber-100">
@@ -307,22 +308,22 @@ export default function RoomMemoriesClient({ roomId }: { roomId: string }) {
         )}
 
         {!currentUserId && !loading ? (
-          <section className="mt-8 rounded-lg border border-white/10 bg-[#10101a] p-6">
+          <section className={`${partyUpTheme.glassElevated} mt-8 p-6`}>
             <h2 className="text-xl font-black">Sign in to see room Memories.</h2>
             <button
               type="button"
               onClick={signInWithGoogle}
-              className="mt-5 rounded-md bg-[#8b3dff] px-5 py-3 text-sm font-black text-white hover:bg-[#7b31e8]"
+              className={`${partyUpTheme.primaryButton} mt-5 px-5 py-3 text-sm`}
             >
               Sign in
             </button>
           </section>
         ) : loading ? (
-          <section className="mt-8 rounded-lg border border-white/10 bg-[#10101a] p-6 text-[#aaa4b8]">
+          <section className={`${partyUpTheme.glassElevated} mt-8 p-6 text-[#aaa4b8]`}>
             Loading...
           </section>
         ) : memories.length === 0 ? (
-          <section className="mt-8 rounded-lg border border-dashed border-purple-300/20 bg-black/20 p-8 text-center">
+          <section className={`${partyUpTheme.emptyState} mt-8 p-8`}>
             <h2 className="text-xl font-black">No memories yet.</h2>
             <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-[#aaa4b8]">
               {ended ? "No Memories were posted before this event ended." : "Add a photo or clip from this room and it will appear here."}
@@ -336,11 +337,11 @@ export default function RoomMemoriesClient({ roomId }: { roomId: string }) {
               const canDelete = isHost || memory.uploader_identity_id === currentIdentityId;
 
               return (
-                <article key={memory.id} className="overflow-hidden rounded-lg border border-white/10 bg-[#10101a]">
+                <article key={memory.id} className={`${partyUpTheme.glassCard} overflow-hidden`}>
                   <button
                     type="button"
                     onClick={() => setSelectedMemory({ ...memory, publicUrl })}
-                    className="relative block aspect-square w-full overflow-hidden bg-black text-left"
+                    className="relative block aspect-square w-full overflow-hidden bg-[#070712] text-left"
                     aria-label="Open Memory"
                   >
                     {memory.media_type === "image" ? (
@@ -377,8 +378,8 @@ export default function RoomMemoriesClient({ roomId }: { roomId: string }) {
                         onClick={() => void toggleSaved(memory)}
                         className={`inline-flex min-h-10 items-center gap-2 rounded-md border px-3 text-sm font-black ${
                           memory.is_saved
-                            ? "border-[#c35dff] bg-[#c35dff]/18 text-white"
-                            : "border-white/10 bg-white/[0.04] text-[#d6d1df] hover:text-white"
+                            ? `${partyUpTheme.tabActive} border px-3`
+                            : `${partyUpTheme.ghostButton} px-3`
                         } disabled:cursor-not-allowed disabled:opacity-60`}
                       >
                         <BookmarkIcon filled={memory.is_saved} />
@@ -390,7 +391,7 @@ export default function RoomMemoriesClient({ roomId }: { roomId: string }) {
                           type="button"
                           disabled={processingId === memory.id}
                           onClick={() => void deleteMemory(memory)}
-                          className="min-h-10 rounded-md border border-red-400/30 px-3 text-sm font-black text-red-200 hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-60"
+                          className={`${partyUpTheme.destructiveButton} px-3 text-sm`}
                         >
                           Delete
                         </button>
@@ -406,7 +407,7 @@ export default function RoomMemoriesClient({ roomId }: { roomId: string }) {
 
       {selectedMemory && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/90 px-4 py-8" role="dialog" aria-modal="true">
-          <div className="w-full max-w-4xl overflow-hidden rounded-lg border border-white/10 bg-[#10101a]">
+          <div className={`${partyUpTheme.glassElevated} w-full max-w-4xl overflow-hidden`}>
             <div className="flex items-center justify-between gap-4 border-b border-white/10 p-4">
               <div className="min-w-0">
                 <p className="truncate text-sm font-black text-[#d4b6ff]">
@@ -419,14 +420,14 @@ export default function RoomMemoriesClient({ roomId }: { roomId: string }) {
               <button
                 type="button"
                 onClick={() => setSelectedMemory(null)}
-                className="grid h-10 w-10 place-items-center rounded-md border border-white/10 text-xl font-black hover:bg-white/10"
+                className={`${partyUpTheme.ghostButton} grid h-10 w-10 place-items-center text-xl`}
                 aria-label="Close Memory"
               >
                 x
               </button>
             </div>
 
-            <div className="grid max-h-[76vh] place-items-center bg-black">
+            <div className="grid max-h-[76vh] place-items-center bg-[#060610]">
               {selectedMemory.media_type === "image" ? (
                 <img src={selectedMemory.publicUrl} alt="" className="max-h-[76vh] w-full object-contain" />
               ) : (
@@ -436,6 +437,6 @@ export default function RoomMemoriesClient({ roomId }: { roomId: string }) {
           </div>
         </div>
       )}
-    </main>
+    </PartyUpPageShell>
   );
 }

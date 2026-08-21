@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import HomeHeader from "@/app/components/HomeHeader";
+import { PartyUpPageShell, partyUpTheme } from "@/app/components/PartyUpTheme";
 import {
   getProfileSocialState,
   removePartyUpConnection,
@@ -222,8 +223,8 @@ export default function ProfileClient({ profileId }: { profileId: string }) {
     ? memoryGroups.find((group) => group.room_id === selectedGroupId) ?? null
     : null;
 
-  return (
-    <main className="min-h-screen bg-[#05040b] text-white">
+  const pageContent = (
+    <>
       <HomeHeader />
 
       <div className="mx-auto w-full max-w-3xl px-5 py-8">
@@ -238,7 +239,7 @@ export default function ProfileClient({ profileId }: { profileId: string }) {
             Loading...
           </section>
         ) : profile ? (
-          <section className="mt-6 rounded-lg border border-white/10 bg-[#10101a] p-6">
+          <section className={isOwnProfile && activeSection === "memories" ? `${partyUpTheme.glassElevated} mt-6 p-6` : "mt-6 rounded-lg border border-white/10 bg-[#10101a] p-6"}>
             <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
               {profile.avatar_url ? (
                 <img
@@ -316,10 +317,10 @@ export default function ProfileClient({ profileId }: { profileId: string }) {
                     setActiveSection("profile");
                     setSelectedGroupId(null);
                   }}
-                  className={`rounded-md border px-4 py-2 text-sm font-black ${
+                  className={`${partyUpTheme.tabBase} px-4 py-2 text-sm ${
                     activeSection === "profile"
-                      ? "border-[#c35dff] bg-[#c35dff]/18 text-white"
-                      : "border-white/10 bg-white/[0.04] text-[#aaa4b8] hover:text-white"
+                      ? partyUpTheme.tabActive
+                      : partyUpTheme.tabInactive
                   }`}
                 >
                   Connections
@@ -327,10 +328,10 @@ export default function ProfileClient({ profileId }: { profileId: string }) {
                 <button
                   type="button"
                   onClick={() => setActiveSection("memories")}
-                  className={`rounded-md border px-4 py-2 text-sm font-black ${
+                  className={`${partyUpTheme.tabBase} px-4 py-2 text-sm ${
                     activeSection === "memories"
-                      ? "border-[#c35dff] bg-[#c35dff]/18 text-white"
-                      : "border-white/10 bg-white/[0.04] text-[#aaa4b8] hover:text-white"
+                      ? partyUpTheme.tabActive
+                      : partyUpTheme.tabInactive
                   }`}
                 >
                   Memories
@@ -401,8 +402,14 @@ export default function ProfileClient({ profileId }: { profileId: string }) {
           </section>
         )}
       </div>
-    </main>
+    </>
   );
+
+  if (isOwnProfile && activeSection === "memories") {
+    return <PartyUpPageShell intensity="standard">{pageContent}</PartyUpPageShell>;
+  }
+
+  return <main className="min-h-screen bg-[#05040b] text-white">{pageContent}</main>;
 }
 
 function HostSeriesSection({ series, isOwner }: { series: EventSeriesSummary[]; isOwner: boolean }) {
@@ -544,14 +551,14 @@ function ProfileMemories({
 }) {
   if (groups.length === 0) {
     return (
-      <section className="mt-6 rounded-lg border border-dashed border-purple-300/20 bg-black/20 p-8 text-center">
+      <section className={`${partyUpTheme.emptyState} mt-6 p-8`}>
         <h2 className="text-xl font-black">No saved memories yet.</h2>
         <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-[#aaa4b8]">
           Save photos and clips from event rooms and they&apos;ll appear here.
         </p>
         <Link
           href="/live-now"
-          className="mt-6 inline-flex h-11 items-center rounded-md bg-pink-500 px-5 text-sm font-black text-white hover:bg-pink-600"
+          className={`${partyUpTheme.primaryButton} mt-6 px-5 text-sm`}
         >
           Explore Rooms
         </Link>
@@ -578,7 +585,7 @@ function ProfileMemories({
           </div>
           <Link
             href={`/room/${selectedGroup.room_id}/memories`}
-            className="inline-flex h-10 items-center justify-center rounded-md border border-white/10 px-4 text-sm font-black text-white hover:bg-white/10"
+            className={`${partyUpTheme.ghostButton} h-10 px-4 text-sm`}
           >
             Open Room Memories
           </Link>
@@ -617,7 +624,7 @@ function ProfileMemories({
             key={group.room_id}
             type="button"
             onClick={() => onSelectGroup(group.room_id)}
-            className="rounded-lg border border-white/10 bg-black/20 p-4 text-left hover:border-[#c35dff]/50"
+            className={`${partyUpTheme.glassInteractive} p-4 text-left`}
           >
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
@@ -672,11 +679,11 @@ function SavedMemoryTile({
   const url = getMemoryPublicUrl(supabase, memory.thumbnail_path || memory.media_path);
 
   return (
-    <article className="overflow-hidden rounded-lg border border-white/10 bg-black/25">
+    <article className={`${partyUpTheme.glassCard} overflow-hidden`}>
       <button
         type="button"
         onClick={() => onSelect(memory)}
-        className="block aspect-square w-full overflow-hidden bg-black"
+        className="block aspect-square w-full overflow-hidden bg-[#070712]"
         aria-label="Open saved Memory"
       >
         {memory.media_type === "image" ? (
@@ -693,7 +700,7 @@ function SavedMemoryTile({
           type="button"
           disabled={processing}
           onClick={() => onUnsave(memory)}
-          className="mt-3 min-h-9 w-full rounded-md border border-white/10 text-xs font-black text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+          className={`${partyUpTheme.ghostButton} mt-3 min-h-9 w-full text-xs`}
         >
           Unsave
         </button>
@@ -723,7 +730,7 @@ function SavedMemoryModal({
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/90 px-4 py-8" role="dialog" aria-modal="true">
-      <div className="w-full max-w-4xl overflow-hidden rounded-lg border border-white/10 bg-[#10101a]">
+      <div className={`${partyUpTheme.glassElevated} w-full max-w-4xl overflow-hidden`}>
         <div className="flex items-start justify-between gap-4 border-b border-white/10 p-4">
           <div className="min-w-0">
             <h3 className="truncate text-lg font-black">{memory.room_title}</h3>
@@ -734,14 +741,14 @@ function SavedMemoryModal({
           <button
             type="button"
             onClick={onClose}
-            className="grid h-10 w-10 place-items-center rounded-md border border-white/10 text-xl font-black hover:bg-white/10"
+            className={`${partyUpTheme.ghostButton} grid h-10 w-10 place-items-center text-xl`}
             aria-label="Close Memory"
           >
             x
           </button>
         </div>
 
-        <div className="grid max-h-[70vh] place-items-center bg-black">
+        <div className="grid max-h-[70vh] place-items-center bg-[#060610]">
           {memory.media_type === "image" ? (
             <img src={publicUrl} alt="" className="max-h-[70vh] w-full object-contain" />
           ) : (
@@ -757,7 +764,7 @@ function SavedMemoryModal({
             type="button"
             disabled={processing}
             onClick={() => onUnsave(memory)}
-            className="rounded-md border border-red-400/30 px-4 py-2 text-sm font-black text-red-200 hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-60"
+            className={`${partyUpTheme.destructiveButton} px-4 py-2 text-sm`}
           >
             Unsave
           </button>

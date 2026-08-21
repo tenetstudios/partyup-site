@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import HomeHeader from "@/app/components/HomeHeader";
+import { PartyUpPageShell, partyUpTheme } from "@/app/components/PartyUpTheme";
 import {
   formatConnectionDate,
   getConnectionContextText,
@@ -220,13 +221,7 @@ export default function ConnectionsClient() {
   }
 
   return (
-    <main className="relative isolate min-h-screen overflow-x-hidden bg-[#0d0a20] text-white">
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 bg-[linear-gradient(155deg,#080b1a_0%,#100b27_42%,#180b31_100%)]" />
-      <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[min(960px,100svh)] bg-cover bg-[position:62%_top] opacity-30 mix-blend-screen sm:opacity-36 lg:bg-center lg:opacity-42" style={{ backgroundImage: "url('/images/hero-concert-crowd.png')" }} />
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_62%_80%_at_0%_44%,rgba(72,52,255,0.38),transparent_72%)]" />
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_58%_72%_at_100%_48%,rgba(236,41,148,0.36),transparent_70%)]" />
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 bg-[linear-gradient(90deg,rgba(5,7,18,0.18),rgba(10,8,27,0.68)_42%,rgba(12,7,27,0.42)_70%,rgba(17,5,27,0.12))]" />
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_center,transparent_34%,rgba(4,4,14,0.44)_100%)]" />
+    <PartyUpPageShell intensity="immersive" crowd>
       <HomeHeader />
 
       <div className="relative mx-auto w-full max-w-[1280px] px-5 py-10 md:py-12">
@@ -245,7 +240,7 @@ export default function ConnectionsClient() {
 
           <Link
             href="/match"
-            className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-fuchsia-300/30 bg-[linear-gradient(110deg,#7c3aed,#ec2994)] px-6 text-sm font-black text-white shadow-[0_14px_38px_rgba(190,35,220,0.3)] transition hover:border-fuchsia-200/50 hover:brightness-110"
+            className={`${partyUpTheme.primaryButton} h-12 gap-2 px-6 text-sm`}
           >
             <PeopleIcon className="h-[18px] w-[18px]" />
             Find a Match
@@ -260,10 +255,10 @@ export default function ConnectionsClient() {
               key={tab.key}
               type="button"
               onClick={() => setActiveTab(tab.key)}
-              className={`inline-flex min-h-11 min-w-0 items-center justify-center gap-2 rounded-md border px-2 py-2 text-xs font-black transition sm:px-5 sm:text-sm ${
+              className={`${partyUpTheme.tabBase} gap-2 px-2 py-2 text-xs sm:px-5 sm:text-sm ${
                 activeTab === tab.key
-                  ? "border-[#b968ff]/85 bg-[linear-gradient(135deg,rgba(118,46,255,0.56),rgba(207,48,219,0.24))] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_0_26px_rgba(139,61,255,0.24)]"
-                  : "border-purple-100/15 bg-[#17112e]/55 text-[#aaa4b8] backdrop-blur-md hover:border-purple-300/35 hover:bg-[#1b1435]/70 hover:text-white"
+                  ? partyUpTheme.tabActive
+                  : partyUpTheme.tabInactive
               }`}
             >
               <PeopleIcon />
@@ -279,18 +274,18 @@ export default function ConnectionsClient() {
         )}
 
         {!currentUserId && !loading ? (
-          <section className="mt-8 rounded-lg border border-purple-200/20 bg-[linear-gradient(145deg,rgba(37,24,65,0.68),rgba(19,14,42,0.72))] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_18px_50px_rgba(0,0,0,0.2)] backdrop-blur-xl">
+          <section className={`${partyUpTheme.glassElevated} mt-8 p-6`}>
             <h2 className="text-xl font-black">Sign in to see your Connections.</h2>
             <button
               type="button"
               onClick={signInWithGoogle}
-              className="mt-5 rounded-md bg-[#8b3dff] px-5 py-3 text-sm font-black text-white shadow-[0_10px_26px_rgba(139,61,255,0.22)] hover:bg-[#9b4dff]"
+              className={`${partyUpTheme.primaryButton} mt-5 px-5 py-3 text-sm`}
             >
               Sign in
             </button>
           </section>
         ) : loading ? (
-          <div className="mt-8 rounded-lg border border-purple-200/20 bg-[linear-gradient(145deg,rgba(37,24,65,0.68),rgba(19,14,42,0.72))] p-6 text-[#aaa4b8] shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_18px_50px_rgba(0,0,0,0.2)] backdrop-blur-xl">
+          <div className={`${partyUpTheme.glassElevated} mt-8 p-6 text-[#aaa4b8]`}>
             Loading...
           </div>
         ) : activeTab === "connections" ? (
@@ -305,19 +300,19 @@ export default function ConnectionsClient() {
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search Connections"
-              className="h-12 w-full rounded-md border border-purple-200/20 bg-[#17112d]/60 pl-12 pr-4 text-sm font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_14px_34px_rgba(0,0,0,0.12)] outline-none backdrop-blur-md transition placeholder:text-[#aaa3b7] focus:border-[#b968ff]/85 focus:bg-[#1a1233]/72 focus:shadow-[0_0_0_3px_rgba(139,61,255,0.15),0_14px_34px_rgba(0,0,0,0.12)]"
+              className={`${partyUpTheme.input} h-12 w-full pl-12 pr-4 text-sm`}
             />
             </div>
 
             {filteredConnections.length === 0 ? (
-              <div className="mt-5 rounded-lg border border-dashed border-purple-300/25 bg-[#100b20]/65 p-8 text-center backdrop-blur-sm">
+              <div className={`${partyUpTheme.emptyState} mt-5 p-8`}>
                 <h2 className="text-xl font-black">No connections yet.</h2>
                 <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-[#aaa4b8]">
                   When you and someone you meet through Match both choose Keep in Touch, they&apos;ll appear here.
                 </p>
                 <Link
                   href="/match"
-                  className="mt-6 inline-flex h-11 items-center rounded-md border border-fuchsia-300/25 bg-[linear-gradient(110deg,#7c3aed,#ec2994)] px-5 text-sm font-black text-white shadow-[0_12px_30px_rgba(168,45,255,0.2)] hover:brightness-110"
+                  className={`${partyUpTheme.primaryButton} mt-6 px-5 text-sm`}
                 >
                   Find a Match
                 </Link>
@@ -360,7 +355,7 @@ export default function ConnectionsClient() {
           </aside>
         </div>
       </div>
-    </main>
+    </PartyUpPageShell>
   );
 }
 
@@ -379,7 +374,7 @@ function ConnectionCard({
     : null;
 
   return (
-    <article className="grid gap-4 rounded-lg border border-purple-200/20 bg-[linear-gradient(135deg,rgba(32,22,59,0.68),rgba(18,14,40,0.72))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_14px_38px_rgba(3,2,15,0.2)] backdrop-blur-xl transition duration-200 hover:-translate-y-px hover:border-purple-300/42 hover:brightness-110 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.09),0_18px_44px_rgba(58,17,110,0.24)] sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+    <article className={`${partyUpTheme.glassInteractive} grid gap-4 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center`}>
       <div className="flex min-w-0 items-center gap-4">
         {connection.person.avatar_url ? (
           <img
@@ -408,7 +403,7 @@ function ConnectionCard({
         {href && (
           <Link
             href={href}
-            className="rounded-md border border-white/10 bg-white/[0.025] px-3 py-2 text-xs font-black text-white transition hover:border-purple-200/30 hover:bg-purple-300/10"
+            className={`${partyUpTheme.ghostButton} px-3 py-2 text-xs`}
           >
             View Profile
           </Link>
@@ -417,7 +412,7 @@ function ConnectionCard({
           type="button"
           disabled={removing}
           onClick={() => onRemove(connection)}
-          className="rounded-md border border-pink-400/30 bg-pink-950/10 px-3 py-2 text-xs font-black text-[#ff9dc5] transition hover:border-pink-300/50 hover:bg-pink-500/10 disabled:cursor-not-allowed disabled:opacity-60"
+          className={`${partyUpTheme.destructiveButton} px-3 py-2 text-xs`}
         >
           {removing ? "Removing..." : "Remove Connection"}
         </button>
@@ -429,7 +424,7 @@ function ConnectionCard({
 function ProfileList({ empty, profiles }: { empty: string; profiles: ProfileRow[] }) {
   if (profiles.length === 0) {
     return (
-      <section className="mt-8 rounded-lg border border-dashed border-purple-300/25 bg-[#100b20]/65 p-8 text-center text-[#aaa4b8] backdrop-blur-sm">
+      <section className={`${partyUpTheme.emptyState} mt-8 p-8 text-[#aaa4b8]`}>
         {empty}
       </section>
     );
@@ -443,7 +438,7 @@ function ProfileList({ empty, profiles }: { empty: string; profiles: ProfileRow[
         return (
           <article
             key={profile.id}
-            className="flex items-center justify-between gap-4 rounded-lg border border-purple-200/20 bg-[linear-gradient(135deg,rgba(32,22,59,0.68),rgba(18,14,40,0.72))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_14px_38px_rgba(3,2,15,0.2)] backdrop-blur-xl transition duration-200 hover:-translate-y-px hover:border-purple-300/42 hover:brightness-110"
+            className={`${partyUpTheme.glassInteractive} flex items-center justify-between gap-4 p-4`}
           >
             <div className="flex min-w-0 items-center gap-4">
               {profile.avatar_url ? (
@@ -462,7 +457,7 @@ function ProfileList({ empty, profiles }: { empty: string; profiles: ProfileRow[
 
             <Link
               href={`/user/${profile.id}`}
-              className="rounded-md border border-white/10 bg-white/[0.025] px-3 py-2 text-xs font-black text-white transition hover:border-purple-200/30 hover:bg-purple-300/10"
+              className={`${partyUpTheme.ghostButton} px-3 py-2 text-xs`}
             >
               View Profile
             </Link>

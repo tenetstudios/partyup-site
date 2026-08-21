@@ -3,6 +3,20 @@
 :root {
   --background: #07000f;
   --foreground: #ffffff;
+  --partyup-bg-deep: #080b1a;
+  --partyup-bg-indigo: #100b27;
+  --partyup-bg-violet: #180b31;
+  --partyup-surface: rgba(32, 22, 59, 0.68);
+  --partyup-surface-deep: rgba(18, 14, 40, 0.72);
+  --partyup-border: rgba(221, 194, 255, 0.2);
+  --partyup-purple: #8b3dff;
+  --partyup-purple-bright: #c35dff;
+  --partyup-pink: #ec2994;
+  --partyup-text: #ffffff;
+  --partyup-text-secondary: #c9c2d7;
+  --partyup-text-muted: #817b8b;
+  --partyup-glow-purple: rgba(72, 52, 255, 0.38);
+  --partyup-glow-pink: rgba(236, 41, 148, 0.36);
 }
 
 @theme inline {
