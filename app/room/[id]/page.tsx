@@ -16,6 +16,7 @@ import ManageRoomLink from "./ManageRoomLink";
 import RoomAnalyticsTracker from "./RoomAnalyticsTracker";
 import RoomAnnouncementBanner from "./RoomAnnouncementBanner";
 import RoomChat from "./RoomChat";
+import RoomStatusWatcher from "./RoomStatusWatcher";
 import WebLiveKitRoom from "./WebLiveKitRoom";
 
 type RoomRecord = LiveRoom & {
@@ -70,6 +71,7 @@ function RoomHeader({
   onlineCount: number;
 }) {
   const mode = labelize(asText(room.mode)) ?? "livestream";
+  const ended = asText(room.status)?.toLowerCase() === "ended";
 
   return (
     <header className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
@@ -91,8 +93,8 @@ function RoomHeader({
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-3 text-[15px] font-bold text-white">
             <span className="flex items-center gap-2">
-              <span className="h-3 w-3 rounded-full bg-[#19e68c]" />
-              {onlineCount} online now
+              <span className={`h-3 w-3 rounded-full ${ended ? "bg-zinc-500" : "bg-[#19e68c]"}`} />
+              {ended ? "Event ended" : `${onlineCount} online now`}
             </span>
             <span className="h-1 w-1 rounded-full bg-white/70" />
             <span className="uppercase">{mode}</span>
@@ -106,6 +108,7 @@ function RoomHeader({
 }
 
 function RoomInfoBar({ room }: { room: RoomRecord }) {
+  const ended = asText(room.status)?.toLowerCase() === "ended";
   const tags = [
     getCategory(room),
     labelize(asText(room.mode)),
@@ -144,8 +147,8 @@ function RoomInfoBar({ room }: { room: RoomRecord }) {
       >
         Memories
       </Link>
-      <LeaveRoomContextButton roomId={String(room.id)} />
-      <JoinRoomButton roomId={String(room.id)} />
+      {!ended && <LeaveRoomContextButton roomId={String(room.id)} />}
+      {!ended && <JoinRoomButton roomId={String(room.id)} />}
     </section>
   );
 }
@@ -174,14 +177,32 @@ export default async function RoomPage({
 
   const typedRoom = room as RoomRecord;
   const onlineCount = asNumber(typedRoom.current_users) ?? 0;
+  const ended = asText(typedRoom.status)?.toLowerCase() === "ended";
   const activeAnnouncement = await getActiveRoomAnnouncement(supabase, id);
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_50%_-20%,rgba(77,35,132,0.28),transparent_32%),#07000f] text-white">
-      <RoomAnalyticsTracker roomId={id} eventType="room_entry" />
+      {!ended && <RoomAnalyticsTracker roomId={id} eventType="room_entry" />}
+      <RoomStatusWatcher roomId={id} />
       <div className="mx-auto flex min-h-screen max-w-[1760px] flex-col gap-8 px-5 py-8 lg:px-7">
         <RoomHeader room={typedRoom} onlineCount={onlineCount} />
 
+        {ended ? (
+          <div className="mx-auto grid w-full max-w-5xl flex-1 content-start gap-5">
+            <section className="rounded-[10px] border border-purple-300/20 bg-[#120b1a] p-8 text-center">
+              <p className="text-xs font-black uppercase text-[#ff83b8]">Past event</p>
+              <h2 className="mt-2 text-3xl font-black">This event has ended</h2>
+              <p className="mx-auto mt-3 max-w-2xl leading-7 text-[#aaa4b8]">
+                The live room is closed. Its Memories, recap, attendance, and Event Series history remain available.
+              </p>
+              <div className="mt-6 flex flex-wrap justify-center gap-3">
+                <Link href={`/room/${id}/memories`} className="rounded-md bg-[#9146ff] px-5 py-3 text-sm font-black">View Memories</Link>
+                <Link href={`/recap/${id}`} className="rounded-md border border-white/15 px-5 py-3 text-sm font-black">Open Recap</Link>
+              </div>
+            </section>
+            <RoomInfoBar room={typedRoom} />
+          </div>
+        ) : (
         <div className="grid flex-1 gap-5 xl:grid-cols-[280px_minmax(0,1fr)_350px]">
           <div className="order-2 xl:order-1">
             <EventMatchButton roomId={id} />
@@ -199,6 +220,7 @@ export default async function RoomPage({
             <RoomChat roomId={id} onlineCount={onlineCount} hostId={typedRoom.host_id ?? null} />
           </div>
         </div>
+        )}
       </div>
     </main>
   );

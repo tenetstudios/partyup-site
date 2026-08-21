@@ -19,6 +19,7 @@ type Room = {
   id: string;
   title: string | null;
   host_id: string | null;
+  status: string | null;
 };
 
 type SelectedMemory = RoomMemory & {
@@ -94,7 +95,7 @@ export default function RoomMemoriesClient({ roomId }: { roomId: string }) {
 
       const { data: roomData, error: roomError } = await supabase
         .from("event_rooms")
-        .select("id, title, host_id")
+        .select("id, title, host_id, status")
         .eq("id", roomId)
         .maybeSingle<Room>();
 
@@ -262,6 +263,7 @@ export default function RoomMemoriesClient({ roomId }: { roomId: string }) {
   }
 
   const isHost = Boolean(room?.host_id && currentUserId === room.host_id);
+  const ended = room?.status === "ended";
 
   return (
     <main className="min-h-screen bg-[#05040b] text-white">
@@ -281,7 +283,7 @@ export default function RoomMemoriesClient({ roomId }: { roomId: string }) {
             </p>
           </div>
 
-          <label className={`inline-flex h-11 cursor-pointer items-center justify-center rounded-md bg-pink-500 px-5 text-sm font-black text-white hover:bg-pink-600 ${!currentIdentityId || uploading ? "pointer-events-none opacity-55" : ""}`}>
+          {!ended && <label className={`inline-flex h-11 cursor-pointer items-center justify-center rounded-md bg-pink-500 px-5 text-sm font-black text-white hover:bg-pink-600 ${!currentIdentityId || uploading ? "pointer-events-none opacity-55" : ""}`}>
             {uploading ? "Uploading..." : "Add Memory"}
             <input
               type="file"
@@ -293,8 +295,10 @@ export default function RoomMemoriesClient({ roomId }: { roomId: string }) {
                 event.currentTarget.value = "";
               }}
             />
-          </label>
+          </label>}
         </div>
+
+        {ended && <div className="mt-6 rounded-md border border-purple-300/20 bg-purple-950/20 px-4 py-3 text-sm font-bold text-purple-100">This event has ended. Its Memories are retained and no new uploads are accepted.</div>}
 
         {message && (
           <div className="mt-6 rounded-md border border-amber-300/20 bg-amber-950/40 px-4 py-3 text-sm font-bold text-amber-100">
@@ -321,7 +325,7 @@ export default function RoomMemoriesClient({ roomId }: { roomId: string }) {
           <section className="mt-8 rounded-lg border border-dashed border-purple-300/20 bg-black/20 p-8 text-center">
             <h2 className="text-xl font-black">No memories yet.</h2>
             <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-[#aaa4b8]">
-              Add a photo or clip from this room and it will appear here.
+              {ended ? "No Memories were posted before this event ended." : "Add a photo or clip from this room and it will appear here."}
             </p>
           </section>
         ) : (

@@ -1,2 +1,8 @@
 [functions.match-livekit-token]
 verify_jwt = false
+
+[functions.livekit-token]
+verify_jwt = false
+
+[functions.end-event-room]
+verify_jwt = false

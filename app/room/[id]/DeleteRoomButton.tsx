@@ -17,7 +17,9 @@ export default function DeleteRoomButton({
   async function deleteRoom() {
     if (loading) return;
 
-    const confirmed = window.confirm("Delete this room?");
+    const confirmed = window.confirm(
+      "Permanently delete this room? Its Memory records, saved Memories, attendance, and event history will be removed. Use End Event for completed events.",
+    );
     if (!confirmed) return;
 
     setLoading(true);
@@ -62,4 +64,4 @@ export default function DeleteRoomButton({
       {loading ? "Deleting..." : "Delete Room"}
     </button>
   );
-}   
+}
