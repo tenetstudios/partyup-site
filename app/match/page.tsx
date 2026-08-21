@@ -19,7 +19,7 @@ export default async function MatchPage({
         <div className="pointer-events-none absolute inset-x-8 top-20 h-72 bg-[radial-gradient(circle,rgba(236,72,153,0.14),transparent_68%)]" />
         <div className="relative mb-6 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-fuchsia-300">Electric friendship engine</p>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-fuchsia-300">Electric icebreak engine</p>
             <h1 className="mt-2 text-3xl font-black sm:text-4xl">PartyUp Match</h1>
           </div>
           <div className="flex items-center gap-2 text-xs font-bold text-zinc-400">

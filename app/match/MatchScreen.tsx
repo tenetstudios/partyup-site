@@ -44,6 +44,7 @@ export default function MatchScreen({
   const [busy, setBusy] = useState(false);
   const [poolLoading, setPoolLoading] = useState(Boolean(initialPoolId));
   const [activePool, setActivePool] = useState<MatchPool | null>(null);
+  const [eventRoomName, setEventRoomName] = useState<string | null>(null);
   const [identityMode, setIdentityMode] = useState<MatchIdentityMode>("account");
   const [guestToken, setGuestToken] = useState<string | null>(null);
   const [guestIdentityId, setGuestIdentityId] = useState<string | null>(null);
@@ -56,7 +57,11 @@ export default function MatchScreen({
   const supabase = useMemo(() => createSupabaseClient(), []);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const isEventMatch = Boolean(initialPoolId);
-  const poolContextLabel = isEventMatch ? "Matching with people here" : null;
+  const poolContextLabel = isEventMatch
+    ? eventRoomName
+      ? `Matching inside ${eventRoomName}`
+      : "Matching with people here"
+    : null;
   const isGuest = identityMode === "guest";
   const analyticsRoomId = initialRoomId && initialPoolId ? initialRoomId : null;
 
@@ -348,6 +353,30 @@ export default function MatchScreen({
   }, [initialPoolId, supabase]);
 
   useEffect(() => {
+    if (!initialRoomId) return;
+
+    let mounted = true;
+
+    async function loadEventRoomName() {
+      const { data } = await supabase
+        .from("event_rooms")
+        .select("title")
+        .eq("id", initialRoomId)
+        .maybeSingle();
+
+      if (mounted) {
+        setEventRoomName(data?.title?.trim() || null);
+      }
+    }
+
+    void loadEventRoomName();
+
+    return () => {
+      mounted = false;
+    };
+  }, [initialRoomId, supabase]);
+
+  useEffect(() => {
     if (state !== "searching" || !searchIdentityId) {
       return;
     }
@@ -579,6 +608,8 @@ export default function MatchScreen({
           busy={busy || poolLoading}
           error={error}
           contextLabel={poolContextLabel}
+          eventRoomName={eventRoomName}
+          backHref={initialRoomId ? `/room/${encodeURIComponent(initialRoomId)}` : "/"}
           guestClaimMessage={guestClaimMessage}
           hasGuestSession={Boolean(guestToken)}
           isAuthenticated={Boolean(user)}
@@ -589,7 +620,7 @@ export default function MatchScreen({
       {state === "searching" && (
         <MatchSearching
           busy={busy}
-          contextLabel={activePool?.pool_type === "event" ? "Matching with people here" : null}
+          contextLabel={activePool?.pool_type === "event" ? poolContextLabel : null}
           onCancel={cancelSearch}
         />
       )}

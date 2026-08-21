@@ -17,7 +17,7 @@ export default function MatchDisconnected({
         <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-zinc-300">{message}</p>
         <p className="mt-5 text-sm font-bold text-white">Your next connection is one signal away.</p>
         <div className="mt-7 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
-          <button onClick={onRematch} className="min-h-12 rounded-full bg-pink-500 px-6 py-3 font-black text-white transition hover:-translate-y-0.5 hover:bg-pink-400 active:translate-y-0">Find the next vibe</button>
+          <button onClick={onRematch} className="min-h-12 rounded-full bg-pink-500 px-6 py-3 font-black text-white transition hover:-translate-y-0.5 hover:bg-pink-400 active:translate-y-0">Find someone new</button>
           <Link href="/" className="px-5 py-3 text-sm font-bold text-zinc-300 hover:text-white">Return Home</Link>
         </div>
       </div>

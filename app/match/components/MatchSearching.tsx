@@ -24,7 +24,7 @@ export default function MatchSearching({
           {contextLabel ?? "Looking for someone with live energy and room to connect."}
         </p>
         <div className="mx-auto mt-6 grid max-w-md grid-cols-3 gap-2 text-left">
-          {["Vibe", "Timing", "Readiness"].map((signal) => (
+          {["Energy", "Timing", "Readiness"].map((signal) => (
             <div key={signal} className="rounded-md border border-white/10 bg-white/[0.04] p-3">
               <p className="text-[10px] font-black uppercase tracking-[0.1em] text-zinc-500">{signal}</p>
               <p className="mt-1 text-xs font-bold text-fuchsia-100">Scanning</p>

@@ -472,7 +472,7 @@ function MatchRoomView({
           sessionId,
           idempotencyKey: baseKey,
         }).catch(() => {
-          // Analytics must not block Keep in Touch.
+          // Analytics must not block the connection choice.
         });
       }
 
@@ -494,11 +494,11 @@ function MatchRoomView({
       }
 
       setKeepInTouchStatus("saved");
-      setKeepInTouchMessage("Saved. You'll connect if they choose the same.");
+      setKeepInTouchMessage("Request saved. You'll connect if they choose the same.");
     } catch (reason) {
       setKeepInTouchStatus(previousStatus);
       setKeepInTouchMessage(
-        reason instanceof Error ? reason.message : "Could not save Keep in Touch.",
+        reason instanceof Error ? reason.message : "Could not save your connection choice.",
       );
     }
   }
@@ -526,7 +526,7 @@ function MatchRoomView({
           <div className="relative h-full w-full [&_.lk-participant-name]:hidden [&_.lk-participant-tile]:h-full [&_.lk-participant-tile]:w-full [&_[data-lk-participant-name]]:hidden [&_video]:h-full [&_video]:w-full [&_video]:object-contain">
             <ParticipantTile trackRef={remoteTrack} />
             <div className="absolute bottom-28 left-4 rounded-full border border-white/10 bg-black/65 px-4 py-2 text-sm font-black text-white backdrop-blur">
-              Live vibe
+              Connection live
             </div>
           </div>
         ) : (
@@ -560,7 +560,7 @@ function MatchRoomView({
 
       <div className="absolute left-4 top-4 max-w-[calc(100%_-_12rem)] rounded-md border border-emerald-300/20 bg-black/70 px-4 py-3 backdrop-blur">
         <p className="text-sm font-black uppercase tracking-[0.14em] text-emerald-200">
-          {status === "connected" || status === "permission-warning" ? "Vibe locked" : "Locking signal"}
+          {status === "connected" || status === "permission-warning" ? "Connection live" : "Locking signal"}
         </p>
         {participantIdentity && (
           <p className="mt-1 text-xs text-zinc-400">

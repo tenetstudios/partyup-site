@@ -28,10 +28,10 @@ export default function MatchControls({
     keepInTouchStatus === "connected"
       ? "Connected"
       : keepInTouchStatus === "saved"
-        ? "Saved"
+        ? "Request saved"
         : keepInTouchStatus === "saving"
           ? "Saving..."
-          : "Keep the spark";
+          : "Stay connected";
   const keepInTouchDisabled =
     !onKeepInTouch || keepInTouchStatus === "saving" || keepInTouchStatus === "connected";
 
@@ -42,7 +42,7 @@ export default function MatchControls({
         onClick={onNext}
         className="min-h-11 rounded-full bg-[#9146ff] px-4 py-2 text-sm font-black text-white transition hover:bg-[#a05cff] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {nextBusy ? "Tuning..." : "Next vibe"}
+        {nextBusy ? "Tuning..." : "Next match"}
       </button>
       <button
         onClick={onMicrophoneToggle}

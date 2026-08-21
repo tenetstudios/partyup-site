@@ -6,6 +6,8 @@ type MatchIdleProps = {
   authLoading?: boolean;
   busy?: boolean;
   contextLabel?: string | null;
+  eventRoomName?: string | null;
+  backHref?: string;
   error?: string | null;
   guestClaimMessage?: string | null;
   hasGuestSession?: boolean;
@@ -18,6 +20,8 @@ export default function MatchIdle({
   authLoading = false,
   busy = false,
   contextLabel = null,
+  eventRoomName = null,
+  backHref = "/",
   error,
   guestClaimMessage,
   hasGuestSession = false,
@@ -33,7 +37,7 @@ export default function MatchIdle({
         <div className="border-b border-white/10 px-5 py-4 sm:px-8">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <span className="rounded-full border border-fuchsia-300/20 bg-fuchsia-300/10 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-fuchsia-200">
-              Vibe check ready
+              Match ready
             </span>
             <span className="text-xs font-bold text-zinc-400">1:1 live connection</span>
           </div>
@@ -47,8 +51,8 @@ export default function MatchIdle({
 
           <div className="mt-7 grid grid-cols-3 gap-2 sm:gap-3">
             {[
-              ["Vibe", "Live"],
-              ["Social radius", contextLabel ? "This event" : "PartyUp"],
+              ["Energy", "Live"],
+              ["Social radius", eventRoomName ?? (contextLabel ? "Event room" : "PartyUp")],
               ["Momentum", "Ready"],
             ].map(([label, value]) => (
               <div key={label} className="min-w-0 rounded-md border border-white/10 bg-white/[0.04] p-3 sm:p-4">
@@ -93,7 +97,7 @@ export default function MatchIdle({
               onClick={onStart}
               className="min-h-12 rounded-full bg-pink-500 px-6 py-3 font-black text-white shadow-[0_0_24px_rgba(236,72,153,0.3)] transition hover:-translate-y-0.5 hover:bg-pink-400 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {busy ? "Tuning your signal..." : contextLabel ? "Match in this event" : "Find my vibe"}
+              {busy ? "Tuning your signal..." : "Start matching"}
             </button>
           ) : (
             <button
@@ -101,7 +105,7 @@ export default function MatchIdle({
               onClick={onStart}
               className="min-h-12 rounded-full bg-pink-500 px-6 py-3 font-black text-white shadow-[0_0_24px_rgba(236,72,153,0.3)] transition hover:-translate-y-0.5 hover:bg-pink-400 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {authLoading ? "Checking your signal..." : "Find my vibe"}
+              {authLoading ? "Checking your signal..." : "Start matching"}
             </button>
           )}
           {!isAuthenticated && onSignIn && (
@@ -113,8 +117,8 @@ export default function MatchIdle({
               Continue with Google
             </button>
           )}
-          <Link href="/" className="px-2 py-3 text-center text-sm font-bold text-zinc-300 hover:text-white sm:text-left">
-            Back to PartyUp
+          <Link href={backHref} className="px-2 py-3 text-center text-sm font-bold text-zinc-300 hover:text-white sm:text-left">
+            {eventRoomName ? `Back to ${eventRoomName}` : "Back to PartyUp"}
           </Link>
         </div>
         </div>
