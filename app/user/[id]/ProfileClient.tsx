@@ -25,6 +25,7 @@ import {
   type SavedMemoryGroup,
 } from "@/lib/memories";
 import { createSupabaseClient } from "@/lib/supabase";
+import { EventSeriesSummary, formatSeriesDate, getHostEventSeries } from "@/lib/eventSeries";
 
 type Profile = {
   id: string;
@@ -52,6 +53,7 @@ export default function ProfileClient({ profileId }: { profileId: string }) {
   const supabase = useMemo(() => createSupabaseClient(), []);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [hostData, setHostData] = useState<HostReputationProfile | null>(null);
+  const [hostSeries, setHostSeries] = useState<EventSeriesSummary[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [state, setState] = useState<ProfileSocialState>(emptyState);
   const [memoryGroups, setMemoryGroups] = useState<SavedMemoryGroup[]>([]);
@@ -73,7 +75,9 @@ export default function ProfileClient({ profileId }: { profileId: string }) {
       setCurrentUserId(userId);
 
       const loadedHostData = await getHostReputationProfile(supabase, profileId);
+      const loadedSeries = await getHostEventSeries(supabase, profileId).catch(() => []);
       setHostData(loadedHostData);
+      setHostSeries(loadedSeries);
       setProfile(loadedHostData?.profile ?? null);
 
       if (loadedHostData) {
@@ -302,6 +306,7 @@ export default function ProfileClient({ profileId }: { profileId: string }) {
             {hostData && (
               <HostEvidenceSections data={hostData} />
             )}
+            <HostSeriesSection series={hostSeries} isOwner={currentUserId === profile.id} />
 
             {isOwnProfile && (
               <div className="mt-6 flex flex-wrap gap-2 border-t border-white/10 pt-6">
@@ -398,6 +403,14 @@ export default function ProfileClient({ profileId }: { profileId: string }) {
       </div>
     </main>
   );
+}
+
+function HostSeriesSection({ series, isOwner }: { series: EventSeriesSummary[]; isOwner: boolean }) {
+  if (series.length === 0 && !isOwner) return null;
+  return <section className="mt-6 border-t border-white/10 pt-6">
+    <div className="flex items-center justify-between gap-4"><div><p className="text-xs font-black uppercase text-[#ff63a8]">Event Series</p><h2 className="mt-1 text-2xl font-black">Recurring events</h2></div>{isOwner && <Link href="/series/new" className="rounded-md bg-[#8b3dff] px-4 py-2.5 text-sm font-black">Create Series</Link>}</div>
+    {series.length === 0 ? <p className="mt-4 rounded-lg border border-dashed border-white/15 p-5 text-sm text-[#aaa4b8]">Create a series to keep your audience and event history together.</p> : <div className="mt-4 grid gap-3 md:grid-cols-2">{series.map((item) => <Link key={item.id} href={`/series/${item.id}`} className="flex min-h-28 overflow-hidden rounded-lg border border-white/10 bg-white/[0.04] hover:border-[#8b5dc2]">{item.cover_image_url ? <img src={item.cover_image_url} alt="" className="w-28 object-cover" /> : <div className="grid w-28 place-items-center bg-[#23152f] font-black text-[#d8b4fe]">SERIES</div>}<div className="min-w-0 flex-1 p-4"><h3 className="truncate font-black">{item.name}</h3><p className="mt-2 text-xs font-bold text-[#aaa4b8]">{item.event_count} events / {item.follower_count} followers</p><p className="mt-3 text-xs font-bold text-[#c9a6ff]">{item.next_event_at ? `Next: ${formatSeriesDate(item.next_event_at)}` : "Next date coming soon"}</p></div></Link>)}</div>}
+  </section>;
 }
 
 function HostEvidenceSections({ data }: { data: HostReputationProfile }) {

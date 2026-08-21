@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createSupabaseClient } from "@/lib/supabase";
+import { EventSeriesSummary, getMyEventSeries } from "@/lib/eventSeries";
 
 type CreateRoomStatus = "live" | "scheduled";
 type TimePeriod = "AM" | "PM";
@@ -115,6 +117,13 @@ export default function CreateRoomButton({
   const [scheduledPeriod, setScheduledPeriod] = useState<TimePeriod>(() => getDefaultSchedule().period);
   const [calendarMonth, setCalendarMonth] = useState(() => getDefaultSchedule().month);
   const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [series, setSeries] = useState<EventSeriesSummary[]>([]);
+  const [seriesId, setSeriesId] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    getMyEventSeries(createSupabaseClient()).then(setSeries).catch(() => setSeries([]));
+  }, [open]);
 
   const calendarDays = getCalendarDays(calendarMonth);
   const todayValue = toDateValue(new Date());
@@ -218,6 +227,7 @@ export default function CreateRoomButton({
           latitude: null,
           longitude: null,
           last_active_at: new Date().toISOString(),
+          series_id: seriesId || null,
         })
         .select("id")
         .single();
@@ -258,6 +268,7 @@ export default function CreateRoomButton({
       setVenueName("");
       resetSchedule();
       setCoverFile(null);
+      setSeriesId("");
       setCurrentStep(0);
       setOpen(false);
       setLoading(false);
@@ -588,6 +599,15 @@ export default function CreateRoomButton({
                         className="w-full rounded-md bg-black px-3 py-3 text-white"
                       />
                     </label>
+
+                    <div className="rounded-md border border-white/10 bg-black/40 p-3">
+                      <label htmlFor="event-series" className="block text-sm font-black">Add to Event Series</label>
+                      <select id="event-series" value={seriesId} onChange={(event) => setSeriesId(event.target.value)} className="mt-2 h-11 w-full rounded-md border border-white/10 bg-[#15131d] px-3 text-sm font-bold text-white outline-none focus:border-[#9b5cff]">
+                        <option value="">One-off event</option>
+                        {series.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                      </select>
+                      <Link href="/series/new" className="mt-2 inline-block text-xs font-black text-[#c99cff] hover:text-white">Create a new series</Link>
+                    </div>
 
                     <label className="flex items-center justify-between rounded-md bg-black/40 px-3 py-3">
                       <span>

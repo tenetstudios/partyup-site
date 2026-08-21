@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import HomeHeader from "@/app/components/HomeHeader";
 import { resolveMyEventRecaps } from "@/lib/recaps";
 import { createSupabaseClient } from "@/lib/supabase";
+import { FollowedSeriesEvent, formatSeriesDate } from "@/lib/eventSeries";
 
 type ActivityItem = { id: string; actor_id: string | null; type: string; title: string; body: string; room_id: string | null; recap_room_id: string | null; is_read: boolean; created_at: string };
 
@@ -19,6 +20,7 @@ function formatTime(value: string) {
 export default function ActivityPage() {
   const supabase = useMemo(() => createSupabaseClient(), []);
   const [items, setItems] = useState<ActivityItem[]>([]);
+  const [seriesEvents, setSeriesEvents] = useState<FollowedSeriesEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,11 +28,15 @@ export default function ActivityPage() {
     setLoading(true);
     try {
       const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) { setItems([]); return; }
+      if (!userData.user) { setItems([]); setSeriesEvents([]); return; }
       await resolveMyEventRecaps(supabase);
-      const { data, error: loadError } = await supabase.from("notifications").select("id,actor_id,type,title,body,room_id,recap_room_id,is_read,created_at").eq("user_id", userData.user.id).order("created_at", { ascending: false }).limit(50);
+      const [{ data, error: loadError }, seriesResult] = await Promise.all([
+        supabase.from("notifications").select("id,actor_id,type,title,body,room_id,recap_room_id,is_read,created_at").eq("user_id", userData.user.id).order("created_at", { ascending: false }).limit(50),
+        supabase.rpc("get_my_followed_series_events"),
+      ]);
       if (loadError) throw new Error(loadError.message);
       setItems((data || []) as ActivityItem[]);
+      setSeriesEvents(seriesResult.error ? [] : (seriesResult.data || []) as FollowedSeriesEvent[]);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Activity is unavailable."); }
     finally { setLoading(false); }
   }, [supabase]);
@@ -48,6 +54,7 @@ export default function ActivityPage() {
 
   return <main className="min-h-screen bg-[#05040b] text-white"><HomeHeader /><section className="mx-auto w-full max-w-3xl px-5 py-8">
     <div className="border-b border-white/10 pb-6"><p className="text-sm font-black uppercase tracking-[0.18em] text-[#c35dff]">PartyUp</p><h1 className="mt-2 text-4xl font-black tracking-normal md:text-5xl">Activity</h1><p className="mt-3 text-sm font-bold leading-6 text-[#aaa4b8]">The rooms, people, and moments worth coming back to.</p></div>
+    {seriesEvents.length > 0 && <section className="mt-7"><div className="flex items-end justify-between"><div><p className="text-xs font-black uppercase text-[#ff63a8]">Series you follow</p><h2 className="mt-1 text-2xl font-black">Coming up again</h2></div></div><div className="mt-4 grid gap-3 sm:grid-cols-2">{seriesEvents.map((event) => <div key={event.id} className="rounded-lg border border-white/10 bg-[#111019] p-4 hover:border-[#8b5dc2]"><div className="flex items-start justify-between gap-3"><Link href={`/series/${event.series_id}`} className="text-xs font-black uppercase text-[#c99cff]">{event.series_name}</Link><span className="rounded bg-white/10 px-2 py-1 text-[9px] font-black uppercase">{event.status}</span></div><Link href={`/room/${event.id}`}><h3 className="mt-2 font-black">{event.title}</h3><p className="mt-2 text-xs font-bold text-[#aaa4b8]">{formatSeriesDate(event.event_date)}</p></Link></div>)}</div></section>}
     <div className="mt-7 grid gap-3">
       {loading ? <div className="rounded-lg border border-white/10 bg-[#10101a] p-6 text-sm font-bold text-[#aaa4b8]">Loading Activity...</div> : error ? <div className="rounded-lg border border-amber-300/20 bg-amber-950/30 p-6 text-sm font-bold text-amber-100">{error}</div> : items.length === 0 ? <div className="rounded-lg border border-dashed border-purple-300/20 bg-black/20 p-8 text-center"><h2 className="text-xl font-black">Nothing new yet.</h2><p className="mt-2 text-sm text-[#aaa4b8]">Your event recaps and connection updates will stay here.</p></div> : items.map((item) => {
         const recapRoomId = item.recap_room_id || (item.type === "event_recap" ? item.room_id : null);
