@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { InfoPageShell, InfoSection, TextLink } from "@/app/components/InfoPage";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy | PartyUp",
+  title: "Privacy Policy",
   description: "PartyUp privacy policy for accounts, rooms, Match, Connections, guest sessions, and product operations.",
 };
 

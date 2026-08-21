@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { InfoPageShell, InfoSection } from "@/app/components/InfoPage";
 
 export const metadata: Metadata = {
-  title: "Contact | PartyUp",
+  title: "Contact",
   description: "Contact PartyUp for questions, feedback, partnerships, safety concerns, technical support, or privacy questions.",
 };
 

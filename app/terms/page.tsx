@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { InfoPageShell, InfoSection, TextLink } from "@/app/components/InfoPage";
 
 export const metadata: Metadata = {
-  title: "Terms of Use | PartyUp",
+  title: "Terms of Use",
   description: "Readable PartyUp terms for live rooms, Match, user content, events, safety, and service use.",
 };
 

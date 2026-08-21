@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { InfoPageShell, InfoSection, TextLink } from "@/app/components/InfoPage";
 
 export const metadata: Metadata = {
-  title: "Safety | PartyUp",
+  title: "Safety",
   description: "PartyUp safety guidance for rooms, Match, guest access, and meeting people through shared experiences.",
 };
 

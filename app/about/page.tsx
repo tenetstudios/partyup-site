@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { InfoCtaRow, InfoPageShell, InfoSection, PrimaryCta } from "@/app/components/InfoPage";
 
 export const metadata: Metadata = {
-  title: "About PartyUp | PartyUp",
+  title: "About PartyUp",
   description: "Learn how PartyUp turns live rooms and shared moments into real social connections.",
 };
 
