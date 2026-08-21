@@ -203,11 +203,11 @@ export default function ConnectionsClient() {
   }
 
   return (
-    <main className="min-h-screen bg-[#05040b] text-white">
+    <main className="min-h-screen overflow-x-hidden bg-[radial-gradient(ellipse_90%_55%_at_52%_16%,rgba(91,33,182,0.24),transparent_68%),radial-gradient(ellipse_78%_54%_at_96%_76%,rgba(219,39,119,0.16),transparent_72%),linear-gradient(145deg,#05040b_0%,#09071a_48%,#090313_100%)] text-white">
       <HomeHeader />
 
-      <div className="mx-auto w-full max-w-5xl px-5 py-8">
-        <div className="flex flex-col gap-5 border-b border-white/10 pb-6 md:flex-row md:items-end md:justify-between">
+      <div className="relative mx-auto w-full max-w-6xl px-5 py-10 md:py-12">
+        <div className="flex flex-col gap-6 border-b border-purple-200/10 pb-8 md:flex-row md:items-end md:justify-between">
           <div>
             <p className="text-sm font-black uppercase tracking-[0.18em] text-[#c35dff]">
               Your People
@@ -222,22 +222,22 @@ export default function ConnectionsClient() {
 
           <Link
             href="/match"
-            className="inline-flex h-11 items-center justify-center rounded-md bg-pink-500 px-5 text-sm font-black text-white hover:bg-pink-600"
+            className="inline-flex h-11 items-center justify-center rounded-md border border-fuchsia-300/25 bg-[linear-gradient(110deg,#7c3aed,#ec2994)] px-5 text-sm font-black text-white shadow-[0_12px_34px_rgba(168,45,255,0.22)] transition hover:border-fuchsia-200/40 hover:brightness-110"
           >
             Find a Match
           </Link>
         </div>
 
-        <div className="mt-6 flex flex-wrap gap-2">
+        <div className="mt-7 grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:gap-2.5">
           {tabs.map((tab) => (
             <button
               key={tab.key}
               type="button"
               onClick={() => setActiveTab(tab.key)}
-              className={`rounded-md border px-4 py-2 text-sm font-black ${
+              className={`min-h-11 min-w-0 rounded-md border px-2 py-2 text-xs font-black transition sm:px-5 sm:text-sm ${
                 activeTab === tab.key
-                  ? "border-[#c35dff] bg-[#c35dff]/18 text-white"
-                  : "border-white/10 bg-white/[0.04] text-[#aaa4b8] hover:text-white"
+                  ? "border-[#b968ff]/75 bg-[linear-gradient(135deg,rgba(139,61,255,0.34),rgba(195,93,255,0.18))] text-white shadow-[0_0_24px_rgba(139,61,255,0.16)]"
+                  : "border-white/10 bg-[#110d21]/55 text-[#aaa4b8] hover:border-purple-300/30 hover:bg-[#17112a]/75 hover:text-white"
               }`}
             >
               {tab.label}
@@ -252,18 +252,18 @@ export default function ConnectionsClient() {
         )}
 
         {!currentUserId && !loading ? (
-          <section className="mt-8 rounded-lg border border-white/10 bg-[#10101a] p-6">
+          <section className="mt-8 rounded-lg border border-purple-200/15 bg-[linear-gradient(145deg,rgba(24,18,43,0.9),rgba(12,10,26,0.94))] p-6 shadow-[0_18px_50px_rgba(0,0,0,0.24)] backdrop-blur-sm">
             <h2 className="text-xl font-black">Sign in to see your Connections.</h2>
             <button
               type="button"
               onClick={signInWithGoogle}
-              className="mt-5 rounded-md bg-[#8b3dff] px-5 py-3 text-sm font-black text-white hover:bg-[#7b31e8]"
+              className="mt-5 rounded-md bg-[#8b3dff] px-5 py-3 text-sm font-black text-white shadow-[0_10px_26px_rgba(139,61,255,0.22)] hover:bg-[#9b4dff]"
             >
               Sign in
             </button>
           </section>
         ) : loading ? (
-          <div className="mt-8 rounded-lg border border-white/10 bg-[#10101a] p-6 text-[#aaa4b8]">
+          <div className="mt-8 rounded-lg border border-purple-200/15 bg-[linear-gradient(145deg,rgba(24,18,43,0.9),rgba(12,10,26,0.94))] p-6 text-[#aaa4b8] shadow-[0_18px_50px_rgba(0,0,0,0.24)] backdrop-blur-sm">
             Loading...
           </div>
         ) : activeTab === "connections" ? (
@@ -276,18 +276,18 @@ export default function ConnectionsClient() {
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search Connections"
-              className="h-11 w-full rounded-md border border-white/10 bg-black/25 px-4 text-sm font-bold text-white outline-none placeholder:text-[#777384] focus:border-[#c35dff]"
+              className="h-12 w-full rounded-md border border-purple-200/15 bg-[#090713]/75 px-4 text-sm font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.025)] outline-none transition placeholder:text-[#817b8f] focus:border-[#b968ff]/80 focus:bg-[#0d0918]/90 focus:shadow-[0_0_0_3px_rgba(139,61,255,0.12)]"
             />
 
             {filteredConnections.length === 0 ? (
-              <div className="mt-5 rounded-lg border border-dashed border-purple-300/20 bg-black/20 p-8 text-center">
+              <div className="mt-5 rounded-lg border border-dashed border-purple-300/25 bg-[#100b20]/65 p-8 text-center backdrop-blur-sm">
                 <h2 className="text-xl font-black">No connections yet.</h2>
                 <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-[#aaa4b8]">
                   When you and someone you meet through Match both choose Keep in Touch, they&apos;ll appear here.
                 </p>
                 <Link
                   href="/match"
-                  className="mt-6 inline-flex h-11 items-center rounded-md bg-pink-500 px-5 text-sm font-black text-white hover:bg-pink-600"
+                  className="mt-6 inline-flex h-11 items-center rounded-md border border-fuchsia-300/25 bg-[linear-gradient(110deg,#7c3aed,#ec2994)] px-5 text-sm font-black text-white shadow-[0_12px_30px_rgba(168,45,255,0.2)] hover:brightness-110"
                 >
                   Find a Match
                 </Link>
@@ -336,7 +336,7 @@ function ConnectionCard({
     : null;
 
   return (
-    <article className="grid gap-4 rounded-lg border border-white/10 bg-[#10101a] p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+    <article className="grid gap-4 rounded-lg border border-purple-200/15 bg-[linear-gradient(135deg,rgba(24,18,43,0.9),rgba(13,11,28,0.94))] p-4 shadow-[0_14px_36px_rgba(0,0,0,0.2)] backdrop-blur-sm transition hover:border-purple-300/35 hover:bg-[linear-gradient(135deg,rgba(30,21,52,0.93),rgba(16,12,34,0.96))] sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
       <div className="flex min-w-0 items-center gap-4">
         {connection.person.avatar_url ? (
           <img
@@ -365,7 +365,7 @@ function ConnectionCard({
         {href && (
           <Link
             href={href}
-            className="rounded-md border border-white/10 px-3 py-2 text-xs font-black text-white hover:bg-white/10"
+            className="rounded-md border border-white/10 bg-white/[0.025] px-3 py-2 text-xs font-black text-white transition hover:border-purple-200/30 hover:bg-purple-300/10"
           >
             View Profile
           </Link>
@@ -374,7 +374,7 @@ function ConnectionCard({
           type="button"
           disabled={removing}
           onClick={() => onRemove(connection)}
-          className="rounded-md border border-red-400/30 px-3 py-2 text-xs font-black text-red-200 hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-md border border-pink-400/30 bg-pink-950/10 px-3 py-2 text-xs font-black text-[#ff9dc5] transition hover:border-pink-300/50 hover:bg-pink-500/10 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {removing ? "Removing..." : "Remove Connection"}
         </button>
@@ -386,7 +386,7 @@ function ConnectionCard({
 function ProfileList({ empty, profiles }: { empty: string; profiles: ProfileRow[] }) {
   if (profiles.length === 0) {
     return (
-      <section className="mt-8 rounded-lg border border-dashed border-purple-300/20 bg-black/20 p-8 text-center text-[#aaa4b8]">
+      <section className="mt-8 rounded-lg border border-dashed border-purple-300/25 bg-[#100b20]/65 p-8 text-center text-[#aaa4b8] backdrop-blur-sm">
         {empty}
       </section>
     );
@@ -400,7 +400,7 @@ function ProfileList({ empty, profiles }: { empty: string; profiles: ProfileRow[
         return (
           <article
             key={profile.id}
-            className="flex items-center justify-between gap-4 rounded-lg border border-white/10 bg-[#10101a] p-4"
+            className="flex items-center justify-between gap-4 rounded-lg border border-purple-200/15 bg-[linear-gradient(135deg,rgba(24,18,43,0.9),rgba(13,11,28,0.94))] p-4 shadow-[0_14px_36px_rgba(0,0,0,0.2)] backdrop-blur-sm transition hover:border-purple-300/35"
           >
             <div className="flex min-w-0 items-center gap-4">
               {profile.avatar_url ? (
@@ -419,7 +419,7 @@ function ProfileList({ empty, profiles }: { empty: string; profiles: ProfileRow[
 
             <Link
               href={`/user/${profile.id}`}
-              className="rounded-md border border-white/10 px-3 py-2 text-xs font-black text-white hover:bg-white/10"
+              className="rounded-md border border-white/10 bg-white/[0.025] px-3 py-2 text-xs font-black text-white transition hover:border-purple-200/30 hover:bg-purple-300/10"
             >
               View Profile
             </Link>
