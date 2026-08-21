@@ -31,18 +31,18 @@ export default function MatchControls({
         ? "Saved"
         : keepInTouchStatus === "saving"
           ? "Saving..."
-          : "Keep in Touch";
+          : "Keep the spark";
   const keepInTouchDisabled =
     !onKeepInTouch || keepInTouchStatus === "saving" || keepInTouchStatus === "connected";
 
   return (
-    <div className="flex items-center justify-center gap-4 rounded-md bg-black/30 p-3">
+    <div className="flex flex-wrap items-center justify-center gap-2 rounded-lg border border-white/10 bg-black/70 p-2.5 shadow-2xl backdrop-blur-xl sm:gap-3 sm:p-3">
       <button
         disabled={!onNext || nextBusy}
         onClick={onNext}
-        className="rounded-md bg-[#9146ff] px-3 py-2 text-sm font-black text-white hover:bg-[#7b31e8] disabled:cursor-not-allowed disabled:opacity-50"
+        className="min-h-11 rounded-full bg-[#9146ff] px-4 py-2 text-sm font-black text-white transition hover:bg-[#a05cff] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {nextBusy ? "Finding..." : "Next"}
+        {nextBusy ? "Tuning..." : "Next vibe"}
       </button>
       <button
         onClick={onMicrophoneToggle}
@@ -61,24 +61,24 @@ export default function MatchControls({
         onClick={onKeepInTouch}
         className={
           keepInTouchStatus === "connected"
-            ? "rounded-md bg-emerald-500 px-3 py-2 text-sm font-black text-black disabled:cursor-default"
+            ? "min-h-11 rounded-full bg-emerald-500 px-4 py-2 text-sm font-black text-black disabled:cursor-default"
             : keepInTouchStatus === "saved"
-              ? "rounded-md bg-white px-3 py-2 text-sm font-black text-black hover:bg-zinc-200"
-              : "rounded-md bg-[#1f1a2b] px-3 py-2 text-sm font-bold text-white hover:bg-[#2b243b] disabled:cursor-not-allowed disabled:opacity-50"
+              ? "min-h-11 rounded-full bg-white px-4 py-2 text-sm font-black text-black hover:bg-zinc-200"
+              : "min-h-11 rounded-full bg-[#1f1a2b] px-4 py-2 text-sm font-bold text-white hover:bg-[#2b243b] disabled:cursor-not-allowed disabled:opacity-50"
         }
       >
         {keepInTouchLabel}
       </button>
       <button
         disabled
-        className="rounded-md bg-red-600 px-3 py-2 text-sm font-bold opacity-50"
+        className="min-h-11 rounded-full bg-red-600 px-4 py-2 text-sm font-bold opacity-50"
       >
         Report
       </button>
       {onLeave && (
         <button
           onClick={onLeave}
-          className="rounded-md border border-white/15 px-3 py-2 text-sm font-bold text-white hover:bg-white/10"
+          className="min-h-11 rounded-full border border-white/15 px-4 py-2 text-sm font-bold text-white hover:bg-white/10"
         >
           Leave
         </button>
@@ -89,6 +89,6 @@ export default function MatchControls({
 
 function controlClass(active: boolean) {
   return active
-    ? "rounded-md bg-white px-3 py-2 text-sm font-black text-black hover:bg-zinc-200"
-    : "rounded-md bg-[#1f1a2b] px-3 py-2 text-sm font-bold text-white hover:bg-[#2b243b]";
+    ? "min-h-11 rounded-full bg-white px-4 py-2 text-sm font-black text-black hover:bg-zinc-200"
+    : "min-h-11 rounded-full bg-[#1f1a2b] px-4 py-2 text-sm font-bold text-white hover:bg-[#2b243b]";
 }

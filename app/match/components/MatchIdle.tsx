@@ -28,16 +28,39 @@ export default function MatchIdle({
   const disabled = authLoading || busy;
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
-      <div className="rounded-xl bg-gradient-to-br from-[#0b0410]/80 via-[#12051e]/60 to-[#0b0410]/80 p-8">
-        <h1 className="text-4xl font-extrabold">Meet someone new.</h1>
-        <p className="mt-3 text-lg text-zinc-300">
-          {contextLabel ?? "Match connects you with another person for a 1-on-1 conversation."}
-        </p>
+    <div className="relative mx-auto max-w-3xl">
+      <div className="overflow-hidden rounded-lg border border-fuchsia-400/20 bg-[linear-gradient(145deg,rgba(17,6,28,0.98),rgba(37,8,48,0.9)_52%,rgba(10,5,20,0.98))] shadow-[0_28px_90px_rgba(156,39,176,0.18)]">
+        <div className="border-b border-white/10 px-5 py-4 sm:px-8">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span className="rounded-full border border-fuchsia-300/20 bg-fuchsia-300/10 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-fuchsia-200">
+              Vibe check ready
+            </span>
+            <span className="text-xs font-bold text-zinc-400">1:1 live connection</span>
+          </div>
+        </div>
+
+        <div className="p-5 sm:p-8">
+          <h2 className="max-w-xl text-3xl font-black leading-tight sm:text-5xl">Find the person who changes the night.</h2>
+          <p className="mt-4 max-w-2xl text-base leading-7 text-zinc-300 sm:text-lg">
+            {contextLabel ?? "Drop into a live one-to-one and see where the energy goes."}
+          </p>
+
+          <div className="mt-7 grid grid-cols-3 gap-2 sm:gap-3">
+            {[
+              ["Vibe", "Live"],
+              ["Social radius", contextLabel ? "This event" : "PartyUp"],
+              ["Momentum", "Ready"],
+            ].map(([label, value]) => (
+              <div key={label} className="min-w-0 rounded-md border border-white/10 bg-white/[0.04] p-3 sm:p-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-zinc-500 sm:text-xs">{label}</p>
+                <p className="mt-1 break-words text-sm font-black text-white sm:text-base">{value}</p>
+              </div>
+            ))}
+          </div>
 
         {!isAuthenticated && !authLoading && (
           <div className="mt-5 rounded-md border border-purple-300/20 bg-purple-950/30 p-4 text-sm text-zinc-200">
-            <p className="font-bold text-white">Continue as a guest.</p>
+            <p className="font-bold text-white">Jump in as a guest.</p>
             <p className="mt-1 text-zinc-300">
               You can sign in with Google later to save your connections.
             </p>
@@ -63,36 +86,37 @@ export default function MatchIdle({
           </div>
         )}
 
-        <div className="mt-8 flex flex-wrap items-center gap-4">
+        <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
           {isAuthenticated ? (
             <button
               disabled={disabled}
               onClick={onStart}
-              className="rounded-full bg-pink-500 px-6 py-3 font-black text-white hover:bg-pink-600 disabled:cursor-not-allowed disabled:opacity-60"
+              className="min-h-12 rounded-full bg-pink-500 px-6 py-3 font-black text-white shadow-[0_0_24px_rgba(236,72,153,0.3)] transition hover:-translate-y-0.5 hover:bg-pink-400 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {busy ? "Starting..." : contextLabel ? "Start Event Match" : "Start Matching"}
+              {busy ? "Tuning your signal..." : contextLabel ? "Match in this event" : "Find my vibe"}
             </button>
           ) : (
             <button
               disabled={disabled}
               onClick={onStart}
-              className="rounded-full bg-pink-500 px-6 py-3 font-black text-white hover:bg-pink-600 disabled:cursor-not-allowed disabled:opacity-60"
+              className="min-h-12 rounded-full bg-pink-500 px-6 py-3 font-black text-white shadow-[0_0_24px_rgba(236,72,153,0.3)] transition hover:-translate-y-0.5 hover:bg-pink-400 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {authLoading ? "Checking sign-in..." : "Continue as Guest"}
+              {authLoading ? "Checking your signal..." : "Find my vibe"}
             </button>
           )}
           {!isAuthenticated && onSignIn && (
             <button
               disabled={disabled}
               onClick={onSignIn}
-              className="rounded-full border border-white/15 px-6 py-3 font-black text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+              className="min-h-12 rounded-full border border-white/15 px-6 py-3 font-black text-white transition hover:border-white/30 hover:bg-white/10 active:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
             >
               Continue with Google
             </button>
           )}
-          <Link href="/" className="text-sm font-bold text-zinc-300 hover:underline">
+          <Link href="/" className="px-2 py-3 text-center text-sm font-bold text-zinc-300 hover:text-white sm:text-left">
             Back to PartyUp
           </Link>
+        </div>
         </div>
       </div>
     </div>

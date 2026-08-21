@@ -525,8 +525,8 @@ function MatchRoomView({
         {remoteTrack ? (
           <div className="relative h-full w-full [&_.lk-participant-name]:hidden [&_.lk-participant-tile]:h-full [&_.lk-participant-tile]:w-full [&_[data-lk-participant-name]]:hidden [&_video]:h-full [&_video]:w-full [&_video]:object-contain">
             <ParticipantTile trackRef={remoteTrack} />
-            <div className="absolute left-4 bottom-24 rounded-md bg-black/55 px-3 py-2 text-sm font-black text-white backdrop-blur">
-              Your Match
+            <div className="absolute bottom-28 left-4 rounded-full border border-white/10 bg-black/65 px-4 py-2 text-sm font-black text-white backdrop-blur">
+              Live vibe
             </div>
           </div>
         ) : (
@@ -558,14 +558,14 @@ function MatchRoomView({
         )}
       </div>
 
-      <div className="absolute left-4 top-4 max-w-[20rem] rounded-md border border-emerald-300/20 bg-black/60 px-4 py-3 backdrop-blur">
+      <div className="absolute left-4 top-4 max-w-[calc(100%_-_12rem)] rounded-md border border-emerald-300/20 bg-black/70 px-4 py-3 backdrop-blur">
         <p className="text-sm font-black uppercase tracking-[0.14em] text-emerald-200">
-          {status === "connected" || status === "permission-warning" ? "Matched" : "Connecting"}
+          {status === "connected" || status === "permission-warning" ? "Vibe locked" : "Locking signal"}
         </p>
-        <p className="mt-1 truncate text-xs text-zinc-400">Session: {sessionId}</p>
-        {roomName && <p className="mt-1 truncate text-xs text-zinc-500">Room: {roomName}</p>}
         {participantIdentity && (
-          <p className="mt-1 text-xs text-zinc-500">Secure participant ready</p>
+          <p className="mt-1 text-xs text-zinc-400">
+            {roomName ? "Private 1:1 / signal live" : "Secure room starting"}
+          </p>
         )}
       </div>
 

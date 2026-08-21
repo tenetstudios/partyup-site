@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import React from "react";
 
 export default function MatchDisconnected({
@@ -9,13 +10,15 @@ export default function MatchDisconnected({
   onRematch?: () => void;
 }) {
   return (
-    <div className="mx-auto max-w-3xl p-6">
-      <div className="rounded-xl bg-gradient-to-br from-[#0b0410]/80 via-[#12051e]/60 to-[#0b0410]/80 p-8 text-center">
-        <h2 className="text-2xl font-extrabold">Connection ended</h2>
-        <p className="mt-3 text-sm text-zinc-300">{message}</p>
-        <div className="mt-6 flex items-center justify-center gap-4">
-          <button onClick={onRematch} className="rounded-full bg-pink-500 px-5 py-2 font-black text-white">Find Someone Else</button>
-          <a href="/" className="text-sm font-bold text-zinc-300 hover:underline">Return Home</a>
+    <div className="mx-auto max-w-3xl">
+      <div className="rounded-lg border border-fuchsia-400/20 bg-[linear-gradient(145deg,rgba(17,6,28,0.98),rgba(37,8,48,0.9),rgba(10,5,20,0.98))] p-6 text-center shadow-[0_28px_90px_rgba(156,39,176,0.18)] sm:p-10">
+        <p className="text-xs font-black uppercase tracking-[0.16em] text-fuchsia-300">Momentum reset</p>
+        <h2 className="mt-2 text-3xl font-extrabold">That moment wrapped.</h2>
+        <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-zinc-300">{message}</p>
+        <p className="mt-5 text-sm font-bold text-white">Your next connection is one signal away.</p>
+        <div className="mt-7 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
+          <button onClick={onRematch} className="min-h-12 rounded-full bg-pink-500 px-6 py-3 font-black text-white transition hover:-translate-y-0.5 hover:bg-pink-400 active:translate-y-0">Find the next vibe</button>
+          <Link href="/" className="px-5 py-3 text-sm font-bold text-zinc-300 hover:text-white">Return Home</Link>
         </div>
       </div>
     </div>
