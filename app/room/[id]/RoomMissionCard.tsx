@@ -124,6 +124,9 @@ export default function RoomMissionCard({
   const remaining = now ? getMissionTimeRemaining(mission.ends_at, now) : null;
   const isAnimalPack = mission.mission_type === "animal_pack";
   const animalName = animalState ? (animalDetails[animalState.assignment_key]?.plural ?? "pack members") : "pack members";
+  const tokenRefreshSeconds = encounterToken && now
+    ? Math.max(0, Math.ceil((Date.parse(encounterToken.expires_at) - now - 5_000) / 1000))
+    : null;
 
   async function markComplete() {
     if (busy || mission!.viewer_completed || remaining?.expired) return;
@@ -189,7 +192,7 @@ export default function RoomMissionCard({
                   <div className="mx-auto mt-5 max-w-sm rounded-xl bg-white p-5 text-black">
                     <p className="text-4xl">{animalState.assignment_key}</p>
                     <p className="mt-2 text-sm font-black">Scan this when you find another {animalDetails[animalState.assignment_key]?.singular ?? "pack member"}.</p>
-                    {encounterToken ? <><div className="mx-auto mt-4 w-fit"><QRCodeSVG value={encounterToken.qr_payload} size={220} level="M" /></div><p className="mt-4 text-2xl font-black tracking-[0.25em]">{encounterToken.short_code}</p><p className="mt-2 text-xs font-bold text-zinc-500">Refreshing automatically</p></> : <p className="mt-5 font-bold">Creating secure code…</p>}
+                    {encounterToken ? <><div className="mx-auto mt-4 w-fit"><QRCodeSVG value={encounterToken.qr_payload} size={220} level="M" /></div><p className="mt-4 text-2xl font-black tracking-[0.25em]">{encounterToken.short_code}</p><p className="mt-2 text-xs font-bold text-zinc-500">{tokenRefreshSeconds === 0 ? "Refreshing…" : `Refreshes in ${tokenRefreshSeconds ?? "–"} seconds`}</p></> : <p className="mt-5 font-bold">Creating secure code…</p>}
                   </div>
                 )}
 
