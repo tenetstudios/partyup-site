@@ -1,18 +1,21 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createSupabaseClient } from "@/lib/supabase";
 import {
   endRoomMission,
-  getAnimalPackHostResults,
   getActiveRoomMission,
+  getMissionCompletedParticipants,
+  getMissionOperationsDashboard,
   getRoomMissionHistory,
   publishRoomMission,
   publishAnimalPackMission,
-  type AnimalPackHostResults,
+  type MissionCompletedParticipants,
+  type MissionOperationsDashboard as MissionOperationsData,
   type RoomMission,
   type RoomMissionHistoryItem,
 } from "@/lib/roomMissions";
+import MissionOperationsDashboard from "./MissionOperationsDashboard";
 
 const durations = [
   { label: "No automatic expiry", value: "" },
@@ -47,14 +50,18 @@ export default function RoomMissionManager({
   const [duration, setDuration] = useState("10");
   const [animalCount, setAnimalCount] = useState("6");
   const [targetEncounters, setTargetEncounters] = useState("3");
-  const [hostResults, setHostResults] = useState<AnimalPackHostResults | null>(null);
+  const [hostResults, setHostResults] = useState<MissionCompletedParticipants | null>(null);
+  const [operations, setOperations] = useState<MissionOperationsData | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
   const [historyResultsMissionId, setHistoryResultsMissionId] = useState<string | null>(null);
-  const [historyResults, setHistoryResults] = useState<AnimalPackHostResults | null>(null);
+  const [historyResults, setHistoryResults] = useState<MissionCompletedParticipants | null>(null);
+  const [historyOperationsMissionId, setHistoryOperationsMissionId] = useState<string | null>(null);
+  const [historyOperations, setHistoryOperations] = useState<MissionOperationsData | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const recommendedParticipants = Number(animalCount) * (Number(targetEncounters) + 1);
+  const refreshTimeoutRef = useRef<number | null>(null);
 
   const loadData = useCallback(async () => {
     const [nextMission, nextHistory] = await Promise.all([
@@ -63,12 +70,18 @@ export default function RoomMissionManager({
     ]);
     setMission(nextMission);
     setHistory(nextHistory);
-    setHostResults(
-      nextMission?.mission_type === "animal_pack"
-        ? await getAnimalPackHostResults(supabase, nextMission.id)
-        : null,
-    );
+    setOperations(nextMission ? await getMissionOperationsDashboard(supabase, nextMission.id) : null);
   }, [roomId, supabase]);
+
+  const scheduleLoadData = useCallback(() => {
+    if (refreshTimeoutRef.current !== null) return;
+    refreshTimeoutRef.current = window.setTimeout(() => {
+      refreshTimeoutRef.current = null;
+      void loadData().catch((reason) => {
+        setError(reason instanceof Error ? reason.message : "Could not refresh Mission operations.");
+      });
+    }, 750);
+  }, [loadData]);
 
   useEffect(() => {
     let active = true;
@@ -95,30 +108,34 @@ export default function RoomMissionManager({
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "room_missions", filter: `room_id=eq.${roomId}` },
-        () => void loadData(),
+        scheduleLoadData,
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "mission_participant_assignments" },
-        () => void loadData(),
+        { event: "*", schema: "public", table: "mission_participant_assignments", filter: `mission_id=eq.${mission?.id ?? "00000000-0000-0000-0000-000000000000"}` },
+        scheduleLoadData,
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "mission_encounters" },
-        () => void loadData(),
+        { event: "*", schema: "public", table: "mission_encounters", filter: `mission_id=eq.${mission?.id ?? "00000000-0000-0000-0000-000000000000"}` },
+        scheduleLoadData,
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "mission_completions" },
-        () => void loadData(),
+        { event: "*", schema: "public", table: "mission_completions", filter: `mission_id=eq.${mission?.id ?? "00000000-0000-0000-0000-000000000000"}` },
+        scheduleLoadData,
       )
       .subscribe();
 
     return () => {
       active = false;
+      if (refreshTimeoutRef.current !== null) {
+        window.clearTimeout(refreshTimeoutRef.current);
+        refreshTimeoutRef.current = null;
+      }
       supabase.removeChannel(channel);
     };
-  }, [loadData, roomId, supabase]);
+  }, [loadData, mission?.id, roomId, scheduleLoadData, supabase]);
 
   useEffect(() => {
     if (!mission?.ends_at) return;
@@ -161,6 +178,8 @@ export default function RoomMissionManager({
       setDuration("10");
       setMissionType("generic");
       setCreating(false);
+      setShowCompleted(false);
+      setHostResults(null);
       setSuccess(mission ? "The previous Mission ended and the new Mission is active." : "Mission published.");
       await loadData();
     } catch (reason) {
@@ -182,6 +201,8 @@ export default function RoomMissionManager({
     try {
       await endRoomMission(supabase, mission.id);
       setSuccess("Mission ended.");
+      setShowCompleted(false);
+      setHostResults(null);
       await loadData();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not end the Mission.");
@@ -198,11 +219,53 @@ export default function RoomMissionManager({
     }
     setError(null);
     try {
-      setHistoryResults(await getAnimalPackHostResults(supabase, missionId));
+      setHistoryResults(await getMissionCompletedParticipants(supabase, missionId));
       setHistoryResultsMissionId(missionId);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not load completed participants.");
     }
+  }
+
+  async function toggleCompletedResults() {
+    if (!mission) return;
+    if (showCompleted) {
+      setShowCompleted(false);
+      return;
+    }
+    setError(null);
+    try {
+      setHostResults(await getMissionCompletedParticipants(supabase, mission.id));
+      setShowCompleted(true);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not load completed participants.");
+    }
+  }
+
+  async function toggleHistoryOperations(missionId: string) {
+    if (historyOperationsMissionId === missionId) {
+      setHistoryOperationsMissionId(null);
+      setHistoryOperations(null);
+      return;
+    }
+    setError(null);
+    try {
+      setHistoryOperations(await getMissionOperationsDashboard(supabase, missionId));
+      setHistoryOperationsMissionId(missionId);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not load Mission operations.");
+    }
+  }
+
+  async function loadMoreCompletedResults() {
+    if (!mission || !hostResults?.has_more) return;
+    const next = await getMissionCompletedParticipants(supabase, mission.id, 100, hostResults.participants.length);
+    setHostResults({ ...next, participants: [...hostResults.participants, ...next.participants] });
+  }
+
+  async function loadMoreHistoryResults() {
+    if (!historyResultsMissionId || !historyResults?.has_more) return;
+    const next = await getMissionCompletedParticipants(supabase, historyResultsMissionId, 100, historyResults.participants.length);
+    setHistoryResults({ ...next, participants: [...historyResults.participants, ...next.participants] });
   }
 
   return (
@@ -227,30 +290,31 @@ export default function RoomMissionManager({
               <span className="rounded bg-emerald-700 px-2 py-1 text-xs font-black uppercase text-white">Active</span>
               {mission.mission_type === "animal_pack" && (
                 <span className="text-sm font-black text-purple-200">
-                  {hostResults?.participant_count ?? mission.participant_count} participating
+                  {operations?.summary.participant_count ?? mission.participant_count} participating
                 </span>
               )}
-              <span className="text-sm font-black text-pink-200">{hostResults?.completed_count ?? mission.completion_count} completed</span>
+              <span className="text-sm font-black text-pink-200">{operations?.summary.completed_count ?? mission.completion_count} completed</span>
               {mission.ends_at && (
                 <span className="text-xs font-bold text-zinc-400">Ends {new Date(mission.ends_at).toLocaleString()}</span>
               )}
             </div>
             <h3 className="mt-3 text-xl font-black">{mission.title}</h3>
             {mission.description && <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-300">{mission.description}</p>}
-            {mission.mission_type === "animal_pack" && (
+            {operations && <MissionOperationsDashboard dashboard={operations} />}
+            {(
               <div className="mt-4">
                 <button
                   type="button"
-                  onClick={() => setShowCompleted((value) => !value)}
+                  onClick={() => void toggleCompletedResults()}
                   className="rounded-md border border-purple-300/30 px-4 py-2 text-sm font-black text-purple-100 hover:bg-purple-400/10"
                 >
                   {showCompleted ? "Hide Completed" : "View Completed"}
                 </button>
                 {showCompleted && (
                   <div className="mt-3 space-y-2">
-                    {(hostResults?.completed_participants ?? []).length === 0 ? (
+                    {(hostResults?.participants ?? []).length === 0 ? (
                       <p className="text-sm text-zinc-400">No completed participants yet.</p>
-                    ) : hostResults?.completed_participants.map((person) => (
+                    ) : hostResults?.participants.map((person) => (
                       <div key={person.identity_id} className="flex items-center gap-3 rounded-md bg-white/5 p-3">
                         {person.avatar_url ? (
                           // eslint-disable-next-line @next/next/no-img-element
@@ -262,10 +326,11 @@ export default function RoomMissionManager({
                         )}
                         <div>
                           <p className="text-sm font-black text-white">{person.display_name}</p>
-                          <p className="text-xs text-zinc-400">Completed {new Date(person.completed_at).toLocaleString()}</p>
+                          <p className="text-xs text-zinc-400">{person.assignment_key ? `${person.assignment_key} | ` : ""}Completed {new Date(person.completed_at).toLocaleString()}</p>
                         </div>
                       </div>
                     ))}
+                    {hostResults?.has_more && <button type="button" onClick={() => void loadMoreCompletedResults()} className="w-full rounded-md border border-white/15 px-3 py-2 text-sm font-black text-zinc-200">Load More ({hostResults.participants.length} of {hostResults.total_count})</button>}
                   </div>
                 )}
               </div>
@@ -394,14 +459,17 @@ export default function RoomMissionManager({
                     </div>
                     <div className="flex items-center gap-3">
                       <span className="text-sm font-black text-zinc-300">{item.completion_count} completed</span>
-                      {item.mission_type === "animal_pack" && <button type="button" onClick={() => void toggleHistoryResults(item.id)} className="rounded border border-white/15 px-2 py-1 text-xs font-black text-purple-200">{historyResultsMissionId === item.id ? "Hide" : "View Completed"}</button>}
+                      <button type="button" onClick={() => void toggleHistoryOperations(item.id)} className="rounded border border-white/15 px-2 py-1 text-xs font-black text-zinc-200">{historyOperationsMissionId === item.id ? "Hide Operations" : "View Operations"}</button>
+                      <button type="button" onClick={() => void toggleHistoryResults(item.id)} className="rounded border border-white/15 px-2 py-1 text-xs font-black text-purple-200">{historyResultsMissionId === item.id ? "Hide" : "View Completed"}</button>
                     </div>
                   </div>
+                  {historyOperationsMissionId === item.id && historyOperations && <MissionOperationsDashboard dashboard={historyOperations} />}
                   {historyResultsMissionId === item.id && (
                     <div className="mt-3 border-t border-white/10 pt-3">
-                      {(historyResults?.completed_participants ?? []).length === 0 ? <p className="text-sm text-zinc-400">No completed participants.</p> : historyResults?.completed_participants.map((person) => (
-                        <div key={person.identity_id} className="mt-2 flex justify-between gap-3 text-sm"><span className="font-bold text-white">{person.display_name}</span><span className="text-zinc-400">{new Date(person.completed_at).toLocaleString()}</span></div>
+                      {(historyResults?.participants ?? []).length === 0 ? <p className="text-sm text-zinc-400">No completed participants.</p> : historyResults?.participants.map((person) => (
+                        <div key={person.identity_id} className="mt-2 flex justify-between gap-3 text-sm"><span className="font-bold text-white">{person.display_name}{person.assignment_key ? ` | ${person.assignment_key}` : ""}</span><span className="text-zinc-400">{new Date(person.completed_at).toLocaleString()}</span></div>
                       ))}
+                      {historyResults?.has_more && <button type="button" onClick={() => void loadMoreHistoryResults()} className="mt-3 w-full rounded-md border border-white/15 px-3 py-2 text-sm font-black text-zinc-200">Load More ({historyResults.participants.length} of {historyResults.total_count})</button>}
                     </div>
                   )}
                 </div>

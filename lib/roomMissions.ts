@@ -76,6 +76,65 @@ export type AnimalPackHostResults = {
   }>;
 };
 
+export type MissionOperationalStatus =
+  | "healthy"
+  | "waiting_for_participants"
+  | "needs_people"
+  | "imbalanced"
+  | "ended";
+
+export type MissionOperationsGroup = {
+  assignment_key: string;
+  label: string;
+  color: string | null;
+  participant_count: number;
+  completed_count: number;
+  encounter_count: number;
+  minimum_group_size: number | null;
+  underfilled: boolean;
+};
+
+export type MissionOperationsDashboard = {
+  mission_id: string;
+  mission_type: string;
+  title: string;
+  status: RoomMission["status"];
+  starts_at: string | null;
+  ends_at: string | null;
+  generated_at: string;
+  last_activity_at: string;
+  minimum_group_size: number | null;
+  operational_status: MissionOperationalStatus;
+  summary: {
+    participant_count: number;
+    assigned_participant_count: number;
+    unassigned_participant_count: number;
+    completed_count: number;
+    completion_rate: number;
+    encounter_count: number;
+    group_count: number;
+    smallest_group_count: number;
+    largest_group_count: number;
+    assignment_spread: number;
+    underfilled_group_count: number;
+  };
+  groups: MissionOperationsGroup[];
+};
+
+export type MissionCompletedParticipants = {
+  total_count: number;
+  limit: number;
+  offset: number;
+  has_more: boolean;
+  participants: {
+    identity_id: string;
+    display_name: string;
+    avatar_url: string | null;
+    assignment_key: string | null;
+    completed_at: string;
+  }[];
+};
+
 export const animalDetails: Record<string, { singular: string; plural: string }> = {
   "🐸": { singular: "frog", plural: "frogs" },
   "🦁": { singular: "lion", plural: "lions" },
@@ -282,6 +341,29 @@ export async function getAnimalPackHostResults(supabase: SupabaseClient, mission
     completed_count: Number(result.completed_count ?? 0),
     completed_participants: result.completed_participants ?? [],
   };
+}
+
+export async function getMissionOperationsDashboard(supabase: SupabaseClient, missionId: string) {
+  const { data, error } = await supabase.rpc("get_mission_operations_dashboard", {
+    p_mission_id: missionId,
+  });
+  if (error) throw new Error(error.message);
+  return data as MissionOperationsDashboard;
+}
+
+export async function getMissionCompletedParticipants(
+  supabase: SupabaseClient,
+  missionId: string,
+  limit = 100,
+  offset = 0,
+) {
+  const { data, error } = await supabase.rpc("get_mission_completed_participants", {
+    p_mission_id: missionId,
+    p_limit: limit,
+    p_offset: offset,
+  });
+  if (error) throw new Error(error.message);
+  return data as MissionCompletedParticipants;
 }
 
 export async function endRoomMission(supabase: SupabaseClient, missionId: string) {
