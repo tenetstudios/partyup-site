@@ -60,6 +60,7 @@ export default function RoomChat({
   const [reportingMessage, setReportingMessage] = useState<ChatMessage | null>(null);
   const [reportedMessageIds, setReportedMessageIds] = useState<Set<string>>(() => new Set());
   const [reportNotice, setReportNotice] = useState<string | null>(null);
+  const [openMessageMenu, setOpenMessageMenu] = useState<{ messageId: string; left: number; top: number } | null>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
@@ -143,6 +144,23 @@ export default function RoomChat({
     };
   }, [hostId, roomId]);
 
+  useEffect(() => {
+    if (!openMessageMenu) return;
+    const closeMenu = () => setOpenMessageMenu(null);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeMenu();
+    };
+
+    window.addEventListener("keydown", closeOnEscape);
+    window.addEventListener("resize", closeMenu);
+    window.addEventListener("scroll", closeMenu, true);
+    return () => {
+      window.removeEventListener("keydown", closeOnEscape);
+      window.removeEventListener("resize", closeMenu);
+      window.removeEventListener("scroll", closeMenu, true);
+    };
+  }, [openMessageMenu]);
+
   async function sendMessage() {
     const trimmed = text.trim();
     if (!trimmed || sending) return;
@@ -176,6 +194,7 @@ export default function RoomChat({
   }
 
   async function moderateMessage(message: ChatMessage, action: "remove" | "mute_5m") {
+    setOpenMessageMenu(null);
     const prompt = action === "remove"
       ? "Remove this message from the room?"
       : "Mute this person in this room for 5 minutes?";
@@ -196,6 +215,27 @@ export default function RoomChat({
       setMessages((current) => current.filter((item) => item.id !== message.id));
     }
   }
+
+  function openMessageActions(message: ChatMessage, button: HTMLButtonElement) {
+    const rect = button.getBoundingClientRect();
+    const canMute = canMuteUsers && Boolean(message.user_id) && message.user_id !== currentUserId && message.user_id !== hostId;
+    const canReport = Boolean(currentUserId && message.user_id && message.user_id !== currentUserId && !reportedMessageIds.has(message.id));
+    const actionCount = Number(canRemoveMessages) + Number(canMute) + Number(canReport);
+    const menuHeight = actionCount * 41 + 16;
+    const top = rect.bottom + 6 + menuHeight > window.innerHeight
+      ? Math.max(12, rect.top - menuHeight - 6)
+      : rect.bottom + 6;
+
+    setOpenMessageMenu({
+      messageId: message.id,
+      left: Math.max(12, Math.min(window.innerWidth - 188, rect.right - 176)),
+      top,
+    });
+  }
+
+  const menuMessage = openMessageMenu
+    ? messages.find((message) => message.id === openMessageMenu.messageId) ?? null
+    : null;
 
   return (
     <section className="flex h-[640px] min-h-[480px] max-h-[calc(100dvh-2rem)] flex-col overflow-hidden rounded-[10px] border border-white/10 bg-[linear-gradient(180deg,rgba(19,13,29,0.96),rgba(8,5,14,0.98))] shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
@@ -229,7 +269,7 @@ export default function RoomChat({
           </div>
         ) : (
           messages.map((msg) => (
-            <div key={msg.id} className="grid grid-cols-[44px_1fr] gap-x-3 text-sm">
+            <div key={msg.id} className="relative grid grid-cols-[44px_1fr] gap-x-3 pr-9 text-sm">
               <time className="pt-1 text-[11px] font-bold uppercase text-[#aaa4b8]">
                 {messageTime(msg.created_at)}
               </time>
@@ -249,43 +289,19 @@ export default function RoomChat({
                     )}
                   </div>
                   <p className="mt-1 break-words text-[16px] leading-6 text-white">{msg.message}</p>
-                  {(canRemoveMessages || (currentUserId && msg.user_id && msg.user_id !== currentUserId)) && (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {canRemoveMessages && (
-                        <button
-                          type="button"
-                          onClick={() => void moderateMessage(msg, "remove")}
-                          className="rounded-full border border-red-300/30 px-3 py-1 text-[11px] font-black text-red-200 hover:bg-red-400/10"
-                        >
-                          Remove
-                        </button>
-                      )}
-                      {canMuteUsers && msg.user_id && msg.user_id !== currentUserId && msg.user_id !== hostId && (
-                        <button
-                          type="button"
-                          onClick={() => void moderateMessage(msg, "mute_5m")}
-                          className="rounded-full border border-purple-300/30 px-3 py-1 text-[11px] font-black text-purple-200 hover:bg-purple-400/10"
-                        >
-                          Mute 5m
-                        </button>
-                      )}
-                      {currentUserId && msg.user_id && msg.user_id !== currentUserId && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setReportNotice(null);
-                            setReportingMessage(msg);
-                          }}
-                          disabled={reportedMessageIds.has(msg.id)}
-                          className="rounded-full border border-amber-300/25 px-3 py-1 text-[11px] font-black text-amber-200 hover:bg-amber-400/10 disabled:cursor-default disabled:border-white/10 disabled:text-zinc-600"
-                        >
-                          {reportedMessageIds.has(msg.id) ? "Reported" : "Report"}
-                        </button>
-                      )}
-                    </div>
-                  )}
                 </div>
               </div>
+              {(canRemoveMessages || (currentUserId && msg.user_id && msg.user_id !== currentUserId && !reportedMessageIds.has(msg.id))) && (
+                <button
+                  type="button"
+                  aria-label={`Actions for ${msg.display_name || "this message"}`}
+                  title="Message actions"
+                  onClick={(event) => openMessageActions(msg, event.currentTarget)}
+                  className="absolute right-0 top-0 grid h-8 w-8 place-items-center rounded-md text-xl font-black leading-none text-[#aaa4b8] hover:bg-white/10 hover:text-white"
+                >
+                  ⋯
+                </button>
+              )}
             </div>
           ))
         )}
@@ -319,6 +335,33 @@ export default function RoomChat({
           </div>
         </div>
       </div>
+
+      {menuMessage && openMessageMenu && (
+        <>
+          <button type="button" aria-label="Close message actions" className="fixed inset-0 z-40 cursor-default bg-transparent" onClick={() => setOpenMessageMenu(null)} />
+          <div role="menu" aria-label="Message actions" className="fixed z-50 w-44 overflow-hidden rounded-md border border-white/15 bg-[#120c1c] p-1.5 shadow-2xl" style={{ left: openMessageMenu.left, top: openMessageMenu.top }}>
+            {canRemoveMessages && (
+              <button type="button" role="menuitem" onClick={() => void moderateMessage(menuMessage, "remove")} className="block w-full rounded-md px-3 py-2.5 text-left text-sm font-black text-red-200 hover:bg-red-400/10">
+                Remove message
+              </button>
+            )}
+            {canMuteUsers && menuMessage.user_id && menuMessage.user_id !== currentUserId && menuMessage.user_id !== hostId && (
+              <button type="button" role="menuitem" onClick={() => void moderateMessage(menuMessage, "mute_5m")} className="block w-full rounded-md px-3 py-2.5 text-left text-sm font-black text-purple-200 hover:bg-purple-400/10">
+                Mute for 5 minutes
+              </button>
+            )}
+            {currentUserId && menuMessage.user_id && menuMessage.user_id !== currentUserId && !reportedMessageIds.has(menuMessage.id) && (
+              <button type="button" role="menuitem" onClick={() => {
+                setOpenMessageMenu(null);
+                setReportNotice(null);
+                setReportingMessage(menuMessage);
+              }} className="block w-full rounded-md px-3 py-2.5 text-left text-sm font-black text-amber-200 hover:bg-amber-400/10">
+                Report message
+              </button>
+            )}
+          </div>
+        </>
+      )}
 
       {reportingMessage && (
         <MessageReportDialog
