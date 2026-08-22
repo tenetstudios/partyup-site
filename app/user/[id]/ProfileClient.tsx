@@ -354,15 +354,26 @@ export default function ProfileClient({ profileId }: { profileId: string }) {
                   supabase={supabase}
                 />
               ) : (
-                <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-sm font-bold text-[#aaa4b8]">This is your public profile.</p>
-                  <button
-                    type="button"
-                    onClick={signOut}
-                    className={`${partyUpTheme.ghostButton} px-5 text-sm`}
-                  >
-                    Sign out
-                  </button>
+                <div className="mt-6 border-t border-white/10 pt-6">
+                  <p className={partyUpTheme.sectionLabel}>Account</p>
+                  <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-sm font-bold text-[#aaa4b8]">This is your public profile.</p>
+                    <div className="flex flex-wrap gap-3">
+                      <Link
+                        href="/delete-account"
+                        className={`${partyUpTheme.destructiveButton} px-5 text-sm`}
+                      >
+                        Delete Account
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={signOut}
+                        className={`${partyUpTheme.ghostButton} px-5 text-sm`}
+                      >
+                        Sign out
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )
             ) : currentUserId ? (

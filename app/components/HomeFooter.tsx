@@ -8,6 +8,7 @@ export default function HomeFooter() {
     { label: "Privacy", href: "/privacy" },
     { label: "Terms", href: "/terms" },
     { label: "Contact", href: "/contact" },
+    { label: "Delete Account", href: "/delete-account" },
   ];
 
   return (
