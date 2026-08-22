@@ -227,7 +227,7 @@ export default function ProfileClient({ profileId }: { profileId: string }) {
     <>
       <HomeHeader />
 
-      <div className="mx-auto w-full max-w-3xl px-5 py-8">
+      <div className="mx-auto w-full max-w-5xl px-5 py-8 md:py-10">
         {message && (
           <div className="mt-6 rounded-md border border-amber-300/20 bg-amber-950/40 px-4 py-3 text-sm font-bold text-amber-100">
             {message}
@@ -235,20 +235,20 @@ export default function ProfileClient({ profileId }: { profileId: string }) {
         )}
 
         {loading ? (
-          <section className="mt-6 rounded-lg border border-white/10 bg-[#10101a] p-6 text-[#aaa4b8]">
+          <section className={`${partyUpTheme.glassCard} mt-6 p-6 ${partyUpTheme.textSecondary}`}>
             Loading...
           </section>
         ) : profile ? (
-          <section className={isOwnProfile && activeSection === "memories" ? `${partyUpTheme.glassElevated} mt-6 p-6` : "mt-6 rounded-lg border border-white/10 bg-[#10101a] p-6"}>
+          <section className={`${partyUpTheme.glassElevated} mt-6 p-5 sm:p-6`}>
             <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
               {profile.avatar_url ? (
                 <img
                   src={profile.avatar_url}
                   alt=""
-                  className="h-24 w-24 rounded-full object-cover"
+                  className="h-24 w-24 rounded-full border border-purple-200/25 object-cover shadow-[0_14px_36px_rgba(0,0,0,0.3)]"
                 />
               ) : (
-                <div className="grid h-24 w-24 place-items-center rounded-full bg-[#8b3dff] text-3xl font-black">
+                <div className="grid h-24 w-24 place-items-center rounded-full border border-fuchsia-200/25 bg-[linear-gradient(135deg,#7c3aed,var(--partyup-pink))] text-3xl font-black shadow-[0_14px_36px_rgba(139,61,255,0.28)]">
                   {getProfileName(profile).slice(0, 1).toUpperCase()}
                 </div>
               )}
@@ -290,13 +290,13 @@ export default function ProfileClient({ profileId }: { profileId: string }) {
             </p>
 
             <div className="mt-6 grid grid-cols-2 gap-3">
-              <div className="rounded-lg border border-white/10 bg-black/20 p-4">
+              <div className="border border-purple-100/10 bg-[#100b20]/55 p-4 backdrop-blur-md">
                 <p className="text-2xl font-black">{state.followers}</p>
                 <p className="mt-1 text-xs font-black uppercase tracking-[0.14em] text-[#aaa4b8]">
                   Followers
                 </p>
               </div>
-              <div className="rounded-lg border border-white/10 bg-black/20 p-4">
+              <div className="border border-purple-100/10 bg-[#100b20]/55 p-4 backdrop-blur-md">
                 <p className="text-2xl font-black">{state.following}</p>
                 <p className="mt-1 text-xs font-black uppercase tracking-[0.14em] text-[#aaa4b8]">
                   Following
@@ -359,7 +359,7 @@ export default function ProfileClient({ profileId }: { profileId: string }) {
                   <button
                     type="button"
                     onClick={signOut}
-                    className="inline-flex h-11 items-center justify-center rounded-md border border-white/10 px-5 text-sm font-black text-white hover:bg-white/10"
+                    className={`${partyUpTheme.ghostButton} px-5 text-sm`}
                   >
                     Sign out
                   </button>
@@ -371,7 +371,7 @@ export default function ProfileClient({ profileId }: { profileId: string }) {
                   type="button"
                   onClick={toggleFollow}
                   disabled={processing}
-                  className="rounded-md bg-[#8b3dff] px-5 py-3 text-sm font-black text-white hover:bg-[#7b31e8] disabled:cursor-not-allowed disabled:opacity-60"
+                  className={`${partyUpTheme.primaryButton} px-5 text-sm`}
                 >
                   {state.is_following ? "Unfollow" : "Follow"}
                 </button>
@@ -380,7 +380,7 @@ export default function ProfileClient({ profileId }: { profileId: string }) {
                     type="button"
                     onClick={removeConnection}
                     disabled={processing}
-                    className="rounded-md border border-red-400/30 px-5 py-3 text-sm font-black text-red-200 hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-60"
+                    className={`${partyUpTheme.destructiveButton} px-5 text-sm`}
                   >
                     Remove Connection
                   </button>
@@ -390,14 +390,14 @@ export default function ProfileClient({ profileId }: { profileId: string }) {
               <button
                 type="button"
                 onClick={signInWithGoogle}
-                className="mt-6 rounded-md bg-[#8b3dff] px-5 py-3 text-sm font-black text-white hover:bg-[#7b31e8]"
+                className={`${partyUpTheme.primaryButton} mt-6 px-5 text-sm`}
               >
                 Sign in to Follow
               </button>
             )}
           </section>
         ) : (
-          <section className="mt-6 rounded-lg border border-white/10 bg-[#10101a] p-6 text-[#aaa4b8]">
+          <section className={`${partyUpTheme.emptyState} mt-6 p-8 ${partyUpTheme.textSecondary}`}>
             Profile not found.
           </section>
         )}
@@ -405,18 +405,14 @@ export default function ProfileClient({ profileId }: { profileId: string }) {
     </>
   );
 
-  if (isOwnProfile && activeSection === "memories") {
-    return <PartyUpPageShell intensity="standard">{pageContent}</PartyUpPageShell>;
-  }
-
-  return <main className="min-h-screen bg-[#05040b] text-white">{pageContent}</main>;
+  return <PartyUpPageShell intensity="standard">{pageContent}</PartyUpPageShell>;
 }
 
 function HostSeriesSection({ series, isOwner }: { series: EventSeriesSummary[]; isOwner: boolean }) {
   if (series.length === 0 && !isOwner) return null;
-  return <section className="mt-6 border-t border-white/10 pt-6">
-    <div className="flex items-center justify-between gap-4"><div><p className="text-xs font-black uppercase text-[#ff63a8]">Event Series</p><h2 className="mt-1 text-2xl font-black">Recurring events</h2></div>{isOwner && <Link href="/series/new" className="rounded-md bg-[#8b3dff] px-4 py-2.5 text-sm font-black">Create Series</Link>}</div>
-    {series.length === 0 ? <p className="mt-4 rounded-lg border border-dashed border-white/15 p-5 text-sm text-[#aaa4b8]">Create a series to keep your audience and event history together.</p> : <div className="mt-4 grid gap-3 md:grid-cols-2">{series.map((item) => <Link key={item.id} href={`/series/${item.id}`} className="flex min-h-28 overflow-hidden rounded-lg border border-white/10 bg-white/[0.04] hover:border-[#8b5dc2]">{item.cover_image_url ? <img src={item.cover_image_url} alt="" className="w-28 object-cover" /> : <div className="grid w-28 place-items-center bg-[#23152f] font-black text-[#d8b4fe]">SERIES</div>}<div className="min-w-0 flex-1 p-4"><h3 className="truncate font-black">{item.name}</h3><p className="mt-2 text-xs font-bold text-[#aaa4b8]">{item.event_count} events / {item.follower_count} followers</p><p className="mt-3 text-xs font-bold text-[#c9a6ff]">{item.next_event_at ? `Next: ${formatSeriesDate(item.next_event_at)}` : "Next date coming soon"}</p></div></Link>)}</div>}
+  return <section className="mt-6 border-t border-purple-100/15 pt-6">
+    <div className="flex flex-wrap items-center justify-between gap-4"><div><p className={partyUpTheme.sectionLabel}>Event Series</p><h2 className="mt-1 text-2xl font-black">Recurring events</h2></div>{isOwner && <Link href="/series/new" className={`${partyUpTheme.primaryButton} px-4 text-sm`}>Create Series</Link>}</div>
+    {series.length === 0 ? <p className={`${partyUpTheme.emptyState} mt-4 p-5 text-sm ${partyUpTheme.textSecondary}`}>Create a series to keep your audience and event history together.</p> : <div className="mt-4 grid gap-3 md:grid-cols-2">{series.map((item) => <Link key={item.id} href={`/series/${item.id}`} className={`${partyUpTheme.glassInteractive} flex min-h-28 overflow-hidden`}>{item.cover_image_url ? <img src={item.cover_image_url} alt="" className="w-28 object-cover" /> : <div className="grid w-28 place-items-center bg-[#23152f] font-black text-[#d8b4fe]">SERIES</div>}<div className="min-w-0 flex-1 p-4"><h3 className="truncate font-black">{item.name}</h3><p className={`mt-2 text-xs font-bold ${partyUpTheme.textSecondary}`}>{item.event_count} events / {item.follower_count} followers</p><p className="mt-3 text-xs font-bold text-[#c9a6ff]">{item.next_event_at ? `Next: ${formatSeriesDate(item.next_event_at)}` : "Next date coming soon"}</p></div></Link>)}</div>}
   </section>;
 }
 
@@ -431,13 +427,13 @@ function HostEvidenceSections({ data }: { data: HostReputationProfile }) {
   return (
     <section className="mt-8 border-t border-white/10 pt-8">
       <div>
-        <p className="text-xs font-black uppercase tracking-[0.16em] text-[#ff63a8]">Host reputation</p>
+        <p className={partyUpTheme.sectionLabel}>Host reputation</p>
         <h2 className="mt-2 text-2xl font-black">What they have made happen</h2>
       </div>
 
       <div className="mt-5 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-white/10 bg-white/10 md:grid-cols-4">
         {summaryItems.map(([value, label]) => (
-          <div key={label} className="bg-black/35 p-4">
+          <div key={label} className="bg-[#100b20]/65 p-4 backdrop-blur-md">
             <p className="text-2xl font-black text-[#d8b4fe]">{value}</p>
             <p className="mt-1 text-xs font-black uppercase tracking-[0.1em] text-[#aaa4b8]">{label}</p>
           </div>
@@ -480,7 +476,7 @@ function HostEventList({
     <section className="mt-8">
       <h3 className="text-xl font-black">{title}</h3>
       {events.length === 0 ? (
-        <div className="mt-4 rounded-lg border border-dashed border-purple-300/20 bg-black/20 p-5">
+        <div className={`${partyUpTheme.emptyState} mt-4 p-5 text-left`}>
           <p className="font-black">{emptyTitle}</p>
           <p className="mt-2 text-sm font-semibold leading-6 text-[#aaa4b8]">{emptyCopy}</p>
         </div>
@@ -490,7 +486,7 @@ function HostEventList({
             <Link
               key={event.id}
               href={`/room/${event.id}`}
-              className="group overflow-hidden rounded-lg border border-white/10 bg-black/20 hover:border-purple-300/35"
+              className={`${partyUpTheme.glassInteractive} group overflow-hidden`}
             >
               <div className="flex gap-4 p-4">
                 {event.cover_image_url ? (
