@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { InfoPageShell, InfoSection } from "@/app/components/InfoPage";
+import { partyUpTheme } from "@/app/components/PartyUpTheme";
 
 export const metadata: Metadata = {
   title: "Contact",
@@ -17,17 +18,17 @@ export default function ContactPage() {
         <form className="grid gap-4" aria-describedby="contact-pending-note">
           <label className="block">
             <span className="mb-1 block text-sm font-black text-white">Name</span>
-            <input className="h-11 w-full rounded-md border border-white/10 bg-black/30 px-3 text-white outline-none focus:border-[#c35dff]" />
+            <input className={`${partyUpTheme.input} h-11 w-full px-3`} />
           </label>
 
           <label className="block">
             <span className="mb-1 block text-sm font-black text-white">Email</span>
-            <input type="email" className="h-11 w-full rounded-md border border-white/10 bg-black/30 px-3 text-white outline-none focus:border-[#c35dff]" />
+            <input type="email" className={`${partyUpTheme.input} h-11 w-full px-3`} />
           </label>
 
           <label className="block">
             <span className="mb-1 block text-sm font-black text-white">Reason</span>
-            <select className="h-11 w-full rounded-md border border-white/10 bg-black/30 px-3 text-white outline-none focus:border-[#c35dff]" defaultValue="General">
+            <select className={`${partyUpTheme.input} h-11 w-full px-3`} defaultValue="General">
               <option>General</option>
               <option>Safety</option>
               <option>Partnerships / Events</option>
@@ -39,7 +40,7 @@ export default function ContactPage() {
 
           <label className="block">
             <span className="mb-1 block text-sm font-black text-white">Message</span>
-            <textarea className="min-h-36 w-full rounded-md border border-white/10 bg-black/30 px-3 py-3 text-white outline-none focus:border-[#c35dff]" />
+            <textarea className={`${partyUpTheme.input} min-h-36 w-full px-3 py-3`} />
           </label>
 
           <p id="contact-pending-note" className="rounded-md border border-amber-300/20 bg-amber-950/30 px-4 py-3 text-sm font-bold text-amber-100">
@@ -49,7 +50,7 @@ export default function ContactPage() {
           <button
             type="button"
             disabled
-            className="h-11 rounded-md bg-[#8b3dff] px-5 text-sm font-black text-white opacity-50"
+            className={`${partyUpTheme.primaryButton} h-11 px-5 text-sm`}
           >
             Send Message
           </button>
