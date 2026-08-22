@@ -138,6 +138,18 @@ export async function getMyEventSeries(supabase: SupabaseClient) {
   return (Array.isArray(data) ? data : []).map(normalizeEventSeriesSummary).filter((item): item is EventSeriesSummary => item !== null);
 }
 
+export async function deleteEventSeries(supabase: SupabaseClient, seriesId: string) {
+  const { data, error } = await supabase
+    .from("event_series")
+    .delete()
+    .eq("id", seriesId)
+    .select("id")
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) throw new Error("Series not found or not owned by the current user.");
+}
+
 export function formatSeriesDate(value: string | null) {
   if (!value) return "Date to be announced";
   const date = new Date(value);
