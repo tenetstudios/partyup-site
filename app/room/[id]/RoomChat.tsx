@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createSupabaseClient } from "@/lib/supabase";
 import { friendlyChatError } from "@/lib/chatModeration";
 
@@ -55,6 +55,14 @@ export default function RoomChat({
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [canRemoveMessages, setCanRemoveMessages] = useState(false);
   const [canMuteUsers, setCanMuteUsers] = useState(false);
+  const messageListRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const messageList = messageListRef.current;
+    if (!messageList) return;
+
+    messageList.scrollTop = messageList.scrollHeight;
+  }, [messages]);
 
   useEffect(() => {
     const supabase = createSupabaseClient();
@@ -64,10 +72,14 @@ export default function RoomChat({
         .from("room_messages")
         .select("*")
         .eq("room_id", roomId)
-        .order("created_at", { ascending: true })
+        .order("created_at", { ascending: false })
         .limit(100);
 
-      setMessages(((data ?? []) as ChatMessage[]).filter((message) => !message.removed_at));
+      setMessages(
+        ((data ?? []) as ChatMessage[])
+          .filter((message) => !message.removed_at)
+          .reverse(),
+      );
     }
 
     async function loadModeratorState() {
@@ -165,8 +177,8 @@ export default function RoomChat({
   }
 
   return (
-    <section className="flex h-full min-h-[520px] flex-col rounded-[10px] border border-white/10 bg-[linear-gradient(180deg,rgba(19,13,29,0.96),rgba(8,5,14,0.98))] shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
-      <div className="flex items-start justify-between px-6 py-6">
+    <section className="flex h-[640px] min-h-[480px] max-h-[calc(100dvh-2rem)] flex-col overflow-hidden rounded-[10px] border border-white/10 bg-[linear-gradient(180deg,rgba(19,13,29,0.96),rgba(8,5,14,0.98))] shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
+      <div className="flex shrink-0 items-start justify-between px-6 py-6">
         <div>
           <h2 className="text-[22px] font-black leading-none text-white">Room Chat</h2>
           <div className="mt-3 flex items-center gap-2 text-sm text-[#aaa4b8]">
@@ -181,7 +193,10 @@ export default function RoomChat({
         </svg>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-5 pb-4 pt-4">
+      <div
+        ref={messageListRef}
+        className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto overscroll-contain px-5 pb-4 pt-4"
+      >
         {messages.length === 0 ? (
           <div className="grid h-full place-items-center rounded-lg border border-dashed border-white/10 bg-black/15 p-6 text-center text-sm text-[#aaa4b8]">
             No messages yet.
@@ -235,7 +250,7 @@ export default function RoomChat({
         )}
       </div>
 
-      <div className="p-4">
+      <div className="shrink-0 p-4">
         <div className="rounded-[8px] border border-white/10 bg-white/[0.04] p-3">
           <div className="flex items-center gap-2">
             <input
