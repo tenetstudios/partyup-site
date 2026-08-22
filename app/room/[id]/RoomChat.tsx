@@ -3,6 +3,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createSupabaseClient } from "@/lib/supabase";
 import { friendlyChatError } from "@/lib/chatModeration";
+import { getMyRoomMessageReportIds } from "@/lib/chatReports";
+import MessageReportDialog from "./MessageReportDialog";
 
 type ChatMessage = {
   id: string;
@@ -55,6 +57,9 @@ export default function RoomChat({
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [canRemoveMessages, setCanRemoveMessages] = useState(false);
   const [canMuteUsers, setCanMuteUsers] = useState(false);
+  const [reportingMessage, setReportingMessage] = useState<ChatMessage | null>(null);
+  const [reportedMessageIds, setReportedMessageIds] = useState<Set<string>>(() => new Set());
+  const [reportNotice, setReportNotice] = useState<string | null>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
@@ -98,7 +103,12 @@ export default function RoomChat({
       const user = userData.user;
       setCurrentUserId(user?.id ?? null);
 
-      if (!user) return;
+      if (!user) {
+        setReportedMessageIds(new Set());
+        return;
+      }
+      const reportedIds = await getMyRoomMessageReportIds(supabase, roomId).catch(() => []);
+      setReportedMessageIds(new Set(reportedIds));
       const isHost = hostId === user.id;
       const { data: attendee } = await supabase
         .from("event_attendees")
@@ -208,6 +218,11 @@ export default function RoomChat({
         ref={messageListRef}
         className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto overscroll-contain px-5 pb-4 pt-4"
       >
+        {reportNotice && (
+          <div role="status" className="rounded-md border border-emerald-300/20 bg-emerald-950/25 px-3 py-2 text-sm font-bold text-emerald-100">
+            {reportNotice}
+          </div>
+        )}
         {messages.length === 0 ? (
           <div className="grid h-full place-items-center rounded-lg border border-dashed border-white/10 bg-black/15 p-6 text-center text-sm text-[#aaa4b8]">
             No messages yet.
@@ -234,15 +249,17 @@ export default function RoomChat({
                     )}
                   </div>
                   <p className="mt-1 break-words text-[16px] leading-6 text-white">{msg.message}</p>
-                  {canRemoveMessages && (
+                  {(canRemoveMessages || (currentUserId && msg.user_id && msg.user_id !== currentUserId)) && (
                     <div className="mt-2 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => void moderateMessage(msg, "remove")}
-                        className="rounded-full border border-red-300/30 px-3 py-1 text-[11px] font-black text-red-200 hover:bg-red-400/10"
-                      >
-                        Remove
-                      </button>
+                      {canRemoveMessages && (
+                        <button
+                          type="button"
+                          onClick={() => void moderateMessage(msg, "remove")}
+                          className="rounded-full border border-red-300/30 px-3 py-1 text-[11px] font-black text-red-200 hover:bg-red-400/10"
+                        >
+                          Remove
+                        </button>
+                      )}
                       {canMuteUsers && msg.user_id && msg.user_id !== currentUserId && msg.user_id !== hostId && (
                         <button
                           type="button"
@@ -250,6 +267,19 @@ export default function RoomChat({
                           className="rounded-full border border-purple-300/30 px-3 py-1 text-[11px] font-black text-purple-200 hover:bg-purple-400/10"
                         >
                           Mute 5m
+                        </button>
+                      )}
+                      {currentUserId && msg.user_id && msg.user_id !== currentUserId && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setReportNotice(null);
+                            setReportingMessage(msg);
+                          }}
+                          disabled={reportedMessageIds.has(msg.id)}
+                          className="rounded-full border border-amber-300/25 px-3 py-1 text-[11px] font-black text-amber-200 hover:bg-amber-400/10 disabled:cursor-default disabled:border-white/10 disabled:text-zinc-600"
+                        >
+                          {reportedMessageIds.has(msg.id) ? "Reported" : "Report"}
                         </button>
                       )}
                     </div>
@@ -289,6 +319,18 @@ export default function RoomChat({
           </div>
         </div>
       </div>
+
+      {reportingMessage && (
+        <MessageReportDialog
+          key={reportingMessage.id}
+          message={reportingMessage}
+          onClose={() => setReportingMessage(null)}
+          onReported={(messageId) => {
+            setReportedMessageIds((current) => new Set(current).add(messageId));
+            setReportNotice("Report submitted to the room host.");
+          }}
+        />
+      )}
     </section>
   );
 }

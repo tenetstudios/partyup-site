@@ -54,13 +54,13 @@ export default function SafetyPage() {
 
       <InfoSection title="Reporting And Moderation">
         <p>
-          PartyUp includes room-management tools for hosts and may provide reporting, blocking, moderation, and room-level controls as the product evolves.
+          Signed-in users can report room messages for harassment, hate, sexual content, threats, scams, personal-information exposure, or another safety concern. Reports send an evidence snapshot and optional context to the room host for review.
         </p>
         <p>
-          Hosts and organizers are responsible for using available room-management and moderation tools appropriately. Guest access reduces onboarding friction, but guest activity is still subject to PartyUp rules and moderation.
+          Hosts can dismiss a report, remove the reported message, or temporarily mute the reported account. Reports do not automatically remove content or notify the reported person.
         </p>
         <p>
-          PartyUp may maintain account, guest, session, and room activity identifiers at a high level to operate the service and help prevent abuse.
+          PartyUp may retain report evidence and account, guest, session, and room activity identifiers to operate the service, review moderation decisions, and help prevent abuse.
         </p>
       </InfoSection>
 

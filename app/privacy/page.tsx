@@ -64,6 +64,9 @@ export default function PrivacyPage() {
         <p>
           Retention depends on operational, product, safety, and legal needs. The current code does not define a single fixed retention period for all PartyUp data.
         </p>
+        <p>
+          Message reports preserve the reported text, display name, account and room identifiers, selected reason, optional reporter context, and moderation result. Safety evidence may be retained after the visible message, room, or associated account is removed.
+        </p>
       </InfoSection>
 
       <InfoSection title="Security">
