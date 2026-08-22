@@ -207,6 +207,7 @@ export default function HostDashboardOverview({ roomId }: { roomId: string }) {
         </div>
 
         <div className="flex flex-wrap gap-2">
+          <QuickAction href="#missions">Missions</QuickAction>
           <QuickAction href="#announcements">{announcement ? "Manage Announcement" : "Create Announcement"}</QuickAction>
           <QuickAction href="#qr-poster">QR & Poster</QuickAction>
           <QuickAction href="#streaming">Streaming / OBS</QuickAction>
