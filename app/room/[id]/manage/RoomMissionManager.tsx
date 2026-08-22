@@ -4,9 +4,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createSupabaseClient } from "@/lib/supabase";
 import {
   endRoomMission,
+  getAnimalPackHostResults,
   getActiveRoomMission,
   getRoomMissionHistory,
   publishRoomMission,
+  publishAnimalPackMission,
+  type AnimalPackHostResults,
   type RoomMission,
   type RoomMissionHistoryItem,
 } from "@/lib/roomMissions";
@@ -38,9 +41,16 @@ export default function RoomMissionManager({
   const [mission, setMission] = useState<RoomMission | null>(null);
   const [history, setHistory] = useState<RoomMissionHistoryItem[]>([]);
   const [creating, setCreating] = useState(false);
+  const [missionType, setMissionType] = useState<"generic" | "animal_pack">("generic");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [duration, setDuration] = useState("10");
+  const [animalCount, setAnimalCount] = useState("6");
+  const [targetEncounters, setTargetEncounters] = useState("3");
+  const [hostResults, setHostResults] = useState<AnimalPackHostResults | null>(null);
+  const [showCompleted, setShowCompleted] = useState(false);
+  const [historyResultsMissionId, setHistoryResultsMissionId] = useState<string | null>(null);
+  const [historyResults, setHistoryResults] = useState<AnimalPackHostResults | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -52,6 +62,11 @@ export default function RoomMissionManager({
     ]);
     setMission(nextMission);
     setHistory(nextHistory);
+    setHostResults(
+      nextMission?.mission_type === "animal_pack"
+        ? await getAnimalPackHostResults(supabase, nextMission.id)
+        : null,
+    );
   }, [roomId, supabase]);
 
   useEffect(() => {
@@ -79,6 +94,16 @@ export default function RoomMissionManager({
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "room_missions", filter: `room_id=eq.${roomId}` },
+        () => void loadData(),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "mission_participant_assignments" },
+        () => void loadData(),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "mission_encounters" },
         () => void loadData(),
       )
       .on(
@@ -117,14 +142,23 @@ export default function RoomMissionManager({
     setSuccess(null);
 
     try {
-      await publishRoomMission(supabase, roomId, {
-        title,
-        description,
-        durationMinutes: duration ? Number(duration) : null,
-      });
+      if (missionType === "animal_pack") {
+        await publishAnimalPackMission(supabase, roomId, {
+          animalCount: Number(animalCount),
+          targetEncounters: Number(targetEncounters),
+          durationMinutes: Number(duration),
+        });
+      } else {
+        await publishRoomMission(supabase, roomId, {
+          title,
+          description,
+          durationMinutes: duration ? Number(duration) : null,
+        });
+      }
       setTitle("");
       setDescription("");
       setDuration("10");
+      setMissionType("generic");
       setCreating(false);
       setSuccess(mission ? "The previous Mission ended and the new Mission is active." : "Mission published.");
       await loadData();
@@ -155,6 +189,21 @@ export default function RoomMissionManager({
     }
   }
 
+  async function toggleHistoryResults(missionId: string) {
+    if (historyResultsMissionId === missionId) {
+      setHistoryResultsMissionId(null);
+      setHistoryResults(null);
+      return;
+    }
+    setError(null);
+    try {
+      setHistoryResults(await getAnimalPackHostResults(supabase, missionId));
+      setHistoryResultsMissionId(missionId);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not load completed participants.");
+    }
+  }
+
   return (
     <section id="missions" className="mt-8 rounded-xl border border-white/10 bg-[#12051e]">
       <div className="border-b border-white/10 p-4">
@@ -175,13 +224,51 @@ export default function RoomMissionManager({
           <div className="rounded-lg bg-black/30 p-4">
             <div className="flex flex-wrap items-center gap-3">
               <span className="rounded bg-emerald-700 px-2 py-1 text-xs font-black uppercase text-white">Active</span>
-              <span className="text-sm font-black text-pink-200">{mission.completion_count} completed</span>
+              {mission.mission_type === "animal_pack" && (
+                <span className="text-sm font-black text-purple-200">
+                  {hostResults?.participant_count ?? mission.participant_count} participating
+                </span>
+              )}
+              <span className="text-sm font-black text-pink-200">{hostResults?.completed_count ?? mission.completion_count} completed</span>
               {mission.ends_at && (
                 <span className="text-xs font-bold text-zinc-400">Ends {new Date(mission.ends_at).toLocaleString()}</span>
               )}
             </div>
             <h3 className="mt-3 text-xl font-black">{mission.title}</h3>
             {mission.description && <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-300">{mission.description}</p>}
+            {mission.mission_type === "animal_pack" && (
+              <div className="mt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowCompleted((value) => !value)}
+                  className="rounded-md border border-purple-300/30 px-4 py-2 text-sm font-black text-purple-100 hover:bg-purple-400/10"
+                >
+                  {showCompleted ? "Hide Completed" : "View Completed"}
+                </button>
+                {showCompleted && (
+                  <div className="mt-3 space-y-2">
+                    {(hostResults?.completed_participants ?? []).length === 0 ? (
+                      <p className="text-sm text-zinc-400">No completed participants yet.</p>
+                    ) : hostResults?.completed_participants.map((person) => (
+                      <div key={person.identity_id} className="flex items-center gap-3 rounded-md bg-white/5 p-3">
+                        {person.avatar_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={person.avatar_url} alt="" className="h-9 w-9 rounded-full object-cover" />
+                        ) : (
+                          <div className="grid h-9 w-9 place-items-center rounded-full bg-purple-900 font-black">
+                            {person.display_name.slice(0, 1).toUpperCase()}
+                          </div>
+                        )}
+                        <div>
+                          <p className="text-sm font-black text-white">{person.display_name}</p>
+                          <p className="text-xs text-zinc-400">Completed {new Date(person.completed_at).toLocaleString()}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             <button
               type="button"
               onClick={endActiveMission}
@@ -208,6 +295,19 @@ export default function RoomMissionManager({
         ) : !roomEnded ? (
           <div className="space-y-3 rounded-lg bg-black/30 p-4">
             <label className="block">
+              <span className="mb-1 block text-sm font-black text-purple-300">Mission Type</span>
+              <select
+                value={missionType}
+                onChange={(event) => setMissionType(event.target.value as "generic" | "animal_pack")}
+                className="w-full rounded-md bg-black px-3 py-3 text-sm text-white outline-none"
+              >
+                <option value="generic">Standard Mission</option>
+                <option value="animal_pack">Find Your Pack</option>
+              </select>
+            </label>
+            {missionType === "generic" ? (
+              <>
+            <label className="block">
               <span className="mb-1 block text-sm font-black text-purple-300">Mission title *</span>
               <input
                 value={title}
@@ -217,7 +317,24 @@ export default function RoomMissionManager({
                 className="w-full rounded-md bg-black px-3 py-3 text-sm text-white outline-none placeholder:text-zinc-500"
               />
             </label>
-            <label className="block">
+              </>
+            ) : (
+              <>
+                <label className="block">
+                  <span className="mb-1 block text-sm font-black text-purple-300">Number of animal groups</span>
+                  <select value={animalCount} onChange={(event) => setAnimalCount(event.target.value)} className="w-full rounded-md bg-black px-3 py-3 text-sm text-white outline-none">
+                    {[4, 6, 8, 10, 12].map((value) => <option key={value} value={value}>{value}</option>)}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-sm font-black text-purple-300">People each participant must find</span>
+                  <select value={targetEncounters} onChange={(event) => setTargetEncounters(event.target.value)} className="w-full rounded-md bg-black px-3 py-3 text-sm text-white outline-none">
+                    {[1, 2, 3].map((value) => <option key={value} value={value}>{value}</option>)}
+                  </select>
+                </label>
+              </>
+            )}
+            {missionType === "generic" && <label className="block">
               <span className="mb-1 block text-sm font-black text-purple-300">Description</span>
               <textarea
                 value={description}
@@ -227,7 +344,7 @@ export default function RoomMissionManager({
                 placeholder="Introduce yourself to someone you haven't met yet."
                 className="w-full resize-none rounded-md bg-black px-3 py-3 text-sm text-white outline-none placeholder:text-zinc-500"
               />
-            </label>
+            </label>}
             <label className="block">
               <span className="mb-1 block text-sm font-black text-purple-300">Duration</span>
               <select
@@ -235,7 +352,7 @@ export default function RoomMissionManager({
                 onChange={(event) => setDuration(event.target.value)}
                 className="w-full rounded-md bg-black px-3 py-3 text-sm text-white outline-none"
               >
-                {durations.map((option) => <option key={option.value || "none"} value={option.value}>{option.label}</option>)}
+                {durations.filter((option) => missionType === "generic" || option.value !== "").map((option) => <option key={option.value || "none"} value={option.value}>{option.label}</option>)}
               </select>
             </label>
             <div className="flex flex-wrap gap-2">
@@ -264,12 +381,24 @@ export default function RoomMissionManager({
             <h3 className="text-sm font-black uppercase text-zinc-400">Past Missions</h3>
             <div className="mt-3 space-y-2">
               {history.map((item) => (
-                <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-black/25 px-3 py-3">
-                  <div>
-                    <p className="font-black text-white">{item.title}</p>
-                    <p className="mt-1 text-xs font-bold text-zinc-500">{historyLabel(item.ended_reason)}</p>
+                <div key={item.id} className="rounded-md bg-black/25 px-3 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="font-black text-white">{item.title}</p>
+                      <p className="mt-1 text-xs font-bold text-zinc-500">{historyLabel(item.ended_reason)}</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-black text-zinc-300">{item.completion_count} completed</span>
+                      {item.mission_type === "animal_pack" && <button type="button" onClick={() => void toggleHistoryResults(item.id)} className="rounded border border-white/15 px-2 py-1 text-xs font-black text-purple-200">{historyResultsMissionId === item.id ? "Hide" : "View Completed"}</button>}
+                    </div>
                   </div>
-                  <span className="text-sm font-black text-zinc-300">{item.completion_count} completed</span>
+                  {historyResultsMissionId === item.id && (
+                    <div className="mt-3 border-t border-white/10 pt-3">
+                      {(historyResults?.completed_participants ?? []).length === 0 ? <p className="text-sm text-zinc-400">No completed participants.</p> : historyResults?.completed_participants.map((person) => (
+                        <div key={person.identity_id} className="mt-2 flex justify-between gap-3 text-sm"><span className="font-bold text-white">{person.display_name}</span><span className="text-zinc-400">{new Date(person.completed_at).toLocaleString()}</span></div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

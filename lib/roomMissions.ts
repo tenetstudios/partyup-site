@@ -6,12 +6,18 @@ export type RoomMission = {
   created_by_identity_id: string;
   title: string;
   description: string | null;
+  mission_type: "generic" | "animal_pack";
+  config: {
+    animals?: string[];
+    target_encounters?: number;
+  };
   status: "draft" | "active" | "ended";
   starts_at: string | null;
   ends_at: string | null;
   created_at: string;
   ended_at: string | null;
   completion_count: number;
+  participant_count: number;
   viewer_completed: boolean;
   can_manage: boolean;
 };
@@ -26,6 +32,65 @@ export type RoomMissionInput = {
   durationMinutes?: number | null;
 };
 
+export type AnimalPackState = {
+  assignment_key: string;
+  progress: number;
+  target_encounters: number;
+  completed: boolean;
+  completed_at: string | null;
+  mission_active: boolean;
+};
+
+export type MissionEncounterToken = {
+  token: string;
+  qr_payload: string;
+  short_code: string;
+  expires_at: string;
+};
+
+export type EncounterResultStatus =
+  | "valid"
+  | "self_scan"
+  | "wrong_mission"
+  | "wrong_animal"
+  | "duplicate"
+  | "expired"
+  | "mission_ended"
+  | "invalid";
+
+export type MissionEncounterResult = {
+  status: EncounterResultStatus;
+  progress?: number;
+  target_encounters?: number;
+  completed?: boolean;
+};
+
+export type AnimalPackHostResults = {
+  participant_count: number;
+  completed_count: number;
+  completed_participants: Array<{
+    identity_id: string;
+    display_name: string;
+    avatar_url: string | null;
+    completed_at: string;
+  }>;
+};
+
+export const animalDetails: Record<string, { singular: string; plural: string }> = {
+  "🐸": { singular: "frog", plural: "frogs" },
+  "🦁": { singular: "lion", plural: "lions" },
+  "🐼": { singular: "panda", plural: "pandas" },
+  "🦊": { singular: "fox", plural: "foxes" },
+  "🐵": { singular: "monkey", plural: "monkeys" },
+  "🐙": { singular: "octopus", plural: "octopuses" },
+  "🐯": { singular: "tiger", plural: "tigers" },
+  "🐨": { singular: "koala", plural: "koalas" },
+  "🐧": { singular: "penguin", plural: "penguins" },
+  "🐰": { singular: "rabbit", plural: "rabbits" },
+  "🐺": { singular: "wolf", plural: "wolves" },
+  "🦄": { singular: "unicorn", plural: "unicorns" },
+};
+
 function firstRow<T>(value: unknown): T | null {
   if (Array.isArray(value)) {
     return (value[0] as T | undefined) ?? null;
@@ -34,8 +99,12 @@ function firstRow<T>(value: unknown): T | null {
   return (value as T | null) ?? null;
 }
 
-function withNumericCount<T extends { completion_count: unknown }>(row: T) {
-  return { ...row, completion_count: Number(row.completion_count ?? 0) };
+function withNumericCount<T extends { completion_count: unknown; participant_count?: unknown }>(row: T) {
+  return {
+    ...row,
+    completion_count: Number(row.completion_count ?? 0),
+    participant_count: Number(row.participant_count ?? 0),
+  };
 }
 
 export function normalizeRoomMissionInput(input: RoomMissionInput) {
@@ -130,6 +199,89 @@ export async function publishRoomMission(
   }
 
   return firstRow<RoomMission>(data);
+}
+
+export async function publishAnimalPackMission(
+  supabase: SupabaseClient,
+  roomId: string,
+  input: { animalCount: number; targetEncounters: number; durationMinutes: number },
+) {
+  const { data, error } = await supabase.rpc("publish_animal_pack_mission", {
+    p_room_id: roomId,
+    p_animal_count: input.animalCount,
+    p_target_encounters: input.targetEncounters,
+    p_duration_minutes: input.durationMinutes,
+  });
+  if (error) throw new Error(error.message);
+  return firstRow<RoomMission>(data);
+}
+
+export async function joinAnimalPackMission(
+  supabase: SupabaseClient,
+  missionId: string,
+  guestToken?: string | null,
+) {
+  const { data, error } = await supabase.rpc("join_animal_pack_mission", {
+    p_mission_id: missionId,
+    p_guest_token: guestToken ?? null,
+  });
+  if (error) throw new Error(error.message);
+  return data as { assignment_key: string };
+}
+
+export async function getMyAnimalPackState(
+  supabase: SupabaseClient,
+  missionId: string,
+  guestToken?: string | null,
+) {
+  const { data, error } = await supabase.rpc("get_my_animal_pack_state", {
+    p_mission_id: missionId,
+    p_guest_token: guestToken ?? null,
+  });
+  if (error) throw new Error(error.message);
+  return (data as AnimalPackState | null) ?? null;
+}
+
+export async function createMissionEncounterToken(
+  supabase: SupabaseClient,
+  missionId: string,
+  guestToken?: string | null,
+) {
+  const { data, error } = await supabase.rpc("create_mission_encounter_token", {
+    p_mission_id: missionId,
+    p_guest_token: guestToken ?? null,
+  });
+  if (error) throw new Error(error.message);
+  return data as MissionEncounterToken;
+}
+
+export async function redeemMissionEncounterToken(
+  supabase: SupabaseClient,
+  missionId: string,
+  tokenOrCode: string,
+  guestToken?: string | null,
+) {
+  const { data, error } = await supabase.rpc("redeem_mission_encounter_token", {
+    p_mission_id: missionId,
+    p_token_or_code: tokenOrCode,
+    p_guest_token: guestToken ?? null,
+  });
+  if (error) throw new Error(error.message);
+  return data as MissionEncounterResult;
+}
+
+export async function getAnimalPackHostResults(supabase: SupabaseClient, missionId: string) {
+  const { data, error } = await supabase.rpc("get_animal_pack_host_results", {
+    p_mission_id: missionId,
+  });
+  if (error) throw new Error(error.message);
+  const result = data as AnimalPackHostResults;
+  return {
+    ...result,
+    participant_count: Number(result.participant_count ?? 0),
+    completed_count: Number(result.completed_count ?? 0),
+    completed_participants: result.completed_participants ?? [],
+  };
 }
 
 export async function endRoomMission(supabase: SupabaseClient, missionId: string) {
