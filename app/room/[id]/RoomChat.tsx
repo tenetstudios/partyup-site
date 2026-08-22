@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createSupabaseClient } from "@/lib/supabase";
+import { friendlyChatError } from "@/lib/chatModeration";
 
 type ChatMessage = {
   id: string;
@@ -10,6 +11,7 @@ type ChatMessage = {
   message: string;
   created_at: string;
   display_name: string | null;
+  removed_at?: string | null;
 };
 
 function messageTime(value: string) {
@@ -50,6 +52,9 @@ export default function RoomChat({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [canRemoveMessages, setCanRemoveMessages] = useState(false);
+  const [canMuteUsers, setCanMuteUsers] = useState(false);
 
   useEffect(() => {
     const supabase = createSupabaseClient();
@@ -57,39 +62,53 @@ export default function RoomChat({
     async function loadMessages() {
       const { data } = await supabase
         .from("room_messages")
-        .select("id, room_id, user_id, message, created_at, display_name")
+        .select("*")
         .eq("room_id", roomId)
         .order("created_at", { ascending: true })
         .limit(100);
 
-      setMessages((data ?? []) as ChatMessage[]);
+      setMessages(((data ?? []) as ChatMessage[]).filter((message) => !message.removed_at));
     }
 
-    loadMessages();
+    async function loadModeratorState() {
+      const { data: userData } = await supabase.auth.getUser();
+      const user = userData.user;
+      setCurrentUserId(user?.id ?? null);
+
+      if (!user) return;
+      const isHost = hostId === user.id;
+      const { data: attendee } = await supabase
+        .from("event_attendees")
+        .select("room_role, status")
+        .eq("event_room_id", roomId)
+        .eq("user_id", user.id)
+        .maybeSingle();
+      const isBouncer = attendee?.status === "accepted" && ["bouncer", "admin"].includes(attendee.room_role || "");
+      setCanRemoveMessages(isHost || isBouncer);
+      setCanMuteUsers(isHost);
+    }
+
+    void loadMessages();
+    void loadModeratorState();
 
     const channel = supabase
       .channel(`room-chat-${roomId}`)
       .on(
         "postgres_changes",
         {
-          event: "INSERT",
+          event: "*",
           schema: "public",
           table: "room_messages",
           filter: `room_id=eq.${roomId}`,
         },
-        (payload) => {
-          setMessages((current) => [
-            ...current,
-            payload.new as ChatMessage,
-          ]);
-        },
+        () => void loadMessages(),
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [roomId]);
+  }, [hostId, roomId]);
 
   async function sendMessage() {
     const trimmed = text.trim();
@@ -108,27 +127,41 @@ export default function RoomChat({
       return;
     }
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("username")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    const { error } = await supabase.from("room_messages").insert({
-      room_id: roomId,
-      user_id: user.id,
-      message: trimmed,
-      display_name: profile?.username || "Guest",
+    const { error } = await supabase.rpc("send_room_message", {
+      p_room_id: roomId,
+      p_message: trimmed,
     });
 
     if (error) {
-      alert(error.message);
+      alert(friendlyChatError(error.message));
       setSending(false);
       return;
     }
 
     setText("");
     setSending(false);
+  }
+
+  async function moderateMessage(message: ChatMessage, action: "remove" | "mute_5m") {
+    const prompt = action === "remove"
+      ? "Remove this message from the room?"
+      : "Mute this person in this room for 5 minutes?";
+    if (!window.confirm(prompt)) return;
+
+    const supabase = createSupabaseClient();
+    const { error } = await supabase.rpc("moderate_room_message", {
+      p_message_id: message.id,
+      p_action: action,
+    });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    if (action === "remove") {
+      setMessages((current) => current.filter((item) => item.id !== message.id));
+    }
   }
 
   return (
@@ -175,6 +208,26 @@ export default function RoomChat({
                     )}
                   </div>
                   <p className="mt-1 break-words text-[16px] leading-6 text-white">{msg.message}</p>
+                  {canRemoveMessages && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void moderateMessage(msg, "remove")}
+                        className="rounded-full border border-red-300/30 px-3 py-1 text-[11px] font-black text-red-200 hover:bg-red-400/10"
+                      >
+                        Remove
+                      </button>
+                      {canMuteUsers && msg.user_id !== currentUserId && msg.user_id !== hostId && (
+                        <button
+                          type="button"
+                          onClick={() => void moderateMessage(msg, "mute_5m")}
+                          className="rounded-full border border-purple-300/30 px-3 py-1 text-[11px] font-black text-purple-200 hover:bg-purple-400/10"
+                        >
+                          Mute 5m
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

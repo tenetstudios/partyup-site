@@ -9,6 +9,7 @@ import RoomDetailsEditor from "./RoomDetailsEditor";
 import RoomEntryLinkPanel from "./RoomEntryLinkPanel";
 import HostDashboardOverview from "./HostDashboardOverview";
 import AfterEventMessageManager from "./AfterEventMessageManager";
+import ChatModerationManager from "./ChatModerationManager";
 
 export default async function ManageRoomPage({
   params,
@@ -58,6 +59,7 @@ const { data: room } = await supabase
         {room.status !== "ended" && <>
           <RoomDetailsEditor roomId={id} />
           <RoomEntryLinkPanel roomId={id} />
+          <ChatModerationManager roomId={id} />
           <RoomAnnouncementManager roomId={id} />
         </>}
         <RoomMissionManager roomId={id} roomEnded={room.status === "ended"} />

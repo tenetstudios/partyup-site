@@ -209,6 +209,7 @@ export default function HostDashboardOverview({ roomId, roomEnded = false }: { r
         <div className="flex flex-wrap gap-2">
           {!roomEnded && <QuickAction href="#room-details">Room Description</QuickAction>}
           {!roomEnded && <QuickAction href="#qr-poster">QR & Poster</QuickAction>}
+          {!roomEnded && <QuickAction href="#chat-moderation">Chat Moderation</QuickAction>}
           {!roomEnded && <QuickAction href="#announcements">{announcement ? "Manage Announcement" : "Create Announcement"}</QuickAction>}
           <QuickAction href="#missions">Missions</QuickAction>
           {!roomEnded && <QuickAction href="#people-queue">People / Queue</QuickAction>}

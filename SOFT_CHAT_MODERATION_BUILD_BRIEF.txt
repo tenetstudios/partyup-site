@@ -1,0 +1,251 @@
+PARTYUP SOFT CHAT MODERATION — ONE-HOUR BUILD BRIEF
+
+Purpose
+-------
+Build optional, server-enforced room chat moderation tools that event hosts can configure. Ordinary profanity such as "fuck" must remain allowed. The first build should focus on deterministic controls that are predictable, fast, and shared by the PartyUp website and Expo app. AI-based content classification is explicitly out of scope for this one-hour build.
+
+Repositories
+------------
+Website:
+C:\Users\Administrator\Desktop\partyup-site
+
+Expo app:
+C:\Users\Administrator\Desktop\PartyUp
+
+Important repository instructions:
+- The website uses Next.js 16.2.6 and has breaking changes. Read relevant documentation in partyup-site/node_modules/next/dist/docs before editing website code.
+- The app uses Expo SDK 55. Read the exact SDK 55 documentation before editing app code.
+- Both repositories currently have existing user changes. Preserve them and do not reset, overwrite, or reformat unrelated files.
+- Both repositories may have unfinished Git commit editors and local outgoing commits. Do not commit or push unless explicitly authorized.
+
+Recommended scope: Build 0.2
+----------------------------
+Implement these capabilities:
+
+1. Host-selectable chat preset
+   - Relaxed: ordinary chat, duplicate-spam protection enabled.
+   - Social: duplicate-spam protection plus five-second slow mode.
+   - Host Only: only the host and bouncers can post.
+
+2. Link control
+   - Allow links from everyone.
+   - Allow links only from hosts and bouncers.
+
+3. Message moderation
+   - Host and bouncers can remove a room message.
+   - Removed messages disappear in realtime from the app and website.
+
+4. Temporary mute
+   - Host can mute a participant for five minutes.
+   - Muted users receive a clear, non-punitive error message when attempting to post.
+
+5. Private audit trail
+   - Record moderation setting changes, message removals, and temporary mutes.
+   - Audit data must not be readable by ordinary room participants.
+
+6. Shared enforcement
+   - The website and app must use the same server-side message-send function.
+   - A modified client must not be able to bypass moderation with a direct table insert.
+
+Explicit non-goals for this build
+---------------------------------
+- No swear-word blacklist.
+- No automatic removal of ordinary profanity.
+- No OpenAI or other AI moderation API yet.
+- No sentiment or toxicity scoring.
+- No permanent account bans.
+- No global user reputation penalties.
+- No large moderation queue or appeals interface.
+- No automatic interpretation of jokes, quotations, political speech, or adult conversation.
+
+Current chat architecture
+-------------------------
+The website currently inserts directly into public.room_messages from:
+partyup-site/app/room/[id]/RoomChat.tsx
+
+The Expo app currently inserts directly into public.room_messages from:
+PartyUp/src/app/room/[id]/index.tsx
+
+Both direct insert paths must be replaced with one server-enforced RPC, tentatively named public.send_room_message.
+
+The room host settings interfaces are located around:
+partyup-site/app/room/[id]/manage/page.tsx
+partyup-site/app/room/[id]/manage/HostDashboardOverview.tsx
+PartyUp/src/app/room/[id]/queue.tsx
+
+Existing host/bouncer authorization logic and room lifecycle rules should be reused where possible. Messages must remain blocked after an event ends.
+
+Proposed database objects
+-------------------------
+Create a new timestamped Supabase migration in partyup-site/supabase/migrations.
+
+Table: public.room_moderation_settings
+- room_id uuid primary key referencing public.event_rooms(id) on delete cascade
+- preset text not null default 'relaxed'
+- slow_mode_seconds integer not null default 0
+- links_mode text not null default 'everyone'
+- duplicate_filter_enabled boolean not null default true
+- chat_mode text not null default 'everyone'
+- updated_by uuid null referencing auth.users(id)
+- updated_at timestamptz not null default now()
+- Check constraints for supported preset, link, chat, and slow-mode values.
+
+Table: public.room_chat_mutes
+- room_id uuid referencing public.event_rooms(id) on delete cascade
+- user_id uuid referencing auth.users(id) on delete cascade
+- muted_until timestamptz not null
+- created_by uuid referencing auth.users(id)
+- reason text null
+- created_at timestamptz not null default now()
+- Composite primary key or unique constraint on room_id and user_id.
+
+Table: public.room_moderation_actions
+- id uuid primary key default gen_random_uuid()
+- room_id uuid referencing public.event_rooms(id) on delete cascade
+- message_id uuid null
+- target_user_id uuid null referencing auth.users(id)
+- moderator_user_id uuid not null referencing auth.users(id)
+- action text not null
+- metadata jsonb not null default '{}'::jsonb
+- created_at timestamptz not null default now()
+- Check constraint for known action values.
+
+The exact room_messages primary key and column types must be inspected before writing foreign keys. Do not assume its ID type.
+
+Proposed server functions
+-------------------------
+1. public.get_room_moderation_settings(p_room_id uuid)
+   - Returns effective settings, including defaults when no settings row exists.
+   - Readable by authorized room participants.
+
+2. public.set_room_moderation_settings(...)
+   - Host-only security-definer function.
+   - Validates supported values.
+   - Upserts the room settings.
+   - Writes an audit action.
+
+3. public.send_room_message(p_room_id uuid, p_message text)
+   - Security-definer function used by both clients.
+   - Derives user ID and display name server-side; never trusts client-supplied identity fields.
+   - Rejects empty messages and enforces the existing maximum length.
+   - Confirms the room exists and has not ended.
+   - Confirms the caller is allowed to participate.
+   - Removes expired mute records or ignores expired mutes.
+   - Rejects active mutes with a friendly error that includes the expiration time.
+   - Enforces host-only chat using existing host and bouncer roles.
+   - Enforces slow mode based on the caller's latest room message.
+   - Detects a repeated normalized message from the same user within a short window, such as 30 seconds.
+   - Enforces link mode. URL detection should cover http://, https://, and common www. links without treating ordinary punctuation as a link.
+   - Inserts the approved message and returns the inserted row.
+
+4. public.moderate_room_message(p_message_id, p_action text)
+   - Host or bouncer can remove a message.
+   - Host can additionally mute the message author for five minutes.
+   - Valid actions for this build: remove and mute_5m.
+   - Never allows a moderator to act outside the message's room.
+   - Writes an audit action.
+   - Prefer soft deletion if room_messages can safely gain removed_at, removed_by, and removal_reason columns. Otherwise delete the message after recording a private audit entry.
+
+Security requirements
+---------------------
+- Revoke direct INSERT permission or replace the existing INSERT policy on public.room_messages so authenticated clients must call send_room_message.
+- Ensure anon cannot invoke authenticated moderation functions.
+- Grant send_room_message only to authenticated unless existing guest-chat requirements demonstrate that anonymous guest identities must be supported.
+- If PartyUp supports guest chat, inspect the existing guest identity/session mechanism and extend the RPC without weakening identity validation.
+- Grant setting changes only through the host-checked function.
+- Grant message removal to hosts and bouncers through the moderation function.
+- Keep room_moderation_actions private from ordinary authenticated users.
+- Set an explicit safe search_path on security-definer functions and qualify database objects.
+- Do not accept display_name, moderator ID, sender ID, or host status from client input.
+
+User experience
+---------------
+Website and mobile host settings should include a compact "Chat moderation" section.
+
+Preset controls:
+- Relaxed
+- Social
+- Host Only
+
+Additional control:
+- Links: Everyone / Hosts & bouncers only
+
+Explain each preset in plain language. Explicitly state that profanity is allowed and these tools focus on spam and room control.
+
+Message controls:
+- Hosts and bouncers see a small action menu on messages they are allowed to moderate.
+- Actions: Remove message; Mute sender for 5 minutes.
+- Confirm mute actions. Message removal can be immediate if an undo interaction is practical; otherwise confirm removal.
+- Ordinary participants must not see moderation controls.
+
+Friendly send errors:
+- Slow mode: "Slow mode is on. You can send another message in N seconds."
+- Muted: "You are muted in this room until TIME."
+- Host-only mode: "Chat is currently limited to hosts and bouncers."
+- Restricted link: "Links are currently limited to hosts and bouncers."
+- Duplicate: "That looks like a repeated message. Try saying something new."
+
+Realtime behavior
+-----------------
+- Existing room_messages realtime subscriptions should continue to deliver approved messages.
+- Removed messages must disappear without requiring a full page refresh.
+- If soft deletion is used, clients must handle UPDATE events and filter or remove rows with removed_at set.
+- Settings should refresh across host devices after changes. A small settings-table realtime subscription is preferred but a refresh after save is acceptable for the first build.
+
+Recommended implementation order
+--------------------------------
+0–10 minutes:
+- Inspect room_messages schema, policies, guest behavior, host/bouncer helpers, and current maximum message length.
+- Write the migration tables and constraints.
+
+10–25 minutes:
+- Implement get/set settings, send_room_message, and moderate_room_message.
+- Apply least-privilege grants and prevent direct insert bypass.
+
+25–37 minutes:
+- Replace the website direct insert with send_room_message.
+- Add website host controls and message actions.
+
+37–49 minutes:
+- Replace the Expo direct insert with send_room_message.
+- Add mobile host controls and message actions.
+
+49–56 minutes:
+- Validate realtime removal and friendly errors on both clients.
+- Confirm profanity still posts normally.
+
+56–60 minutes:
+- Run targeted lint and TypeScript checks for both repositories.
+- Run the website production build if network access permits required font downloads.
+- Inspect git diff and preserve unrelated user changes.
+
+Acceptance criteria
+-------------------
+1. A normal message containing ordinary profanity successfully posts.
+2. Relaxed mode allows normal conversation and blocks rapid duplicate spam.
+3. Social mode enforces a five-second interval between participant messages.
+4. Host Only mode allows hosts and bouncers to post and gives participants a clear explanation.
+5. Restricted-link mode blocks a participant URL and permits a host/bouncer URL.
+6. Hosts and bouncers can remove a message from both clients in realtime.
+7. Hosts can mute a sender for five minutes.
+8. A muted sender cannot bypass the mute from either client or a direct Supabase insert.
+9. A participant cannot change moderation settings or read private audit records.
+10. Chat remains read-only after the room ends.
+11. Existing room participation, guest identity, and realtime behavior are not broken.
+12. Website and app TypeScript checks pass, with no new lint errors.
+
+Fallback scope if time runs short
+---------------------------------
+Prioritize shared server enforcement in this order:
+1. send_room_message RPC and prevention of direct inserts
+2. Relaxed, Social, and Host Only presets
+3. Message removal
+4. Five-minute mute
+5. Link restriction
+6. Full audit metadata and realtime settings refresh
+
+Do not ship client-only enforcement as complete moderation. If UI work cannot be finished in both clients, complete the secure database layer and one client, document the remaining client explicitly, and do not claim cross-platform completion.
+
+Future version, not part of this hour
+-------------------------------------
+Add optional AI-assisted classification behind the same server send function. It should inspect category results rather than blacklist profanity, automatically remove only high-confidence severe content, hold ambiguous targeted harassment for review, retain private decision logs, and provide hosts with reversal controls. Thresholds must be evaluated against PartyUp-specific sample messages before enforcement.
