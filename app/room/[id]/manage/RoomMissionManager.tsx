@@ -54,6 +54,7 @@ export default function RoomMissionManager({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const recommendedParticipants = Number(animalCount) * (Number(targetEncounters) + 1);
 
   const loadData = useCallback(async () => {
     const [nextMission, nextHistory] = await Promise.all([
@@ -332,6 +333,10 @@ export default function RoomMissionManager({
                     {[1, 2, 3].map((value) => <option key={value} value={value}>{value}</option>)}
                   </select>
                 </label>
+                <div className="rounded-md border border-amber-300/25 bg-amber-950/20 p-3 text-sm leading-5 text-amber-100">
+                  For every participant to have enough possible pack members, plan for at least{" "}
+                  <strong>{recommendedParticipants} participants</strong>.
+                </div>
               </>
             )}
             {missionType === "generic" && <label className="block">
