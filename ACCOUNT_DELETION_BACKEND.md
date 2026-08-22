@@ -1,16 +1,16 @@
-# PartyUp account deletion implementation note
+# PartyUp account deletion implementation
 
-## Frontend completed now
+## Implemented flow
 
 - Public `/delete-account` instructions and data-retention disclosure.
 - Optional browser-side Supabase session detection, account identification, and an explicit confirmation step.
-- A deliberately unavailable deletion boundary in `lib/accountDeletion.ts`. It does not call, mutate, or imply success from any backend.
+- An authenticated deletion boundary in `lib/accountDeletion.ts` backed by the `delete-account` Edge Function.
 - Entry points from the public footer and the signed-in user's profile/account controls.
-- Existing `/contact` support path reused for deletion requests while backend deletion is unavailable.
+- Existing `/contact` support path remains available for failed or inaccessible requests.
 
-## Backend intentionally deferred
+## Backend behavior
 
-Do not implement this until the Chat Moderation V1 work has landed and its final schema, identity rules, retention requirements, and moderation evidence model can be reviewed. The future operation should be a privileged server-side endpoint or function that authenticates a fresh user session, derives the target user from that verified session (never from a browser-supplied user ID), requires reauthentication or another recent-user-verification mechanism, is idempotent, and returns an auditable request/result state.
+The privileged `delete-account` Edge Function authenticates the bearer token, derives the target user from that token, requires a sign-in within the last 15 minutes, and calls service-role-only database functions. The browser never supplies the target user ID.
 
 The current website and migrations show these likely account-linked areas that must be re-audited before implementation:
 
@@ -23,6 +23,6 @@ The current website and migrations show these likely account-linked areas that m
 - History and hosting data in `event_recaps`, `event_series`, and `series_follows`.
 - Host streaming credentials in `room_stream_keys`.
 
-Deletion behavior must be decided per relationship: delete, anonymize, retain with restricted access, transfer ownership, or block deletion pending a required workflow. In particular, hosted rooms/series, shared messages and Memories, connections involving another person, analytics, safety/moderation evidence, and legally required records should not be handled by an unreviewed blanket cascade.
+The database transaction deletes profiles, follows, notifications, attendance, identities and identity-owned Match, Connection, Memory, Series, Recap, and Mission rows. Hosted rooms are ended and disassociated. Shared messages, announcements, recap messages, analytics, and moderation evidence are retained without an account link. Storage objects and the Supabase Auth user are then removed by the Edge Function.
 
-The moderation branch is expected to overlap most strongly around `room_messages`, authentication/identity, room participation and permissions, and new moderation/evidence records or retention rules. Re-inventory the merged schema and storage policies before designing the server transaction. No Supabase migration, RLS/grant/RPC/Auth change, Edge Function, user deletion, or storage deletion is included in this frontend work.
+`account_deletion_requests` retains only a SHA-256 account fingerprint, status, timestamps, a bounded error, and storage paths needed for retries. It is inaccessible to browser roles. Moderation action actor and target UUIDs remain immutable as required by Chat Moderation V1, while message authorship is anonymized.

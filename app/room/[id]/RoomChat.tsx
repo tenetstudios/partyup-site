@@ -7,7 +7,7 @@ import { friendlyChatError } from "@/lib/chatModeration";
 type ChatMessage = {
   id: string;
   room_id: string;
-  user_id: string;
+  user_id: string | null;
   message: string;
   created_at: string;
   display_name: string | null;
@@ -243,7 +243,7 @@ export default function RoomChat({
                       >
                         Remove
                       </button>
-                      {canMuteUsers && msg.user_id !== currentUserId && msg.user_id !== hostId && (
+                      {canMuteUsers && msg.user_id && msg.user_id !== currentUserId && msg.user_id !== hostId && (
                         <button
                           type="button"
                           onClick={() => void moderateMessage(msg, "mute_5m")}

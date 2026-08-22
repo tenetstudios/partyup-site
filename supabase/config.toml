@@ -6,3 +6,6 @@ verify_jwt = false
 
 [functions.end-event-room]
 verify_jwt = false
+
+[functions.delete-account]
+verify_jwt = false

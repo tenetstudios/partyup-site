@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export type RoomAnnouncement = {
   id: string;
   room_id: string;
-  created_by: string;
+  created_by: string | null;
   title: string;
   message: string | null;
   cta_label: string | null;

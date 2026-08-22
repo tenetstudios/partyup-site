@@ -3,10 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { partyUpTheme } from "@/app/components/PartyUpTheme";
-import {
-  ACCOUNT_DELETION_UNAVAILABLE_MESSAGE,
-  requestAccountDeletion,
-} from "@/lib/accountDeletion";
+import { requestAccountDeletion } from "@/lib/accountDeletion";
 import { createSupabaseClient } from "@/lib/supabase";
 
 type AccountTarget = {
@@ -21,6 +18,9 @@ export default function DeleteAccountFlow() {
   const [loading, setLoading] = useState(true);
   const [confirming, setConfirming] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [deleted, setDeleted] = useState(false);
+  const [reauthenticationRequired, setReauthenticationRequired] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   const loadAccount = useCallback(async () => {
@@ -52,7 +52,6 @@ export default function DeleteAccountFlow() {
     const { data: listener } = supabase.auth.onAuthStateChange(() => {
       setConfirming(false);
       setConfirmed(false);
-      setMessage(null);
       void loadAccount();
     });
 
@@ -70,16 +69,42 @@ export default function DeleteAccountFlow() {
   }
 
   async function submitDeletionRequest() {
-    if (!confirmed) return;
+    if (!confirmed || submitting) return;
 
-    const result = await requestAccountDeletion();
-    setMessage(result.message);
-    setConfirming(false);
-    setConfirmed(false);
+    setSubmitting(true);
+    try {
+      const result = await requestAccountDeletion();
+      setMessage(result.message);
+      setReauthenticationRequired(result.status === "reauthentication_required");
+      setDeleted(result.status === "completed");
+      setConfirming(false);
+      setConfirmed(false);
+      if (result.status === "completed") setAccount(null);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function verifyIdentityAgain() {
+    await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/delete-account`,
+        queryParams: { prompt: "select_account" },
+      },
+    });
   }
 
   if (loading) {
     return <p className="text-sm font-bold text-[#aaa4b8]">Checking your sign-in status...</p>;
+  }
+
+  if (!account && deleted) {
+    return (
+      <div role="status" className="rounded-md border border-emerald-300/25 bg-emerald-950/30 px-4 py-3 text-sm font-bold text-emerald-100">
+        {message}
+      </div>
+    );
   }
 
   if (!account) {
@@ -126,7 +151,7 @@ export default function DeleteAccountFlow() {
         <div className="rounded-lg border border-pink-400/30 bg-pink-950/15 p-4 sm:p-5" role="group" aria-labelledby="delete-confirmation-title">
           <h3 id="delete-confirmation-title" className="text-lg font-black text-white">Confirm account deletion</h3>
           <p className="mt-2 text-sm leading-6 text-[#c9c2d7]">
-            This will become irreversible when secure server-side deletion is available. It is not available yet, and continuing today will only show support instructions.
+            This permanently deletes your account and removes or anonymizes its associated data. This cannot be undone.
           </p>
           <label className="mt-4 flex cursor-pointer items-start gap-3 text-sm font-bold text-white">
             <input
@@ -140,11 +165,11 @@ export default function DeleteAccountFlow() {
           <div className="mt-5 flex flex-col gap-3 sm:flex-row">
             <button
               type="button"
-              disabled={!confirmed}
+              disabled={!confirmed || submitting}
               onClick={() => void submitDeletionRequest()}
               className={`${partyUpTheme.destructiveButton} px-5 text-sm`}
             >
-              Confirm delete my account
+              {submitting ? "Deleting account..." : "Confirm delete my account"}
             </button>
             <button
               type="button"
@@ -163,16 +188,16 @@ export default function DeleteAccountFlow() {
       {message && (
         <div role="status" className="rounded-md border border-amber-300/25 bg-amber-950/35 px-4 py-3 text-sm font-bold text-amber-100">
           <p>{message}</p>
-          <Link href="/contact" className="mt-3 inline-block font-black text-white underline decoration-amber-300/50 underline-offset-4">
-            Contact PartyUp support
-          </Link>
+          {reauthenticationRequired ? (
+            <button type="button" onClick={() => void verifyIdentityAgain()} className={`${partyUpTheme.ghostButton} mt-3 px-4 text-sm`}>
+              Verify identity
+            </button>
+          ) : (
+            <Link href="/contact" className="mt-3 inline-block font-black text-white underline decoration-amber-300/50 underline-offset-4">
+              Contact PartyUp support
+            </Link>
+          )}
         </div>
-      )}
-
-      {!message && (
-        <p className="text-sm text-[#aaa4b8]">
-          {ACCOUNT_DELETION_UNAVAILABLE_MESSAGE} Use the <Link href="/contact" className="font-black text-[#c35dff] hover:text-white">Contact page</Link>.
-        </p>
       )}
     </div>
   );
