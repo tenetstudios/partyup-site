@@ -67,14 +67,14 @@ function QuickAction({ href, children }: { href: string; children: string }) {
   return (
     <a
       href={href}
-      className="inline-flex min-h-11 items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.05] px-4 text-sm font-black text-white hover:bg-white/10"
+      className="inline-flex min-h-11 items-center justify-center rounded-full border border-purple-300/60 bg-[#7c3aed] px-5 text-sm font-black text-white shadow-[0_8px_24px_rgba(124,58,237,0.38)] transition hover:-translate-y-0.5 hover:bg-[#9146ff] hover:shadow-[0_10px_30px_rgba(145,70,255,0.5)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-300"
     >
       {children}
     </a>
   );
 }
 
-export default function HostDashboardOverview({ roomId }: { roomId: string }) {
+export default function HostDashboardOverview({ roomId, roomEnded = false }: { roomId: string; roomEnded?: boolean }) {
   const supabase = useMemo(() => createSupabaseClient(), []);
   const [dashboard, setDashboard] = useState<HostDashboardData | null>(null);
   const [entryUrl, setEntryUrl] = useState("");
@@ -207,12 +207,13 @@ export default function HostDashboardOverview({ roomId }: { roomId: string }) {
         </div>
 
         <div className="flex flex-wrap gap-2">
+          {!roomEnded && <QuickAction href="#room-details">Room Description</QuickAction>}
+          {!roomEnded && <QuickAction href="#qr-poster">QR & Poster</QuickAction>}
+          {!roomEnded && <QuickAction href="#announcements">{announcement ? "Manage Announcement" : "Create Announcement"}</QuickAction>}
           <QuickAction href="#missions">Missions</QuickAction>
-          <QuickAction href="#announcements">{announcement ? "Manage Announcement" : "Create Announcement"}</QuickAction>
-          <QuickAction href="#qr-poster">QR & Poster</QuickAction>
-          <QuickAction href="#streaming">Streaming / OBS</QuickAction>
-          <QuickAction href="#people-queue">People / Queue</QuickAction>
-          <QuickAction href="#room-details">Edit Room</QuickAction>
+          {!roomEnded && <QuickAction href="#people-queue">People / Queue</QuickAction>}
+          {!roomEnded && <QuickAction href="#streaming">Streaming / OBS</QuickAction>}
+          <QuickAction href="#event-closeout">Event Closeout</QuickAction>
         </div>
       </div>
 
