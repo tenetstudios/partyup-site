@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createSupabaseClient } from "@/lib/supabase";
 import { friendlyChatError } from "@/lib/chatModeration";
 
@@ -57,11 +57,22 @@ export default function RoomChat({
   const [canMuteUsers, setCanMuteUsers] = useState(false);
   const messageListRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const messageList = messageListRef.current;
     if (!messageList) return;
 
-    messageList.scrollTop = messageList.scrollHeight;
+    const scrollToLatest = () => {
+      messageList.scrollTop = messageList.scrollHeight;
+    };
+
+    scrollToLatest();
+    const animationFrame = window.requestAnimationFrame(scrollToLatest);
+    const settledLayoutTimer = window.setTimeout(scrollToLatest, 100);
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      window.clearTimeout(settledLayoutTimer);
+    };
   }, [messages]);
 
   useEffect(() => {
