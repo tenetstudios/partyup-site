@@ -8,14 +8,14 @@ const atmosphereClasses: Record<PartyUpAtmosphereIntensity, {
   pink: string;
 }> = {
   subtle: {
-    crowd: "opacity-[0.06] sm:opacity-[0.08]",
-    purple: "opacity-35 sm:opacity-45",
-    pink: "opacity-25 sm:opacity-35",
+    crowd: "opacity-[0.035] sm:opacity-[0.06] lg:opacity-[0.08]",
+    purple: "opacity-20 sm:opacity-35 lg:opacity-45",
+    pink: "opacity-15 sm:opacity-25 lg:opacity-35",
   },
   standard: {
-    crowd: "opacity-[0.07] sm:opacity-10 lg:opacity-[0.13]",
-    purple: "opacity-60 sm:opacity-75",
-    pink: "opacity-50 sm:opacity-65",
+    crowd: "opacity-[0.05] sm:opacity-[0.08] lg:opacity-[0.13]",
+    purple: "opacity-35 sm:opacity-60 lg:opacity-75",
+    pink: "opacity-25 sm:opacity-50 lg:opacity-65",
   },
   immersive: {
     crowd: "opacity-30 sm:opacity-36 lg:opacity-42",
@@ -35,6 +35,7 @@ export const partyUpTheme = {
   tabActive: "border-[#b968ff]/85 bg-[linear-gradient(135deg,rgba(118,46,255,0.56),rgba(207,48,219,0.24))] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_0_26px_rgba(139,61,255,0.24)]",
   tabInactive: "border-purple-100/15 bg-[#17112e]/55 text-[#aaa4b8] backdrop-blur-md hover:border-purple-300/35 hover:bg-[#1b1435]/70 hover:text-white",
   input: "rounded-md border border-purple-200/20 bg-[#17112d]/60 font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_14px_34px_rgba(0,0,0,0.12)] outline-none backdrop-blur-md transition placeholder:text-[#aaa3b7] focus:border-[#b968ff]/85 focus:bg-[#1a1233]/72 focus:shadow-[0_0_0_3px_rgba(139,61,255,0.15),0_14px_34px_rgba(0,0,0,0.12)]",
+  fileInput: "block w-full text-sm font-bold text-[#aaa4b8] file:mr-4 file:cursor-pointer file:rounded-md file:border file:border-purple-200/20 file:bg-[#261942]/80 file:px-4 file:py-3 file:font-black file:text-white file:transition hover:file:border-purple-300/40 hover:file:bg-[#302052]",
   emptyState: "rounded-lg border border-dashed border-purple-300/25 bg-[#100b20]/60 text-center backdrop-blur-md",
   sectionLabel: "text-xs font-black uppercase tracking-[0.16em] text-[#c35dff]",
   textSecondary: "text-[#c9c2d7]",
@@ -55,7 +56,7 @@ export function PartyUpAtmosphere({
       <div className="absolute inset-0 bg-[linear-gradient(155deg,var(--partyup-bg-deep)_0%,var(--partyup-bg-indigo)_42%,var(--partyup-bg-violet)_100%)]" />
       {crowd && (
         <div
-          className={`absolute inset-x-0 top-0 h-[min(960px,100svh)] bg-cover bg-[position:62%_top] mix-blend-screen lg:bg-center ${classes.crowd}`}
+          className={`absolute inset-x-0 top-0 h-[min(960px,100svh)] bg-cover bg-[position:62%_bottom] mix-blend-screen lg:bg-center ${classes.crowd}`}
           style={{ backgroundImage: "url('/images/partyup-atmosphere-crowd.png')" }}
         />
       )}

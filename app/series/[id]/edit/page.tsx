@@ -3,6 +3,8 @@
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import HomeHeader from "@/app/components/HomeHeader";
+import { PartyUpPageShell, partyUpTheme } from "@/app/components/PartyUpTheme";
 import { getEventSeriesProfile } from "@/lib/eventSeries";
 import { createSupabaseClient } from "@/lib/supabase";
 
@@ -43,5 +45,29 @@ export default function EditSeriesPage() {
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Series could not be updated."); setSaving(false); }
   }
 
-  return <main className="min-h-screen bg-[#05040b] px-5 py-10 text-white"><form onSubmit={save} className="mx-auto max-w-2xl"><Link href={`/series/${id}`} className="text-sm font-bold text-[#c9a6ff]">Back to series</Link><h1 className="mt-10 text-4xl font-black">Edit Event Series</h1><div className="mt-8 space-y-5 rounded-lg border border-white/10 bg-[#111019] p-6"><label className="block"><span className="text-sm font-black">Series name</span><input value={name} onChange={(event) => setName(event.target.value)} maxLength={100} required className="mt-2 h-12 w-full rounded-md border border-white/10 bg-black/30 px-4 outline-none focus:border-[#9b5cff]" /></label><label className="block"><span className="text-sm font-black">Description</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} maxLength={1000} rows={5} className="mt-2 w-full resize-none rounded-md border border-white/10 bg-black/30 p-4 outline-none focus:border-[#9b5cff]" /></label><label className="block"><span className="text-sm font-black">Replace cover image</span><input type="file" accept="image/*" onChange={(event) => setCoverFile(event.target.files?.[0] || null)} className="mt-2 block w-full text-sm text-[#aaa4b8] file:mr-4 file:rounded-md file:border-0 file:bg-[#332247] file:px-4 file:py-3 file:font-bold file:text-white" /></label>{error && <p className="text-sm font-bold text-[#ff8cab]">{error}</p>}<button type="submit" disabled={saving || !name.trim() || Boolean(error && !name)} className="h-12 w-full rounded-md bg-[#8b3dff] font-black disabled:opacity-50">{saving ? "Saving..." : "Save changes"}</button></div></form></main>;
+  return (
+    <PartyUpPageShell intensity="standard">
+      <HomeHeader />
+      <form onSubmit={save} className="relative mx-auto max-w-2xl px-5 py-10">
+        <Link href={`/series/${id}`} className="text-sm font-bold text-[#c9a6ff] hover:text-white">Back to series</Link>
+        <h1 className="mt-10 text-4xl font-black">Edit Event Series</h1>
+        <div className={`${partyUpTheme.glassElevated} mt-8 space-y-5 p-6`}>
+          <label className="block">
+            <span className="text-sm font-black">Series name</span>
+            <input value={name} onChange={(event) => setName(event.target.value)} maxLength={100} required className={`${partyUpTheme.input} mt-2 h-12 w-full px-4`} />
+          </label>
+          <label className="block">
+            <span className="text-sm font-black">Description</span>
+            <textarea value={description} onChange={(event) => setDescription(event.target.value)} maxLength={1000} rows={5} className={`${partyUpTheme.input} mt-2 w-full resize-none p-4`} />
+          </label>
+          <label className="block">
+            <span className="text-sm font-black">Replace cover image</span>
+            <input type="file" accept="image/*" onChange={(event) => setCoverFile(event.target.files?.[0] || null)} className={`${partyUpTheme.fileInput} mt-2`} />
+          </label>
+          {error && <p className="text-sm font-bold text-[#ff8cab]">{error}</p>}
+          <button type="submit" disabled={saving || !name.trim() || Boolean(error && !name)} className={`${partyUpTheme.primaryButton} h-12 w-full`}>{saving ? "Saving..." : "Save changes"}</button>
+        </div>
+      </form>
+    </PartyUpPageShell>
+  );
 }

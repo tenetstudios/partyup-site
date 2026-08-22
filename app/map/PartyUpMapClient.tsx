@@ -10,6 +10,7 @@ import {
   getRoomTitle,
   type LiveRoom,
 } from "@/lib/homeHelpers";
+import { partyUpTheme } from "@/app/components/PartyUpTheme";
 
 const filters = ["All", "Party", "Concert", "DJ Set", "Pop-Up", "Sports", "Watch Party"];
 const toronto = { latitude: 43.6532, longitude: -79.3832 };
@@ -90,7 +91,7 @@ export default function PartyUpMapClient({ rooms }: { rooms: LiveRoom[] }) {
 
   return (
     <section className="mx-auto grid w-full max-w-[1458px] gap-4 px-5 py-5 xl:px-0">
-      <div className="flex flex-col gap-4 border-b border-white/10 pb-5 lg:flex-row lg:items-end lg:justify-between">
+      <div className="flex flex-col gap-4 border-b border-purple-100/15 pb-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-sm font-black uppercase tracking-[0.18em] text-[#c35dff]">Explore</p>
           <h1 className="mt-2 text-4xl font-black tracking-normal md:text-5xl">Map</h1>
@@ -106,10 +107,10 @@ export default function PartyUpMapClient({ rooms }: { rooms: LiveRoom[] }) {
                 setActiveFilter(filter);
                 setSelectedId(null);
               }}
-              className={`h-9 shrink-0 rounded-full border px-4 text-sm font-black ${
+              className={`${partyUpTheme.tabBase} h-9 min-h-9 shrink-0 rounded-full px-4 text-sm ${
                 activeFilter === filter
-                  ? "border-[#8b3dff] bg-[#8b3dff]/20 text-white"
-                  : "border-white/10 bg-white/[0.04] text-[#d6d1df] hover:text-white"
+                  ? partyUpTheme.tabActive
+                  : partyUpTheme.tabInactive
               }`}
             >
               {filter}
@@ -129,10 +130,10 @@ export default function PartyUpMapClient({ rooms }: { rooms: LiveRoom[] }) {
 
         {mappedRooms.length === 0 ? (
           <div className="absolute inset-0 grid place-items-center p-6 text-center">
-            <div className="max-w-md rounded-lg border border-dashed border-purple-300/20 bg-black/45 p-7 backdrop-blur">
+            <div className={`${partyUpTheme.emptyState} max-w-md p-7`}>
               <h2 className="text-xl font-black">No mapped rooms right now.</h2>
               <p className="mt-3 text-sm font-bold leading-6 text-[#aaa4b8]">Rooms need live status and valid coordinates before they appear on the map.</p>
-              <Link href="/live-now" className="mt-6 inline-flex h-10 items-center rounded-md bg-[#8b3dff] px-4 text-sm font-black text-white">
+              <Link href="/live-now" className={`${partyUpTheme.ghostButton} mt-6 h-10 px-4 text-sm`}>
                 View Live Now
               </Link>
             </div>
@@ -170,7 +171,7 @@ export default function PartyUpMapClient({ rooms }: { rooms: LiveRoom[] }) {
         )}
 
         {selectedRoom && (
-          <div className="absolute bottom-4 left-4 right-4 z-20 rounded-lg border border-white/10 bg-[#10101a]/95 p-4 shadow-2xl shadow-purple-950/40 backdrop-blur md:left-auto md:w-[360px]">
+          <div className={`${partyUpTheme.glassElevated} absolute bottom-4 left-4 right-4 z-20 p-4 md:left-auto md:w-[360px]`}>
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <p className="text-xs font-black uppercase tracking-[0.16em] text-[#ff4aa2]">Live</p>
@@ -189,7 +190,7 @@ export default function PartyUpMapClient({ rooms }: { rooms: LiveRoom[] }) {
             </div>
             <Link
               href={`/room/${selectedRoom.id}`}
-              className="mt-4 grid h-10 place-items-center rounded-md bg-[#8b3dff] text-sm font-black text-white hover:bg-[#7b31e8]"
+              className={`${partyUpTheme.primaryButton} mt-4 h-10 w-full text-sm`}
             >
               Open Room
             </Link>
