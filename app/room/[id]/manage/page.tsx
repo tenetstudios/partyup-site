@@ -4,6 +4,7 @@ import DeleteRoomButton from "../DeleteRoomButton";
 import { createSupabaseClient } from "@/lib/supabase";
 import ObsStreamPanel from "./ObsStreamPanel";
 import RoomAnnouncementManager from "./RoomAnnouncementManager";
+import RoomMissionManager from "./RoomMissionManager";
 import RoomDetailsEditor from "./RoomDetailsEditor";
 import RoomEntryLinkPanel from "./RoomEntryLinkPanel";
 import HostDashboardOverview from "./HostDashboardOverview";
@@ -68,6 +69,7 @@ const { data: room } = await supabase
           <RoomEntryLinkPanel roomId={id} />
           <RoomAnnouncementManager roomId={id} />
         </>}
+        <RoomMissionManager roomId={id} roomEnded={room.status === "ended"} />
         <AfterEventMessageManager roomId={id} />
         {room.status !== "ended" && <>
           <RoomManagePanel roomId={id} />
