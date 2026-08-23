@@ -11,6 +11,7 @@ import HostDashboardOverview from "./HostDashboardOverview";
 import AfterEventMessageManager from "./AfterEventMessageManager";
 import ChatModerationManager from "./ChatModerationManager";
 import ChatReportInbox from "./ChatReportInbox";
+import ClearRoomPanel from "./ClearRoomPanel";
 
 export default async function ManageRoomPage({
   params,
@@ -70,6 +71,7 @@ const { data: room } = await supabase
           <ObsStreamPanel roomId={id} />
         </>}
         <AfterEventMessageManager roomId={id} roomEnded={room.status === "ended"} />
+        {room.status !== "ended" && <ClearRoomPanel roomId={id} hostId={room.host_id} />}
         <section className="mt-10 border-t border-red-400/20 pt-6">
           <h2 className="text-lg font-black text-red-200">Exceptional deletion</h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500">
