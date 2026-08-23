@@ -292,6 +292,7 @@ function CustomStreamView({
 
       <CustomControls
         canInitiateStream={canInitiateStream}
+        liveFeedActive={Boolean(selectedTrack)}
         onLeave={onLeave}
         onPublishingChange={onPublishingChange}
         roomId={roomId}
@@ -432,36 +433,39 @@ function StreamIcon() {
 
 function CustomControls({
   canInitiateStream,
+  liveFeedActive,
   onLeave,
   onPublishingChange,
   roomId,
 }: {
   canInitiateStream: boolean;
+  liveFeedActive: boolean;
   onLeave: () => void;
   onPublishingChange: (publishing: boolean) => void;
   roomId: string;
 }) {
   const room = useRoomContext();
-  const { localParticipant } = useLocalParticipant();
+  const {
+    isCameraEnabled,
+    isMicrophoneEnabled,
+    localParticipant,
+  } = useLocalParticipant();
 
-  const [micOn, setMicOn] = useState(false);
-  const [camOn, setCamOn] = useState(false);
   const [obsOn, setObsOn] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [liveMenuOpen, setLiveMenuOpen] = useState(false);
 
-  const isPublishing = camOn || micOn || obsOn;
+  const isPublishing = isCameraEnabled || isMicrophoneEnabled || obsOn;
   const showBroadcastControls = canInitiateStream || isPublishing;
 
   async function toggleMic() {
-    const next = !micOn;
+    const next = !isMicrophoneEnabled;
     await localParticipant.setMicrophoneEnabled(next);
-    setMicOn(next);
   }
 
   async function toggleCam() {
-    const next = !camOn;
+    const next = !isCameraEnabled;
     await localParticipant.setCameraEnabled(next);
-    setCamOn(next);
     await reportPublishing(next);
     if (!next) setObsOn(false);
   }
@@ -474,8 +478,6 @@ function CustomControls({
         localParticipant.setCameraEnabled(false),
         localParticipant.setMicrophoneEnabled(false),
       ]);
-      setCamOn(false);
-      setMicOn(false);
       setObsOn(false);
       await reportPublishing(false);
     } catch (error) {
@@ -496,7 +498,7 @@ function CustomControls({
   }
 
   async function leaveRoom() {
-    if (camOn || obsOn) await reportPublishing(false);
+    if (isPublishing) await reportPublishing(false);
     room.disconnect();
     onLeave();
   }
@@ -523,17 +525,12 @@ function CustomControls({
       deviceId: obsCamera.deviceId,
     });
 
-    setCamOn(true);
     setObsOn(true);
     await reportPublishing(true);
   }
 
-  return (
-    <div
-      className="absolute bottom-3 left-3 right-3 z-[999] flex touch-manipulation items-center justify-center gap-2 overflow-x-auto rounded-2xl border border-white/15 bg-black/90 p-2 shadow-2xl backdrop-blur sm:left-1/2 sm:right-auto sm:max-w-[calc(100%-2rem)] sm:-translate-x-1/2 sm:rounded-full"
-      style={{ zIndex: 999 }}
-      aria-label="Livestream controls"
-    >
+  const controlButtons = (
+    <>
       {isPublishing && (
         <button
           type="button"
@@ -548,21 +545,21 @@ function CustomControls({
       )}
 
       {showBroadcastControls && <ControlButton
-        label={micOn ? "Mute Microphone" : "Unmute Microphone"}
-        shortLabel={micOn ? "Mute" : "Mic"}
-        active={micOn}
+        label={isMicrophoneEnabled ? "Mute Microphone" : "Unmute Microphone"}
+        shortLabel={isMicrophoneEnabled ? "Mute" : "Mic"}
+        active={isMicrophoneEnabled}
         onClick={toggleMic}
       >
-        {micOn ? <MicOnIcon /> : <MicOffIcon />}
+        {isMicrophoneEnabled ? <MicOnIcon /> : <MicOffIcon />}
       </ControlButton>}
 
       {showBroadcastControls && <ControlButton
-        label={camOn ? "Camera Off" : "Camera On"}
-        shortLabel={camOn ? "Cam Off" : "Camera"}
-        active={camOn}
+        label={isCameraEnabled ? "Camera Off" : "Camera On"}
+        shortLabel={isCameraEnabled ? "Cam Off" : "Camera"}
+        active={isCameraEnabled}
         onClick={toggleCam}
       >
-        {camOn ? <VideoOffIcon /> : <VideoOnIcon />}
+        {isCameraEnabled ? <VideoOffIcon /> : <VideoOnIcon />}
       </ControlButton>}
 
       {showBroadcastControls && <ControlButton
@@ -577,6 +574,53 @@ function CustomControls({
       <ControlButton label="Leave livestream player" shortLabel="Exit" intent="danger" onClick={() => void leaveRoom()}>
         <LeaveIcon />
       </ControlButton>
+    </>
+  );
+
+  if (liveFeedActive) {
+    return (
+      <div
+        className="group absolute bottom-3 left-1/2 z-[2147483647] flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 touch-manipulation flex-col items-center"
+        style={{ zIndex: 2147483647 }}
+        onMouseEnter={() => setLiveMenuOpen(true)}
+        onMouseLeave={() => setLiveMenuOpen(false)}
+      >
+        <div
+          className={`mb-2 flex max-w-full items-center gap-2 overflow-x-auto rounded-2xl border border-white/20 bg-black/95 p-2 shadow-[0_18px_60px_rgba(0,0,0,0.7)] backdrop-blur-xl transition duration-150 sm:rounded-full ${
+            liveMenuOpen
+              ? "pointer-events-auto translate-y-0 opacity-100"
+              : "pointer-events-none translate-y-2 opacity-0"
+          }`}
+          aria-label="Active livestream controls"
+        >
+          {controlButtons}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setLiveMenuOpen((open) => !open)}
+          className={`pointer-events-auto flex h-12 items-center gap-2 rounded-full border px-5 text-sm font-black text-white shadow-2xl backdrop-blur transition ${
+            isPublishing
+              ? "border-red-300/40 bg-red-600 hover:bg-red-500"
+              : "border-purple-300/30 bg-[#6d28d9] hover:bg-[#7c3aed]"
+          }`}
+          aria-expanded={liveMenuOpen}
+          aria-label={isPublishing ? "Open controls to end livestream" : "Open livestream controls"}
+        >
+          <span className={`h-2.5 w-2.5 rounded-full ${isPublishing ? "animate-pulse bg-white" : "bg-purple-200"}`} />
+          {isPublishing ? "End / Controls" : "Live Controls"}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="absolute bottom-3 left-3 right-3 z-[999] flex touch-manipulation items-center justify-center gap-2 overflow-x-auto rounded-2xl border border-white/15 bg-black/90 p-2 shadow-2xl backdrop-blur sm:left-1/2 sm:right-auto sm:max-w-[calc(100%-2rem)] sm:-translate-x-1/2 sm:rounded-full"
+      style={{ zIndex: 999 }}
+      aria-label="Livestream controls"
+    >
+      {controlButtons}
     </div>
   );
 }
