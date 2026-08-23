@@ -1,7 +1,8 @@
 "use client";
 
 import type React from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import {
   LiveKitRoom,
   ParticipantTile,
@@ -18,6 +19,8 @@ type RoomLiveState = {
   is_live: boolean;
   signal_authoritative: boolean;
 };
+
+const subscribeToClientEnvironment = () => () => undefined;
 
 export default function WebLiveKitRoom({ roomId }: { roomId: string }) {
   const [token, setToken] = useState("");
@@ -454,6 +457,11 @@ function CustomControls({
   const [obsOn, setObsOn] = useState(false);
   const [busy, setBusy] = useState(false);
   const [liveMenuOpen, setLiveMenuOpen] = useState(false);
+  const portalReady = useSyncExternalStore(
+    subscribeToClientEnvironment,
+    () => true,
+    () => false,
+  );
 
   const isPublishing = isCameraEnabled || isMicrophoneEnabled || obsOn;
   const showBroadcastControls = canInitiateStream || isPublishing;
@@ -577,19 +585,25 @@ function CustomControls({
     </>
   );
 
-  if (liveFeedActive) {
-    return (
+  if (liveFeedActive && portalReady) {
+    return createPortal(
       <div
-        className="group absolute bottom-3 left-1/2 z-[2147483647] flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 touch-manipulation flex-col items-center"
+        className="group fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-1/2 z-[2147483647] flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 touch-manipulation flex-col items-center"
         style={{ zIndex: 2147483647 }}
         onMouseEnter={() => setLiveMenuOpen(true)}
         onMouseLeave={() => setLiveMenuOpen(false)}
+        onFocusCapture={() => setLiveMenuOpen(true)}
+        onBlurCapture={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget)) {
+            setLiveMenuOpen(false);
+          }
+        }}
       >
         <div
           className={`mb-2 flex max-w-full items-center gap-2 overflow-x-auto rounded-2xl border border-white/20 bg-black/95 p-2 shadow-[0_18px_60px_rgba(0,0,0,0.7)] backdrop-blur-xl transition duration-150 sm:rounded-full ${
             liveMenuOpen
               ? "pointer-events-auto translate-y-0 opacity-100"
-              : "pointer-events-none translate-y-2 opacity-0"
+              : "pointer-events-none translate-y-2 opacity-0 group-hover:pointer-events-auto group-hover:translate-y-0 group-hover:opacity-100"
           }`}
           aria-label="Active livestream controls"
         >
@@ -610,7 +624,8 @@ function CustomControls({
           <span className={`h-2.5 w-2.5 rounded-full ${isPublishing ? "animate-pulse bg-white" : "bg-purple-200"}`} />
           {isPublishing ? "End / Controls" : "Live Controls"}
         </button>
-      </div>
+      </div>,
+      document.body,
     );
   }
 
