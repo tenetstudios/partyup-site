@@ -36,3 +36,7 @@ html {
   background: #07000f;
   color-scheme: dark;
 }
+@keyframes room-frame-fade {
+  from { opacity: 0.35; }
+  to { opacity: 1; }
+}

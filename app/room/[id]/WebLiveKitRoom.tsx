@@ -11,12 +11,22 @@ import {
   useTracks,
 } from "@livekit/components-react";
 import { Track } from "livekit-client";
+import { getRoomIdleMedia, type RoomIdleMedia } from "@/lib/roomIdleMedia";
 import { createSupabaseClient } from "@/lib/supabase";
+
+type RoomLiveState = {
+  is_live: boolean;
+  signal_authoritative: boolean;
+};
 
 export default function WebLiveKitRoom({ roomId }: { roomId: string }) {
   const [token, setToken] = useState("");
   const [error, setError] = useState("");
   const [shouldConnect, setShouldConnect] = useState(false);
+  const [publisherIntent, setPublisherIntent] = useState(false);
+  const [canInitiateStream, setCanInitiateStream] = useState(false);
+  const [idleMedia, setIdleMedia] = useState<RoomIdleMedia | null>(null);
+  const [liveState, setLiveState] = useState<RoomLiveState | null>(null);
   const livekitUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL;
 
   function resetConnection() {
@@ -24,6 +34,85 @@ export default function WebLiveKitRoom({ roomId }: { roomId: string }) {
     setToken("");
     setError("");
   }
+
+  useEffect(() => {
+    const supabase = createSupabaseClient();
+
+    async function loadFrameState() {
+      const [{ data: userData }, { data: nextLiveState }] = await Promise.all([
+        supabase.auth.getUser(),
+        supabase
+          .from("room_live_state")
+          .select("is_live,signal_authoritative")
+          .eq("room_id", roomId)
+          .maybeSingle(),
+      ]);
+
+      setLiveState((nextLiveState as RoomLiveState | null) ?? null);
+      setIdleMedia(await getRoomIdleMedia(supabase, roomId).catch(() => null));
+
+      const user = userData.user;
+      if (!user) {
+        setCanInitiateStream(false);
+        return;
+      }
+
+      const [{ data: room }, { data: attendee }] = await Promise.all([
+        supabase.from("event_rooms").select("host_id").eq("id", roomId).maybeSingle(),
+        supabase
+          .from("event_attendees")
+          .select("can_stream,status")
+          .eq("event_room_id", roomId)
+          .eq("user_id", user.id)
+          .maybeSingle(),
+      ]);
+
+      setCanInitiateStream(
+        room?.host_id === user.id ||
+          (attendee?.status === "accepted" && attendee?.can_stream === true),
+      );
+    }
+
+    queueMicrotask(() => void loadFrameState());
+
+    const channel = supabase
+      .channel(`room-stream-frame-${roomId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "room_idle_media", filter: `room_id=eq.${roomId}` },
+        () => void loadFrameState(),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "room_live_state", filter: `room_id=eq.${roomId}` },
+        (payload) => {
+          const row = payload.new as RoomLiveState;
+          setLiveState(row);
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "event_attendees", filter: `event_room_id=eq.${roomId}` },
+        () => void loadFrameState(),
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [roomId]);
+
+  useEffect(() => {
+    if (!liveState?.signal_authoritative) return;
+
+    queueMicrotask(() => {
+      if (liveState.is_live) {
+        setShouldConnect(true);
+      } else if (!publisherIntent) {
+        resetConnection();
+      }
+    });
+  }, [liveState, publisherIntent]);
 
   useEffect(() => {
     if (!shouldConnect) return;
@@ -67,8 +156,25 @@ export default function WebLiveKitRoom({ roomId }: { roomId: string }) {
 
   if (!shouldConnect) {
     return (
-      <PlayerFrame viewerCount={0}>
-        <StreamEmptyState onJoin={() => setShouldConnect(true)} />
+      <PlayerFrame mode={idleMedia?.enabled ? "idle" : "empty"} viewerCount={0}>
+        {idleMedia?.enabled ? (
+          <IdleLoopState
+            media={idleMedia}
+            actionLabel={canInitiateStream ? "Go Live" : liveState?.signal_authoritative ? null : "Join Livestream"}
+            onAction={() => {
+              setPublisherIntent(canInitiateStream);
+              setShouldConnect(true);
+            }}
+          />
+        ) : (
+          <StreamEmptyState
+            actionLabel={canInitiateStream ? "Go Live" : liveState?.signal_authoritative ? null : "Join Livestream"}
+            onJoin={() => {
+              setPublisherIntent(canInitiateStream);
+              setShouldConnect(true);
+            }}
+          />
+        )}
       </PlayerFrame>
     );
   }
@@ -86,12 +192,36 @@ export default function WebLiveKitRoom({ roomId }: { roomId: string }) {
       video={false}
       onDisconnected={resetConnection}
     >
-      <CustomStreamView onLeave={resetConnection} />
+      <CustomStreamView
+        expectedLive={Boolean(liveState?.is_live)}
+        idleMedia={idleMedia?.enabled ? idleMedia : null}
+        onLeave={() => {
+          setPublisherIntent(false);
+          resetConnection();
+        }}
+        onPublishingChange={(publishing) => {
+          setPublisherIntent(publishing);
+          if (!publishing && liveState?.signal_authoritative && !liveState.is_live) resetConnection();
+        }}
+        roomId={roomId}
+      />
     </LiveKitRoom>
   );
 }
 
-function CustomStreamView({ onLeave }: { onLeave: () => void }) {
+function CustomStreamView({
+  expectedLive,
+  idleMedia,
+  onLeave,
+  onPublishingChange,
+  roomId,
+}: {
+  expectedLive: boolean;
+  idleMedia: RoomIdleMedia | null;
+  onLeave: () => void;
+  onPublishingChange: (publishing: boolean) => void;
+  roomId: string;
+}) {
   const participants = useParticipants();
   const viewerCount = participants.length;
   const [selectedTrackKey, setSelectedTrackKey] = useState<string | null>(null);
@@ -118,13 +248,17 @@ function CustomStreamView({ onLeave }: { onLeave: () => void }) {
     videoTracks[0];
 
   return (
-    <PlayerFrame viewerCount={viewerCount} onHoverChange={setShowStreamerControls}>
+    <PlayerFrame mode={selectedTrack ? "live" : idleMedia ? "idle" : "connecting"} viewerCount={viewerCount} onHoverChange={setShowStreamerControls}>
       {selectedTrack ? (
-        <div className="grid h-full w-full place-items-center bg-black">
+        <div className="grid h-full w-full animate-[room-frame-fade_220ms_ease-out] place-items-center bg-black">
           <div className="h-full max-h-[620px] w-full max-w-[1100px] overflow-hidden bg-black [&_.lk-participant-tile]:h-full [&_.lk-participant-tile]:w-full [&_video]:h-full [&_video]:w-full [&_video]:object-contain">
             <ParticipantTile trackRef={selectedTrack} />
           </div>
         </div>
+      ) : expectedLive ? (
+        <ConnectingLiveState />
+      ) : idleMedia ? (
+        <IdleLoopState media={idleMedia} actionLabel={null} onAction={() => undefined} />
       ) : (
         <WaitingForLiveState />
       )}
@@ -154,7 +288,7 @@ function CustomStreamView({ onLeave }: { onLeave: () => void }) {
         </div>
       )}
 
-      <CustomControls onLeave={onLeave} visible={showStreamerControls} />
+      <CustomControls onLeave={onLeave} onPublishingChange={onPublishingChange} roomId={roomId} visible={showStreamerControls} />
     </PlayerFrame>
   );
 }
@@ -162,10 +296,12 @@ function CustomStreamView({ onLeave }: { onLeave: () => void }) {
 function PlayerFrame({
   children,
   onHoverChange,
+  mode,
   viewerCount,
 }: {
   children: React.ReactNode;
   onHoverChange?: (hovered: boolean) => void;
+  mode: "live" | "idle" | "empty" | "connecting";
   viewerCount: number;
 }) {
   return (
@@ -185,18 +321,16 @@ function PlayerFrame({
         />
       )}
 
-      <div className="absolute left-5 top-5 z-30 flex items-center gap-3">
-        <span className="rounded-[6px] bg-[#ef2f82] px-4 py-2 text-sm font-black uppercase leading-none text-white">
-          Live
-        </span>
-        <span className="rounded-[6px] border border-white/20 bg-black/55 px-4 py-2 text-sm font-black leading-none text-white backdrop-blur">
-          {viewerCount} viewers
-        </span>
-      </div>
+      {mode === "live" && (
+        <div className="absolute left-5 top-5 z-30 flex items-center gap-3">
+          <span className="rounded-[6px] bg-[#ef2f82] px-4 py-2 text-sm font-black uppercase leading-none text-white">Live</span>
+          <span className="rounded-[6px] border border-white/20 bg-black/55 px-4 py-2 text-sm font-black leading-none text-white backdrop-blur">{viewerCount} viewers</span>
+        </div>
+      )}
 
       {children}
 
-      <div className="absolute bottom-5 left-5 z-30 flex items-center gap-5 text-white">
+      {mode === "live" && <div className="absolute bottom-5 left-5 z-30 flex items-center gap-5 text-white">
         <button className="grid h-8 w-8 place-items-center rounded-full hover:bg-white/10" aria-label="Play livestream">
           <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden="true">
             <path d="M8 5v14l11-7-11-7Z" />
@@ -208,9 +342,9 @@ function PlayerFrame({
             <path d="M16 8.5a5 5 0 0 1 0 7" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
           </svg>
         </button>
-      </div>
+      </div>}
 
-      <button
+      {mode === "live" && <button
         onClick={() => {
           if (document.fullscreenElement) {
             document.exitFullscreen();
@@ -225,14 +359,14 @@ function PlayerFrame({
         <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" aria-hidden="true">
           <path d="M8 3H3v5M21 8V3h-5M16 21h5v-5M3 16v5h5" />
         </svg>
-      </button>
+      </button>}
     </div>
   );
 }
 
-function StreamEmptyState({ onJoin }: { onJoin: () => void }) {
+function StreamEmptyState({ actionLabel, onJoin }: { actionLabel: string | null; onJoin: () => void }) {
   return (
-    <div className="grid h-full w-full place-items-center px-6 text-center">
+    <div className="grid h-full w-full animate-[room-frame-fade_220ms_ease-out] place-items-center px-6 text-center">
       <div>
         <StreamIcon />
         <h2 className="mt-5 text-[24px] font-black leading-tight text-white">
@@ -241,12 +375,11 @@ function StreamEmptyState({ onJoin }: { onJoin: () => void }) {
         <p className="mt-3 text-[18px] leading-7 text-[#aaa4b8]">
           Be the first to go live in this room.
         </p>
-        <button
-          onClick={onJoin}
-          className="mt-8 rounded-[6px] bg-[#9146ff] px-7 py-4 text-base font-black text-white shadow-[0_14px_34px_rgba(145,70,255,0.24)] hover:bg-[#7b31e8]"
-        >
-          Join Livestream
-        </button>
+        {actionLabel && (
+          <button onClick={onJoin} className="mt-8 rounded-[6px] bg-[#9146ff] px-7 py-4 text-base font-black text-white shadow-[0_14px_34px_rgba(145,70,255,0.24)] hover:bg-[#7b31e8]">
+            {actionLabel}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -254,7 +387,7 @@ function StreamEmptyState({ onJoin }: { onJoin: () => void }) {
 
 function WaitingForLiveState() {
   return (
-    <div className="grid h-full w-full place-items-center px-6 text-center">
+    <div className="grid h-full w-full animate-[room-frame-fade_220ms_ease-out] place-items-center px-6 text-center">
       <div>
         <StreamIcon />
         <h2 className="mt-5 text-[24px] font-black leading-tight text-white">
@@ -264,6 +397,46 @@ function WaitingForLiveState() {
           Be the first to go live in this room.
         </p>
       </div>
+    </div>
+  );
+}
+
+function ConnectingLiveState() {
+  return (
+    <div className="grid h-full w-full animate-[room-frame-fade_220ms_ease-out] place-items-center px-6 text-center">
+      <div>
+        <StreamIcon />
+        <h2 className="mt-5 text-[24px] font-black text-white">Connecting live stream...</h2>
+      </div>
+    </div>
+  );
+}
+
+function IdleLoopState({
+  actionLabel,
+  media,
+  onAction,
+}: {
+  actionLabel: string | null;
+  media: RoomIdleMedia;
+  onAction: () => void;
+}) {
+  return (
+    <div className="relative h-full w-full animate-[room-frame-fade_220ms_ease-out] bg-black">
+      {media.media_type === "video" ? (
+        <video src={media.signed_url} autoPlay loop muted playsInline className="h-full w-full object-cover" />
+      ) : (
+        // A normal img preserves GIF animation without routing it through an image optimizer.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={media.signed_url} alt="Venue highlights" className="h-full w-full object-cover" />
+      )}
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-black/20" />
+      <span className="absolute left-5 top-5 rounded-[6px] border border-white/20 bg-black/60 px-3 py-2 text-xs font-black tracking-[0.12em] text-white backdrop-blur">HIGHLIGHTS</span>
+      {actionLabel && (
+        <button type="button" onClick={onAction} className="absolute bottom-5 left-1/2 -translate-x-1/2 rounded-[6px] bg-[#9146ff] px-5 py-3 text-sm font-black text-white shadow-xl hover:bg-[#7b31e8]">
+          {actionLabel}
+        </button>
+      )}
     </div>
   );
 }
@@ -281,9 +454,13 @@ function StreamIcon() {
 
 function CustomControls({
   onLeave,
+  onPublishingChange,
+  roomId,
   visible,
 }: {
   onLeave: () => void;
+  onPublishingChange: (publishing: boolean) => void;
+  roomId: string;
   visible: boolean;
 }) {
   const room = useRoomContext();
@@ -303,6 +480,7 @@ function CustomControls({
     const next = !camOn;
     await localParticipant.setCameraEnabled(next);
     setCamOn(next);
+    await reportPublishing(next);
     if (!next) setObsOn(false);
   }
 
@@ -314,9 +492,20 @@ function CustomControls({
     setCamOn(false);
     setMicOn(false);
     setObsOn(false);
+    await reportPublishing(false);
   }
 
-  function leaveRoom() {
+  async function reportPublishing(publishing: boolean) {
+    const supabase = createSupabaseClient();
+    await supabase.rpc("report_room_live_publisher", {
+      p_is_live: publishing,
+      p_room_id: roomId,
+    });
+    onPublishingChange(publishing);
+  }
+
+  async function leaveRoom() {
+    if (camOn || obsOn) await reportPublishing(false);
     room.disconnect();
     onLeave();
   }
@@ -345,6 +534,7 @@ function CustomControls({
 
     setCamOn(true);
     setObsOn(true);
+    await reportPublishing(true);
   }
 
   return (
@@ -384,7 +574,7 @@ function CustomControls({
         </ControlButton>
       )}
 
-      <ControlButton label="Leave" intent="danger" onClick={leaveRoom}>
+      <ControlButton label="Leave" intent="danger" onClick={() => void leaveRoom()}>
         <LeaveIcon />
       </ControlButton>
     </div>
@@ -499,7 +689,7 @@ function EndLiveIcon() {
 
 function StreamMessage({ text }: { text: string }) {
   return (
-    <PlayerFrame viewerCount={0}>
+    <PlayerFrame mode="connecting" viewerCount={0}>
       <div className="grid h-full w-full place-items-center px-6 text-center text-sm font-bold text-zinc-400">
         {text}
       </div>

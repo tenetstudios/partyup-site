@@ -12,6 +12,7 @@ import AfterEventMessageManager from "./AfterEventMessageManager";
 import ChatModerationManager from "./ChatModerationManager";
 import ChatReportInbox from "./ChatReportInbox";
 import ClearRoomPanel from "./ClearRoomPanel";
+import RoomIdleLoopManager from "./RoomIdleLoopManager";
 
 export default async function ManageRoomPage({
   params,
@@ -68,6 +69,7 @@ const { data: room } = await supabase
         <RoomMissionManager roomId={id} roomEnded={room.status === "ended"} />
         {room.status !== "ended" && <>
           <RoomManagePanel roomId={id} />
+          <RoomIdleLoopManager roomId={id} />
           <ObsStreamPanel roomId={id} />
         </>}
         <AfterEventMessageManager roomId={id} roomEnded={room.status === "ended"} />
