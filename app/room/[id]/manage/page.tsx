@@ -13,6 +13,7 @@ import ChatModerationManager from "./ChatModerationManager";
 import ChatReportInbox from "./ChatReportInbox";
 import ClearRoomPanel from "./ClearRoomPanel";
 import RoomIdleLoopManager from "./RoomIdleLoopManager";
+import RoomSettingsAccordion from "./RoomSettingsAccordion";
 
 export default async function ManageRoomPage({
   params,
@@ -59,28 +60,44 @@ const { data: room } = await supabase
         )}
         
         <HostDashboardOverview roomId={id} roomEnded={room.status === "ended"} />
-        {room.status !== "ended" && <>
-          <RoomDetailsEditor roomId={id} />
-          <RoomEntryLinkPanel roomId={id} />
-          <ChatModerationManager roomId={id} />
-          <RoomAnnouncementManager roomId={id} />
-        </>}
-        <ChatReportInbox roomId={id} />
-        <RoomMissionManager roomId={id} roomEnded={room.status === "ended"} />
-        {room.status !== "ended" && <>
-          <RoomManagePanel roomId={id} />
-          <RoomIdleLoopManager roomId={id} />
-          <ObsStreamPanel roomId={id} />
-        </>}
-        <AfterEventMessageManager roomId={id} roomEnded={room.status === "ended"} />
-        {room.status !== "ended" && <ClearRoomPanel roomId={id} hostId={room.host_id} />}
-        <section className="mt-10 border-t border-red-400/20 pt-6">
-          <h2 className="text-lg font-black text-red-200">Exceptional deletion</h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500">
-            Delete only accidental or test rooms that should leave no PartyUp history. Completed events should be ended instead.
-          </p>
-          <DeleteRoomButton roomId={id} hostId={room.host_id} />
-        </section>
+
+        <RoomSettingsAccordion
+          defaultOpen={room.status === "ended" ? "engagement" : "roomBroadcast"}
+          roomBroadcast={room.status !== "ended" ? (
+            <>
+              <RoomDetailsEditor roomId={id} />
+              <RoomEntryLinkPanel roomId={id} />
+              <RoomIdleLoopManager roomId={id} />
+              <ObsStreamPanel roomId={id} />
+            </>
+          ) : undefined}
+          engagement={(
+            <>
+              {room.status !== "ended" && <RoomAnnouncementManager roomId={id} />}
+              <RoomMissionManager roomId={id} roomEnded={room.status === "ended"} />
+            </>
+          )}
+          safety={(
+            <>
+              {room.status !== "ended" && <ChatModerationManager roomId={id} />}
+              <ChatReportInbox roomId={id} />
+              {room.status !== "ended" && <RoomManagePanel roomId={id} />}
+              {room.status !== "ended" && <ClearRoomPanel roomId={id} hostId={room.host_id} />}
+            </>
+          )}
+          lifecycle={(
+            <>
+              <AfterEventMessageManager roomId={id} roomEnded={room.status === "ended"} />
+              <section className="mt-10 border-t border-red-400/20 p-5">
+                <h2 className="text-lg font-black text-red-200">Exceptional deletion</h2>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500">
+                  Delete only accidental or test rooms that should leave no PartyUp history. Completed events should be ended instead.
+                </p>
+                <DeleteRoomButton roomId={id} hostId={room.host_id} />
+              </section>
+            </>
+          )}
+        />
       </div>
     </main>
   );
