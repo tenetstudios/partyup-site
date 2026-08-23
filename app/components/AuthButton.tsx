@@ -13,6 +13,7 @@ export default function AuthButton() {
   const [email, setEmail] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const supabase = useMemo(() => createSupabaseClient(), []);
 
   const loadUserAndProfile = useCallback(async () => {
@@ -24,16 +25,21 @@ export default function AuthButton() {
 
     if (!user) {
       setProfile(null);
+      setIsAdmin(false);
       return;
     }
 
-    const { data: profileData } = await supabase
-      .from("profiles")
-      .select("username, avatar_url")
-      .eq("id", user.id)
-      .maybeSingle();
+    const [{ data: profileData }, { data: adminAccess }] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("username, avatar_url")
+        .eq("id", user.id)
+        .maybeSingle(),
+      supabase.rpc("is_site_admin"),
+    ]);
 
     setProfile(profileData);
+    setIsAdmin(adminAccess === true);
   }, [supabase]);
 
   useEffect(() => {
@@ -65,11 +71,21 @@ export default function AuthButton() {
     setEmail(null);
     setUserId(null);
     setProfile(null);
+    setIsAdmin(false);
   }
 
   if (email && userId) {
     return (
       <div className="flex items-center gap-3">
+        {isAdmin && (
+          <Link
+            href="/admin"
+            className="rounded-md border border-purple-300/25 bg-purple-500/10 px-3 py-2 text-sm font-black text-purple-100 hover:bg-purple-500/20"
+          >
+            Admin
+          </Link>
+        )}
+
         <Link
           href={`/user/${userId}`}
           className="flex h-10 items-center gap-2 rounded-md px-1 text-white hover:bg-white/10 sm:gap-3 sm:px-2"
