@@ -16,7 +16,7 @@ export default function DeleteAccountPage() {
     >
       <InfoSection title="What account deletion covers">
         <p>
-          Deleting a PartyUp account would normally remove or disassociate the account and profile,
+          Deleting a PartyUp account removes or disassociates the account and profile,
           contact and sign-in information, follows and connections, notifications, room
           participation and messages, Match history, and Memories or uploads tied to that account.
         </p>

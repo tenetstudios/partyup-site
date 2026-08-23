@@ -234,17 +234,20 @@ export default function ConnectionsClient() {
               Connections
             </h1>
             <p className="mt-3 max-w-2xl text-sm font-bold leading-6 text-[#aaa4b8]">
-              Connections are mutual Keep in Touch moments from Match. Following stays separate.
+              People you kept in touch with through Match or met and Tapped in real life.
             </p>
           </div>
 
-          <Link
-            href="/match"
-            className={`${partyUpTheme.primaryButton} h-12 gap-2 px-6 text-sm`}
-          >
-            <PeopleIcon className="h-[18px] w-[18px]" />
-            Find a Match
-          </Link>
+          <div className="flex flex-wrap gap-3">
+            <Link href="/connect" className={`${partyUpTheme.primaryButton} h-12 gap-2 px-6 text-sm`}>
+              <span aria-hidden="true">⚡</span>
+              Connect
+            </Link>
+            <Link href="/match" className={`${partyUpTheme.ghostButton} h-12 gap-2 px-6 text-sm`}>
+              <PeopleIcon className="h-[18px] w-[18px]" />
+              Find a Match
+            </Link>
+          </div>
         </div>
 
         <div className="mt-7 xl:grid xl:grid-cols-[minmax(0,1fr)_260px] xl:gap-8">
@@ -308,13 +311,13 @@ export default function ConnectionsClient() {
               <div className={`${partyUpTheme.emptyState} mt-5 p-8`}>
                 <h2 className="text-xl font-black">No connections yet.</h2>
                 <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-[#aaa4b8]">
-                  When you and someone you meet through Match both choose Keep in Touch, they&apos;ll appear here.
+                  Tap with someone you meet or both choose Keep in Touch after a Match. They&apos;ll appear here.
                 </p>
                 <Link
-                  href="/match"
+                  href="/connect"
                   className={`${partyUpTheme.primaryButton} mt-6 px-5 text-sm`}
                 >
-                  Find a Match
+                  Make a Connection
                 </Link>
               </div>
             ) : (
@@ -346,7 +349,7 @@ export default function ConnectionsClient() {
           <aside className="hidden xl:block">
             <div className="sticky top-28 rounded-lg border border-fuchsia-300/20 bg-[linear-gradient(155deg,rgba(43,16,66,0.58),rgba(21,12,45,0.66))] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_20px_55px_rgba(19,4,43,0.28)] backdrop-blur-xl">
               <p className="text-xs font-black uppercase tracking-[0.16em] text-[#e1c9ff]">Your Connections</p>
-              <p className="mt-4 text-sm font-semibold leading-6 text-[#c3bcd0]">These are people you both chose to Keep in Touch with.</p>
+              <p className="mt-4 text-sm font-semibold leading-6 text-[#c3bcd0]">These are people you kept in touch with through Match or PartyUp Tap.</p>
               <p className="mt-2 text-sm font-semibold leading-6 text-[#a9a1b6]">You can always remove connections or reach out later.</p>
               <div className="my-6 h-px bg-gradient-to-r from-purple-300/20 via-fuchsia-300/15 to-transparent" />
               <p className="text-xs font-black uppercase tracking-[0.16em] text-[#ff7cba]">Keep It Real</p>

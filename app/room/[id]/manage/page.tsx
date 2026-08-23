@@ -4,11 +4,16 @@ import DeleteRoomButton from "../DeleteRoomButton";
 import { createSupabaseClient } from "@/lib/supabase";
 import ObsStreamPanel from "./ObsStreamPanel";
 import RoomAnnouncementManager from "./RoomAnnouncementManager";
+import RoomMissionManager from "./RoomMissionManager";
 import RoomDetailsEditor from "./RoomDetailsEditor";
 import RoomEntryLinkPanel from "./RoomEntryLinkPanel";
 import HostDashboardOverview from "./HostDashboardOverview";
 import AfterEventMessageManager from "./AfterEventMessageManager";
-import EndEventButton from "./EndEventButton";
+import ChatModerationManager from "./ChatModerationManager";
+import ChatReportInbox from "./ChatReportInbox";
+import ClearRoomPanel from "./ClearRoomPanel";
+import RoomIdleLoopManager from "./RoomIdleLoopManager";
+import RoomSettingsAccordion from "./RoomSettingsAccordion";
 
 export default async function ManageRoomPage({
   params,
@@ -48,38 +53,51 @@ const { data: room } = await supabase
           Host dashboard, room tools, and live operations for this event.
         </p>
 
-        {room.status !== "ended" ? (
-          <section className="mt-8 rounded-lg border border-purple-300/20 bg-purple-950/20 p-5">
-            <h2 className="text-lg font-black">Event lifecycle</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
-              End the event when it is over. The room becomes read-only while Memories, recaps, attendance, and series history remain.
-            </p>
-            <div className="mt-4"><EndEventButton roomId={id} /></div>
-          </section>
-        ) : (
+        {room.status === "ended" && (
           <div className="mt-8 rounded-lg border border-emerald-300/20 bg-emerald-950/20 p-5 text-sm font-bold text-emerald-100">
             This event has ended. Its history and Memories are retained.
           </div>
         )}
         
-        <HostDashboardOverview roomId={id} />
-        {room.status !== "ended" && <>
-          <RoomDetailsEditor roomId={id} />
-          <RoomEntryLinkPanel roomId={id} />
-          <RoomAnnouncementManager roomId={id} />
-        </>}
-        <AfterEventMessageManager roomId={id} />
-        {room.status !== "ended" && <>
-          <RoomManagePanel roomId={id} />
-          <ObsStreamPanel roomId={id} />
-        </>}
-        <section className="mt-10 border-t border-red-400/20 pt-6">
-          <h2 className="text-lg font-black text-red-200">Exceptional deletion</h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500">
-            Delete only accidental or test rooms that should leave no PartyUp history. Completed events should be ended instead.
-          </p>
-          <DeleteRoomButton roomId={id} hostId={room.host_id} />
-        </section>
+        <HostDashboardOverview roomId={id} roomEnded={room.status === "ended"} />
+
+        <RoomSettingsAccordion
+          defaultOpen={room.status === "ended" ? "engagement" : "roomBroadcast"}
+          roomBroadcast={room.status !== "ended" ? (
+            <>
+              <RoomDetailsEditor roomId={id} />
+              <RoomEntryLinkPanel roomId={id} />
+              <RoomIdleLoopManager roomId={id} />
+              <ObsStreamPanel roomId={id} />
+            </>
+          ) : undefined}
+          engagement={(
+            <>
+              {room.status !== "ended" && <RoomAnnouncementManager roomId={id} />}
+              <RoomMissionManager roomId={id} roomEnded={room.status === "ended"} />
+            </>
+          )}
+          safety={(
+            <>
+              {room.status !== "ended" && <ChatModerationManager roomId={id} />}
+              <ChatReportInbox roomId={id} />
+              {room.status !== "ended" && <RoomManagePanel roomId={id} />}
+              {room.status !== "ended" && <ClearRoomPanel roomId={id} hostId={room.host_id} />}
+            </>
+          )}
+          lifecycle={(
+            <>
+              <AfterEventMessageManager roomId={id} roomEnded={room.status === "ended"} />
+              <section className="mt-10 border-t border-red-400/20 p-5">
+                <h2 className="text-lg font-black text-red-200">Exceptional deletion</h2>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500">
+                  Delete only accidental or test rooms that should leave no PartyUp history. Completed events should be ended instead.
+                </p>
+                <DeleteRoomButton roomId={id} hostId={room.host_id} />
+              </section>
+            </>
+          )}
+        />
       </div>
     </main>
   );

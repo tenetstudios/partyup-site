@@ -7,10 +7,11 @@ import CreateRoomButton from "@/app/components/CreateRoomButton";
 import { resolveMyEventRecaps } from "@/lib/recaps";
 import { createSupabaseClient } from "@/lib/supabase";
 
-function NavIcon({ type }: { type: "home" | "map" | "connections" | "activity" }) {
+function NavIcon({ type }: { type: "home" | "map" | "connect" | "connections" | "activity" }) {
   const paths = {
     home: <path d="M5 21V10.5L12 5l7 5.5V21h-5v-6h-4v6H5Z" />,
     map: <path d="m5 6 5-2 6 2 5-2v16l-5 2-6-2-5 2V6Zm5-2v16m6-14v16" />,
+    connect: <path d="M8 12h8M12 8v8M6.5 4.5 4.5 6.5v3M17.5 4.5l2 2v3M6.5 19.5l-2-2v-3M17.5 19.5l2-2v-3" />,
     connections: <path d="M8 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8Zm8 10a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM10.7 9.8l2.6 4.4" />,
     activity: <path d="M7 21V8l5-4 5 4v13H7Zm3-8h4" />,
   } as const;
@@ -39,6 +40,7 @@ export default function HomeHeader({ liveCount }: { liveCount?: number }) {
   const nav = [
     { href: "/", label: "Home", icon: "home" as const },
     { href: "/map", label: "Map", icon: "map" as const },
+    { href: "/connect", label: "Connect", icon: "connect" as const },
     { href: "/connections", label: "Connections", icon: "connections" as const },
     { href: "/activity", label: "Activity", icon: "activity" as const },
   ];

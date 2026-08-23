@@ -19,6 +19,8 @@ export type PartyUpConnection = {
   connected_at: string | null;
   source_match_session_id: string | null;
   source_pool_id: string | null;
+  origin_room_id: string | null;
+  connection_method: "roulette" | "partyup_tap" | null;
   context: ConnectionContext;
   person: ConnectionPerson;
 };
@@ -100,6 +102,11 @@ function normalizeConnection(value: unknown): PartyUpConnection {
     connected_at: asString(record.connected_at),
     source_match_session_id: asString(record.source_match_session_id),
     source_pool_id: asString(record.source_pool_id),
+    origin_room_id: asString(record.origin_room_id),
+    connection_method:
+      record.connection_method === "roulette" || record.connection_method === "partyup_tap"
+        ? record.connection_method
+        : null,
     context: {
       type: asString(context.type),
       label: asString(context.label),

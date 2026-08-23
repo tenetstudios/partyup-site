@@ -63,7 +63,7 @@ function MetricCard({
   );
 }
 
-export default function HostDashboardOverview({ roomId }: { roomId: string }) {
+export default function HostDashboardOverview({ roomId }: { roomId: string; roomEnded?: boolean }) {
   const supabase = useMemo(() => createSupabaseClient(), []);
   const [dashboard, setDashboard] = useState<HostDashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);

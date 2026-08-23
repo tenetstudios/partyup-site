@@ -6,3 +6,12 @@ verify_jwt = false
 
 [functions.end-event-room]
 verify_jwt = false
+
+[functions.delete-account]
+verify_jwt = false
+
+[functions.livekit-webhook]
+verify_jwt = false
+
+[functions.admin-delete-room]
+verify_jwt = false

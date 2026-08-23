@@ -9,12 +9,14 @@ import {
   type LiveRoom,
 } from "@/lib/homeHelpers";
 import { getActiveRoomAnnouncement } from "@/lib/roomAnnouncements";
+import { getActiveRoomMission } from "@/lib/roomMissions";
 import EventMatchButton from "./EventMatchButton";
 import JoinRoomButton from "./JoinRoomButton";
 import LeaveRoomContextButton from "./LeaveRoomContextButton";
 import ManageRoomLink from "./ManageRoomLink";
 import RoomAnalyticsTracker from "./RoomAnalyticsTracker";
 import RoomAnnouncementBanner from "./RoomAnnouncementBanner";
+import RoomMissionCard from "./RoomMissionCard";
 import RoomChat from "./RoomChat";
 import RoomStatusWatcher from "./RoomStatusWatcher";
 import WebLiveKitRoom from "./WebLiveKitRoom";
@@ -179,6 +181,7 @@ export default async function RoomPage({
   const onlineCount = asNumber(typedRoom.current_users) ?? 0;
   const ended = asText(typedRoom.status)?.toLowerCase() === "ended";
   const activeAnnouncement = await getActiveRoomAnnouncement(supabase, id);
+  const activeMission = ended ? null : await getActiveRoomMission(supabase, id);
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_50%_-20%,rgba(77,35,132,0.28),transparent_32%),#07000f] text-white">
@@ -210,6 +213,7 @@ export default async function RoomPage({
 
           <div className="order-1 flex min-w-0 flex-col gap-5 xl:order-2">
             <RoomAnnouncementBanner roomId={id} initialAnnouncement={activeAnnouncement} />
+            <RoomMissionCard roomId={id} initialMission={activeMission} />
             <section className="aspect-video min-h-[360px] overflow-hidden rounded-[12px] border border-[#7f3dff]/45 bg-black shadow-[0_24px_70px_rgba(0,0,0,0.38)]">
               <WebLiveKitRoom roomId={id} />
             </section>

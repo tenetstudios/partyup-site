@@ -2,15 +2,18 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import HomeHeader from "@/app/components/HomeHeader";
 import { PartyUpPageShell, partyUpTheme } from "@/app/components/PartyUpTheme";
 import { createSupabaseClient } from "@/lib/supabase";
-import { EventSeriesProfile, SeriesEvent, formatSeriesDate, getEventSeriesProfile } from "@/lib/eventSeries";
+import { deleteEventSeries, EventSeriesProfile, SeriesEvent, formatSeriesDate, getEventSeriesProfile } from "@/lib/eventSeries";
 
 export default function SeriesClient({ seriesId }: { seriesId: string }) {
+  const router = useRouter();
   const [series, setSeries] = useState<EventSeriesProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -45,6 +48,27 @@ export default function SeriesClient({ seriesId }: { seriesId: string }) {
     setProcessing(false);
   }
 
+  async function removeSeries() {
+    if (!series?.is_owner || deleting) return;
+
+    const confirmed = window.confirm(
+      `Delete "${series.name}"? The series and its follower list will be removed. Its events and event history will remain as standalone events.`,
+    );
+    if (!confirmed) return;
+
+    setDeleting(true);
+    setError(null);
+
+    try {
+      await deleteEventSeries(createSupabaseClient(), series.id);
+      router.replace(`/user/${series.host.user_id}`);
+      router.refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Series could not be deleted.");
+      setDeleting(false);
+    }
+  }
+
   if (loading) return <PartyUpPageShell><div className="grid min-h-screen place-items-center font-bold text-[#c9c2d7]">Loading series...</div></PartyUpPageShell>;
   if (!series) return <PartyUpPageShell><div className="grid min-h-screen place-items-center px-5 text-center"><div className={`${partyUpTheme.glassElevated} max-w-lg p-8`}><h1 className="text-3xl font-black">Series unavailable</h1><p className={`mt-3 ${partyUpTheme.textSecondary}`}>{error || "This Event Series could not be found."}</p></div></div></PartyUpPageShell>;
 
@@ -66,12 +90,14 @@ export default function SeriesClient({ seriesId }: { seriesId: string }) {
           <div className="mt-6 flex flex-wrap items-center gap-3">
             {!series.is_owner && <button onClick={toggleFollow} disabled={processing} className={`${series.is_following ? partyUpTheme.ghostButton : partyUpTheme.primaryButton} h-11 px-6`}>{series.is_following ? "Following" : "Follow Series"}</button>}
             {series.is_owner && <Link href={`/series/${series.id}/edit`} className={`${partyUpTheme.ghostButton} h-11 px-5`}>Edit series</Link>}
+            {series.is_owner && <button type="button" onClick={() => void removeSeries()} disabled={deleting} className={`${partyUpTheme.destructiveButton} h-11 px-5`}>{deleting ? "Deleting..." : "Delete series"}</button>}
             <span className="text-sm font-bold text-[#c4bdcc]">{series.follower_count} followers</span>
           </div>
         </div>
       </header>
 
       <div className="relative mx-auto max-w-6xl px-5 py-10">
+        {error && <p className="mb-6 rounded-md border border-red-400/30 bg-red-950/30 p-4 text-sm font-bold text-red-100">{error}</p>}
         {series.description && <p className="max-w-3xl text-lg leading-8 text-[#cbc4d2]">{series.description}</p>}
         <div className="mt-8 grid grid-cols-2 gap-3 md:max-w-xl md:grid-cols-3">
           <Stat value={series.total_events} label="Events hosted" />
