@@ -12,3 +12,6 @@ verify_jwt = false
 
 [functions.livekit-webhook]
 verify_jwt = false
+
+[functions.admin-delete-room]
+verify_jwt = false

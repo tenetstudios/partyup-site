@@ -129,14 +129,16 @@ export default function AdminDashboard() {
   const supabase = useMemo(() => createSupabaseClient(), []);
   const [access, setAccess] = useState<"loading" | "granted" | "denied">("loading");
   const [dashboard, setDashboard] = useState<AdminDashboardData>(emptyDashboard);
-  const [search, setSearch] = useState("");
+  const [userSearch, setUserSearch] = useState("");
+  const [roomSearch, setRoomSearch] = useState("");
   const [error, setError] = useState("");
   const [busyAction, setBusyAction] = useState("");
 
-  const loadDashboard = useCallback(async (query = "") => {
+  const loadDashboard = useCallback(async (userQuery = "", roomQuery = "") => {
     setError("");
-    const { data, error: dashboardError } = await supabase.rpc("get_site_admin_dashboard", {
-      p_search: query || null,
+    const { data, error: dashboardError } = await supabase.rpc("get_site_admin_dashboard_v2", {
+      p_room_search: roomQuery || null,
+      p_user_search: userQuery || null,
     });
 
     if (dashboardError) {
@@ -198,7 +200,7 @@ export default function AdminDashboard() {
       return;
     }
 
-    await loadDashboard(search);
+    await loadDashboard(userSearch, roomSearch);
   }
 
   async function manageRoom(room: RoomRow, action: "clear" | "end") {
@@ -234,7 +236,45 @@ export default function AdminDashboard() {
       return;
     }
 
-    await loadDashboard(search);
+    await loadDashboard(userSearch, roomSearch);
+  }
+
+  async function deleteRoom(room: RoomRow) {
+    const reason = requestReason(`permanently deleting ${room.title}`);
+    if (!reason) return;
+
+    const confirmation = window.prompt(
+      `This permanently deletes “${room.title}”, its content, Memories, and event history. Type DELETE to continue:`,
+    );
+    if (confirmation !== "DELETE") {
+      if (confirmation !== null) window.alert("Room deletion cancelled. You must type DELETE exactly.");
+      return;
+    }
+
+    if (!window.confirm(`Final confirmation: permanently delete “${room.title}”? This cannot be undone.`)) return;
+
+    setBusyAction(`room:${room.id}`);
+    setError("");
+    const { data, error: actionError } = await supabase.functions.invoke("admin-delete-room", {
+      body: {
+        confirmation,
+        reason,
+        roomId: room.id,
+      },
+    });
+    setBusyAction("");
+
+    if (actionError) {
+      setError(actionError.message);
+      return;
+    }
+
+    const result = data as { cleanup_complete?: boolean; cleanup_errors?: string[] } | null;
+    if (result?.cleanup_complete === false) {
+      setError(`Room deleted, but some media cleanup needs attention: ${(result.cleanup_errors ?? []).join("; ")}`);
+    }
+
+    await loadDashboard(userSearch, roomSearch);
   }
 
   if (access === "loading") {
@@ -262,7 +302,7 @@ export default function AdminDashboard() {
           <h1 className="mt-2 text-4xl font-black">Admin control panel</h1>
           <p className="mt-2 text-[#aaa4b8]">Moderation, rooms, users, live-state health, and audited operations.</p>
         </div>
-        <button type="button" onClick={() => void loadDashboard(search)} className="rounded-md border border-white/15 px-4 py-3 text-sm font-black hover:bg-white/10">Refresh data</button>
+        <button type="button" onClick={() => void loadDashboard(userSearch, roomSearch)} className="rounded-md border border-white/15 px-4 py-3 text-sm font-black hover:bg-white/10">Refresh data</button>
       </div>
 
       {error && <div role="alert" className="mt-6 rounded-lg border border-red-300/25 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-100">{error}</div>}
@@ -320,8 +360,11 @@ export default function AdminDashboard() {
       </section>
 
       <section id="rooms" className="mt-8 rounded-xl border border-white/10 bg-[#100a17] p-5 md:p-7">
-        <h2 className="text-2xl font-black">Rooms and live state</h2>
-        <p className="mt-1 text-sm text-[#aaa4b8]">Administrative room actions are irreversible and written to the audit log.</p>
+        <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
+          <div><h2 className="text-2xl font-black">Rooms and live state</h2><p className="mt-1 text-sm text-[#aaa4b8]">Showing up to 15 rooms. Search by title, host, status, or exact room ID.</p></div>
+          <form onSubmit={(event) => { event.preventDefault(); void loadDashboard(userSearch, roomSearch); }} className="flex gap-2"><input value={roomSearch} onChange={(event) => setRoomSearch(event.target.value)} className="min-w-0 rounded-md border border-white/15 bg-black/30 px-4 py-3 text-sm outline-none focus:border-purple-400 md:w-80" placeholder="Search rooms" /><button className="rounded-md bg-[#9146ff] px-4 py-3 text-sm font-black hover:bg-[#7b31e8]">Search</button></form>
+        </div>
+        <p className="mt-3 text-sm text-[#aaa4b8]">Administrative room actions are irreversible and written to the audit log.</p>
         <div className="mt-5 overflow-x-auto">
           <table className="w-full min-w-[900px] text-left text-sm">
             <thead className="text-xs uppercase tracking-wide text-[#8f889b]"><tr><th className="pb-3">Room</th><th className="pb-3">Status</th><th className="pb-3">People</th><th className="pb-3">Live signal</th><th className="pb-3">Last active</th><th className="pb-3 text-right">Actions</th></tr></thead>
@@ -334,7 +377,7 @@ export default function AdminDashboard() {
                   <td className="py-4 pr-4"><StatusPill tone={room.is_live ? "danger" : "neutral"}>{room.is_live ? `${room.active_publisher_count} publishing` : "Offline"}</StatusPill><p className="mt-1 text-xs text-[#777180]">{room.signal_source || "No signal"}</p></td>
                   <td className="py-4 pr-4 text-[#aaa4b8]">{formatDate(room.last_active_at)}</td>
                   <td className="py-4 text-right">
-                    {room.status !== "ended" && <div className="flex justify-end gap-2"><button disabled={busyAction === `room:${room.id}`} onClick={() => void manageRoom(room, "clear")} className="rounded-md border border-amber-300/25 px-3 py-2 font-black text-amber-100 hover:bg-amber-500/10 disabled:opacity-50">Clear</button><button disabled={busyAction === `room:${room.id}`} onClick={() => void manageRoom(room, "end")} className="rounded-md bg-red-600 px-3 py-2 font-black hover:bg-red-500 disabled:opacity-50">End</button></div>}
+                    <div className="flex justify-end gap-2">{room.status !== "ended" && <><button disabled={busyAction === `room:${room.id}`} onClick={() => void manageRoom(room, "clear")} className="rounded-md border border-amber-300/25 px-3 py-2 font-black text-amber-100 hover:bg-amber-500/10 disabled:opacity-50">Clear</button><button disabled={busyAction === `room:${room.id}`} onClick={() => void manageRoom(room, "end")} className="rounded-md border border-red-300/30 px-3 py-2 font-black text-red-200 hover:bg-red-500/10 disabled:opacity-50">End</button></>}<button disabled={busyAction === `room:${room.id}`} onClick={() => void deleteRoom(room)} className="rounded-md bg-red-700 px-3 py-2 font-black hover:bg-red-600 disabled:opacity-50">Delete</button></div>
                   </td>
                 </tr>
               ))}
@@ -345,8 +388,8 @@ export default function AdminDashboard() {
 
       <section id="users" className="mt-8 rounded-xl border border-white/10 bg-[#100a17] p-5 md:p-7">
         <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
-          <div><h2 className="text-2xl font-black">Users</h2><p className="mt-1 text-sm text-[#aaa4b8]">Search by email, username, or exact user ID.</p></div>
-          <form onSubmit={(event) => { event.preventDefault(); void loadDashboard(search); }} className="flex gap-2"><input value={search} onChange={(event) => setSearch(event.target.value)} className="min-w-0 rounded-md border border-white/15 bg-black/30 px-4 py-3 text-sm outline-none focus:border-purple-400 md:w-80" placeholder="Search users" /><button className="rounded-md bg-[#9146ff] px-4 py-3 text-sm font-black hover:bg-[#7b31e8]">Search</button></form>
+          <div><h2 className="text-2xl font-black">Users</h2><p className="mt-1 text-sm text-[#aaa4b8]">Showing up to 12 users. Search by email, username, or exact user ID.</p></div>
+          <form onSubmit={(event) => { event.preventDefault(); void loadDashboard(userSearch, roomSearch); }} className="flex gap-2"><input value={userSearch} onChange={(event) => setUserSearch(event.target.value)} className="min-w-0 rounded-md border border-white/15 bg-black/30 px-4 py-3 text-sm outline-none focus:border-purple-400 md:w-80" placeholder="Search users" /><button className="rounded-md bg-[#9146ff] px-4 py-3 text-sm font-black hover:bg-[#7b31e8]">Search</button></form>
         </div>
         <div className="mt-5 grid gap-3 md:grid-cols-2">
           {dashboard.users.map((user) => (
