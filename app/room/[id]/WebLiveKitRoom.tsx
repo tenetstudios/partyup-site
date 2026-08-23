@@ -193,6 +193,7 @@ export default function WebLiveKitRoom({ roomId }: { roomId: string }) {
       onDisconnected={resetConnection}
     >
       <CustomStreamView
+        canInitiateStream={canInitiateStream}
         expectedLive={Boolean(liveState?.is_live)}
         idleMedia={idleMedia?.enabled ? idleMedia : null}
         onLeave={() => {
@@ -210,12 +211,14 @@ export default function WebLiveKitRoom({ roomId }: { roomId: string }) {
 }
 
 function CustomStreamView({
+  canInitiateStream,
   expectedLive,
   idleMedia,
   onLeave,
   onPublishingChange,
   roomId,
 }: {
+  canInitiateStream: boolean;
   expectedLive: boolean;
   idleMedia: RoomIdleMedia | null;
   onLeave: () => void;
@@ -225,7 +228,6 @@ function CustomStreamView({
   const participants = useParticipants();
   const viewerCount = participants.length;
   const [selectedTrackKey, setSelectedTrackKey] = useState<string | null>(null);
-  const [showStreamerControls, setShowStreamerControls] = useState(false);
 
   const tracks = useTracks(
     [
@@ -248,7 +250,7 @@ function CustomStreamView({
     videoTracks[0];
 
   return (
-    <PlayerFrame mode={selectedTrack ? "live" : idleMedia ? "idle" : "connecting"} viewerCount={viewerCount} onHoverChange={setShowStreamerControls}>
+    <PlayerFrame mode={selectedTrack ? "live" : idleMedia ? "idle" : "connecting"} viewerCount={viewerCount}>
       {selectedTrack ? (
         <div className="grid h-full w-full animate-[room-frame-fade_220ms_ease-out] place-items-center bg-black">
           <div className="h-full max-h-[620px] w-full max-w-[1100px] overflow-hidden bg-black [&_.lk-participant-tile]:h-full [&_.lk-participant-tile]:w-full [&_video]:h-full [&_video]:w-full [&_video]:object-contain">
@@ -264,7 +266,7 @@ function CustomStreamView({
       )}
 
       {videoTracks.length > 1 && (
-        <div className="absolute bottom-16 left-0 right-0 z-20 flex gap-3 overflow-x-auto border-t border-white/10 bg-[#0a0010]/90 p-3">
+        <div className="absolute bottom-20 left-0 right-0 z-20 flex gap-3 overflow-x-auto border-t border-white/10 bg-[#0a0010]/90 p-3">
           {videoTracks.map((trackRef) => {
             const key = getTrackKey(trackRef);
             const isSelected = selectedTrack ? key === getTrackKey(selectedTrack) : false;
@@ -288,39 +290,29 @@ function CustomStreamView({
         </div>
       )}
 
-      <CustomControls onLeave={onLeave} onPublishingChange={onPublishingChange} roomId={roomId} visible={showStreamerControls} />
+      <CustomControls
+        canInitiateStream={canInitiateStream}
+        onLeave={onLeave}
+        onPublishingChange={onPublishingChange}
+        roomId={roomId}
+      />
     </PlayerFrame>
   );
 }
 
 function PlayerFrame({
   children,
-  onHoverChange,
   mode,
   viewerCount,
 }: {
   children: React.ReactNode;
-  onHoverChange?: (hovered: boolean) => void;
   mode: "live" | "idle" | "empty" | "connecting";
   viewerCount: number;
 }) {
   return (
     <div
       className="relative flex h-full w-full flex-col overflow-hidden bg-[radial-gradient(circle_at_70%_74%,rgba(95,42,174,0.18),transparent_30%),#050409]"
-      onPointerEnter={() => onHoverChange?.(true)}
-      onPointerMove={() => onHoverChange?.(true)}
-      onPointerLeave={() => onHoverChange?.(false)}
     >
-      {onHoverChange && (
-        <div
-          className="absolute inset-0 z-40"
-          onPointerEnter={() => onHoverChange(true)}
-          onPointerMove={() => onHoverChange(true)}
-          onPointerLeave={() => onHoverChange(false)}
-          aria-hidden="true"
-        />
-      )}
-
       {mode === "live" && (
         <div className="absolute left-5 top-5 z-30 flex items-center gap-3">
           <span className="rounded-[6px] bg-[#ef2f82] px-4 py-2 text-sm font-black uppercase leading-none text-white">Live</span>
@@ -329,20 +321,6 @@ function PlayerFrame({
       )}
 
       {children}
-
-      {mode === "live" && <div className="absolute bottom-5 left-5 z-30 flex items-center gap-5 text-white">
-        <button className="grid h-8 w-8 place-items-center rounded-full hover:bg-white/10" aria-label="Play livestream">
-          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden="true">
-            <path d="M8 5v14l11-7-11-7Z" />
-          </svg>
-        </button>
-        <button className="grid h-8 w-8 place-items-center rounded-full hover:bg-white/10" aria-label="Livestream volume">
-          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden="true">
-            <path d="M4 9v6h4l5 4V5L8 9H4Z" />
-            <path d="M16 8.5a5 5 0 0 1 0 7" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
-          </svg>
-        </button>
-      </div>}
 
       {mode === "live" && <button
         onClick={() => {
@@ -353,7 +331,7 @@ function PlayerFrame({
 
           document.documentElement.requestFullscreen();
         }}
-        className="absolute bottom-5 right-5 z-50 grid h-8 w-8 place-items-center rounded-full text-white hover:bg-white/10"
+        className="absolute right-5 top-5 z-50 grid h-10 w-10 place-items-center rounded-full border border-white/15 bg-black/60 text-white backdrop-blur hover:bg-black/80"
         aria-label="Fullscreen livestream"
       >
         <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" aria-hidden="true">
@@ -453,15 +431,15 @@ function StreamIcon() {
 }
 
 function CustomControls({
+  canInitiateStream,
   onLeave,
   onPublishingChange,
   roomId,
-  visible,
 }: {
+  canInitiateStream: boolean;
   onLeave: () => void;
   onPublishingChange: (publishing: boolean) => void;
   roomId: string;
-  visible: boolean;
 }) {
   const room = useRoomContext();
   const { localParticipant } = useLocalParticipant();
@@ -469,6 +447,10 @@ function CustomControls({
   const [micOn, setMicOn] = useState(false);
   const [camOn, setCamOn] = useState(false);
   const [obsOn, setObsOn] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const isPublishing = camOn || micOn || obsOn;
+  const showBroadcastControls = canInitiateStream || isPublishing;
 
   async function toggleMic() {
     const next = !micOn;
@@ -485,14 +467,23 @@ function CustomControls({
   }
 
   async function endLive() {
-    await Promise.all([
-      localParticipant.setCameraEnabled(false),
-      localParticipant.setMicrophoneEnabled(false),
-    ]);
-    setCamOn(false);
-    setMicOn(false);
-    setObsOn(false);
-    await reportPublishing(false);
+    if (busy) return;
+    setBusy(true);
+    try {
+      await Promise.all([
+        localParticipant.setCameraEnabled(false),
+        localParticipant.setMicrophoneEnabled(false),
+      ]);
+      setCamOn(false);
+      setMicOn(false);
+      setObsOn(false);
+      await reportPublishing(false);
+    } catch (error) {
+      console.error("END LIVESTREAM ERROR", error);
+      alert("Could not end the livestream. Please try again.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function reportPublishing(publishing: boolean) {
@@ -539,42 +530,51 @@ function CustomControls({
 
   return (
     <div
-      className={`absolute bottom-4 left-1/2 z-[999] flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/10 bg-black/80 p-2 shadow-2xl backdrop-blur transition duration-150 ${
-        visible ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
-      }`}
+      className="absolute bottom-3 left-3 right-3 z-[999] flex touch-manipulation items-center justify-center gap-2 overflow-x-auto rounded-2xl border border-white/15 bg-black/90 p-2 shadow-2xl backdrop-blur sm:left-1/2 sm:right-auto sm:max-w-[calc(100%-2rem)] sm:-translate-x-1/2 sm:rounded-full"
       style={{ zIndex: 999 }}
+      aria-label="Livestream controls"
     >
-      <ControlButton
+      {isPublishing && (
+        <button
+          type="button"
+          onClick={() => void endLive()}
+          disabled={busy}
+          className="flex h-12 shrink-0 items-center gap-2 rounded-full bg-red-600 px-4 font-black text-white shadow-lg shadow-red-950/40 transition hover:bg-red-500 disabled:opacity-60"
+          aria-label="End livestream"
+        >
+          <EndLiveIcon />
+          <span>{busy ? "Ending..." : "End Live"}</span>
+        </button>
+      )}
+
+      {showBroadcastControls && <ControlButton
         label={micOn ? "Mute Microphone" : "Unmute Microphone"}
+        shortLabel={micOn ? "Mute" : "Mic"}
         active={micOn}
         onClick={toggleMic}
       >
         {micOn ? <MicOnIcon /> : <MicOffIcon />}
-      </ControlButton>
+      </ControlButton>}
 
-      <ControlButton
+      {showBroadcastControls && <ControlButton
         label={camOn ? "Camera Off" : "Camera On"}
+        shortLabel={camOn ? "Cam Off" : "Camera"}
         active={camOn}
         onClick={toggleCam}
       >
         {camOn ? <VideoOffIcon /> : <VideoOnIcon />}
-      </ControlButton>
+      </ControlButton>}
 
-      <ControlButton
+      {showBroadcastControls && <ControlButton
         label={obsOn ? "OBS Camera On" : "Use OBS Camera"}
+        shortLabel="OBS"
         active={obsOn}
         onClick={useObsVirtualCamera}
       >
         <ObsIcon />
-      </ControlButton>
+      </ControlButton>}
 
-      {(camOn || obsOn) && (
-        <ControlButton label="End Live" intent="danger" onClick={endLive}>
-          <EndLiveIcon />
-        </ControlButton>
-      )}
-
-      <ControlButton label="Leave" intent="danger" onClick={() => void leaveRoom()}>
+      <ControlButton label="Leave livestream player" shortLabel="Exit" intent="danger" onClick={() => void leaveRoom()}>
         <LeaveIcon />
       </ControlButton>
     </div>
@@ -586,12 +586,14 @@ function ControlButton({
   children,
   intent = "default",
   label,
+  shortLabel,
   onClick,
 }: {
   active?: boolean;
   children: React.ReactNode;
   intent?: "default" | "danger";
   label: string;
+  shortLabel: string;
   onClick: () => void;
 }) {
   const className =
@@ -604,14 +606,16 @@ function ControlButton({
         : "bg-zinc-800 text-white hover:bg-zinc-700";
 
   return (
-    <div className="group relative grid h-11 w-11 shrink-0 place-items-center">
+    <div className="group relative shrink-0">
       <button
+        type="button"
         onClick={onClick}
-        className={`grid h-11 w-11 place-items-center rounded-full transition ${className}`}
+        className={`flex h-12 min-w-12 items-center justify-center gap-2 rounded-full px-3 transition ${className}`}
         aria-label={label}
         title={label}
       >
         {children}
+        <span className="text-xs font-black sm:text-sm">{shortLabel}</span>
       </button>
       <span className="pointer-events-none absolute bottom-14 left-1/2 max-w-[140px] -translate-x-1/2 whitespace-nowrap rounded-[6px] border border-white/10 bg-black/90 px-3 py-1.5 text-xs font-black text-white opacity-0 shadow-xl transition group-focus-within:opacity-100 group-hover:opacity-100">
         {label}

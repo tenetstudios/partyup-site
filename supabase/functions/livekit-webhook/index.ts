@@ -13,6 +13,12 @@ function response(body: unknown, status = 200) {
 }
 
 Deno.serve(async (req) => {
+  console.log("LIVEKIT WEBHOOK REQUEST", {
+    method: req.method,
+    hasAuthorization: Boolean(req.headers.get("Authorization")),
+    contentType: req.headers.get("Content-Type"),
+  });
+
   if (req.method !== "POST") return response({ error: "Method not allowed." }, 405);
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -131,6 +137,11 @@ Deno.serve(async (req) => {
 
     return response({ accepted: true, event: eventName, room_id: roomId });
   } catch (error) {
+    console.error(
+      "LIVEKIT WEBHOOK ERROR",
+      error instanceof Error ? error.message : error,
+    );
+
     return response(
       { error: error instanceof Error ? error.message : "Invalid webhook." },
       401,
