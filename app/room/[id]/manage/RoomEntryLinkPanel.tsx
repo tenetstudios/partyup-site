@@ -9,8 +9,8 @@ const posterQrCodeElementId = "partyup-room-entry-poster-qr";
 const posterTemplatePath = "/assets/partyup-room-poster.png";
 const posterWidth = 1054;
 const posterHeight = 1492;
-const qrBox = { x: 274, y: 697, width: 505, height: 456 };
-const posterQrSize = 318;
+const qrBox = { x: 300, y: 765, width: 454, height: 412 };
+const posterQrSize = 300;
 const posterQrX = qrBox.x + Math.round((qrBox.width - posterQrSize) / 2);
 const posterQrY = qrBox.y + Math.round((qrBox.height - posterQrSize) / 2);
 
