@@ -10,6 +10,7 @@ import {
   getRoomMissionHistory,
   publishRoomMission,
   publishAnimalPackMission,
+  publishConnectionMission,
   type MissionCompletedParticipants,
   type MissionOperationsDashboard as MissionOperationsData,
   type RoomMission,
@@ -44,12 +45,13 @@ export default function RoomMissionManager({
   const [mission, setMission] = useState<RoomMission | null>(null);
   const [history, setHistory] = useState<RoomMissionHistoryItem[]>([]);
   const [creating, setCreating] = useState(false);
-  const [missionType, setMissionType] = useState<"generic" | "animal_pack">("generic");
+  const [missionType, setMissionType] = useState<"generic" | "animal_pack" | "connection">("generic");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [duration, setDuration] = useState("10");
   const [animalCount, setAnimalCount] = useState("6");
   const [targetEncounters, setTargetEncounters] = useState("3");
+  const [targetConnections, setTargetConnections] = useState("3");
   const [hostResults, setHostResults] = useState<MissionCompletedParticipants | null>(null);
   const [operations, setOperations] = useState<MissionOperationsData | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
@@ -62,6 +64,11 @@ export default function RoomMissionManager({
   const [success, setSuccess] = useState<string | null>(null);
   const recommendedParticipants = Number(animalCount) * (Number(targetEncounters) + 1);
   const refreshTimeoutRef = useRef<number | null>(null);
+  const missionIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    missionIdRef.current = mission?.id ?? null;
+  }, [mission?.id]);
 
   const loadData = useCallback(async () => {
     const [nextMission, nextHistory] = await Promise.all([
@@ -70,7 +77,11 @@ export default function RoomMissionManager({
     ]);
     setMission(nextMission);
     setHistory(nextHistory);
-    setOperations(nextMission ? await getMissionOperationsDashboard(supabase, nextMission.id) : null);
+    setOperations(
+      nextMission && nextMission.mission_type !== "connection"
+        ? await getMissionOperationsDashboard(supabase, nextMission.id)
+        : null,
+    );
   }, [roomId, supabase]);
 
   const scheduleLoadData = useCallback(() => {
@@ -85,6 +96,7 @@ export default function RoomMissionManager({
 
   useEffect(() => {
     let active = true;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
 
     async function initialize() {
       const { data, error: hostError } = await supabase.rpc("is_room_host", {
@@ -103,29 +115,33 @@ export default function RoomMissionManager({
       setError(reason instanceof Error ? reason.message : "Could not load Missions.");
     });
 
-    const channel = supabase
-      .channel(`manage-room-missions-${roomId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "room_missions", filter: `room_id=eq.${roomId}` },
-        scheduleLoadData,
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "mission_participant_assignments", filter: `mission_id=eq.${mission?.id ?? "00000000-0000-0000-0000-000000000000"}` },
-        scheduleLoadData,
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "mission_encounters", filter: `mission_id=eq.${mission?.id ?? "00000000-0000-0000-0000-000000000000"}` },
-        scheduleLoadData,
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "mission_completions", filter: `mission_id=eq.${mission?.id ?? "00000000-0000-0000-0000-000000000000"}` },
-        scheduleLoadData,
-      )
-      .subscribe();
+    const refreshCurrentMission = (payload: { new?: Record<string, unknown>; old?: Record<string, unknown> }) => {
+      const changedMissionId = payload.new?.mission_id ?? payload.old?.mission_id;
+      if (!changedMissionId || changedMissionId === missionIdRef.current) scheduleLoadData();
+    };
+
+    const subscribe = async () => {
+      const channelName = `manage-room-missions-${roomId}`;
+      const existingChannel = supabase.getChannels().find((candidate) => candidate.topic === `realtime:${channelName}`);
+      if (existingChannel) await supabase.removeChannel(existingChannel);
+      if (!active) return;
+
+      channel = supabase
+        .channel(channelName)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "room_missions", filter: `room_id=eq.${roomId}` },
+          scheduleLoadData,
+        )
+        .on("postgres_changes", { event: "*", schema: "public", table: "mission_participant_assignments" }, refreshCurrentMission)
+        .on("postgres_changes", { event: "*", schema: "public", table: "mission_encounters" }, refreshCurrentMission)
+        .on("postgres_changes", { event: "*", schema: "public", table: "mission_completions" }, refreshCurrentMission)
+        .subscribe();
+    };
+
+    void subscribe().catch((reason) => {
+      if (active) setError(reason instanceof Error ? reason.message : "Could not subscribe to Mission updates.");
+    });
 
     return () => {
       active = false;
@@ -133,9 +149,9 @@ export default function RoomMissionManager({
         window.clearTimeout(refreshTimeoutRef.current);
         refreshTimeoutRef.current = null;
       }
-      supabase.removeChannel(channel);
+      if (channel) void supabase.removeChannel(channel);
     };
-  }, [loadData, mission?.id, roomId, scheduleLoadData, supabase]);
+  }, [loadData, roomId, scheduleLoadData, supabase]);
 
   useEffect(() => {
     if (!mission?.ends_at) return;
@@ -166,6 +182,11 @@ export default function RoomMissionManager({
           targetEncounters: Number(targetEncounters),
           durationMinutes: Number(duration),
         });
+      } else if (missionType === "connection") {
+        await publishConnectionMission(supabase, roomId, {
+          targetConnections: Number(targetConnections),
+          durationMinutes: Number(duration || 10),
+        });
       } else {
         await publishRoomMission(supabase, roomId, {
           title,
@@ -176,6 +197,7 @@ export default function RoomMissionManager({
       setTitle("");
       setDescription("");
       setDuration("10");
+      setTargetConnections("3");
       setMissionType("generic");
       setCreating(false);
       setShowCompleted(false);
@@ -364,11 +386,16 @@ export default function RoomMissionManager({
               <span className="mb-1 block text-sm font-black text-purple-300">Mission Type</span>
               <select
                 value={missionType}
-                onChange={(event) => setMissionType(event.target.value as "generic" | "animal_pack")}
+                onChange={(event) => {
+                  const value = event.target.value as "generic" | "animal_pack" | "connection";
+                  setMissionType(value);
+                  if (value !== "generic" && !duration) setDuration("10");
+                }}
                 className="w-full rounded-md bg-black px-3 py-3 text-sm text-white outline-none"
               >
                 <option value="generic">Standard Mission</option>
                 <option value="animal_pack">Find Your Pack</option>
+                <option value="connection">Meet New People</option>
               </select>
             </label>
             {missionType === "generic" ? (
@@ -384,7 +411,7 @@ export default function RoomMissionManager({
               />
             </label>
               </>
-            ) : (
+            ) : missionType === "animal_pack" ? (
               <>
                 <label className="block">
                   <span className="mb-1 block text-sm font-black text-purple-300">Number of animal groups</span>
@@ -401,6 +428,24 @@ export default function RoomMissionManager({
                 <div className="rounded-md border border-amber-300/25 bg-amber-950/20 p-3 text-sm leading-5 text-amber-100">
                   For every participant to have enough possible pack members, plan for at least{" "}
                   <strong>{recommendedParticipants} participants</strong>.
+                </div>
+              </>
+            ) : (
+              <>
+                <label className="block">
+                  <span className="mb-1 block text-sm font-black text-purple-300">New people each participant must meet</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={20}
+                    step={1}
+                    value={targetConnections}
+                    onChange={(event) => setTargetConnections(event.target.value)}
+                    className="w-full rounded-md bg-black px-3 py-3 text-sm text-white outline-none"
+                  />
+                </label>
+                <div className="rounded-md border border-purple-300/25 bg-purple-950/20 p-3 text-sm leading-5 text-purple-100">
+                  Counts distinct, first-time PartyUp Tap connections made in this room before the timer ends. Choose 1 to 20 people.
                 </div>
               </>
             )}
@@ -459,7 +504,7 @@ export default function RoomMissionManager({
                     </div>
                     <div className="flex items-center gap-3">
                       <span className="text-sm font-black text-zinc-300">{item.completion_count} completed</span>
-                      <button type="button" onClick={() => void toggleHistoryOperations(item.id)} className="rounded border border-white/15 px-2 py-1 text-xs font-black text-zinc-200">{historyOperationsMissionId === item.id ? "Hide Operations" : "View Operations"}</button>
+                      {item.mission_type !== "connection" && <button type="button" onClick={() => void toggleHistoryOperations(item.id)} className="rounded border border-white/15 px-2 py-1 text-xs font-black text-zinc-200">{historyOperationsMissionId === item.id ? "Hide Operations" : "View Operations"}</button>}
                       <button type="button" onClick={() => void toggleHistoryResults(item.id)} className="rounded border border-white/15 px-2 py-1 text-xs font-black text-purple-200">{historyResultsMissionId === item.id ? "Hide" : "View Completed"}</button>
                     </div>
                   </div>

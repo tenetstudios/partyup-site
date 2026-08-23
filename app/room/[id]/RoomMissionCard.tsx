@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { createSupabaseClient } from "@/lib/supabase";
 import { createGuestSession, readStoredGuestSession } from "@/lib/matchmaking";
@@ -11,9 +12,11 @@ import {
   getActiveRoomMission,
   getMissionTimeRemaining,
   getMyAnimalPackState,
+  getMyConnectionMissionState,
   joinAnimalPackMission,
   redeemMissionEncounterToken,
   type AnimalPackState,
+  type ConnectionMissionState,
   type EncounterResultStatus,
   type MissionEncounterToken,
   type RoomMission,
@@ -45,14 +48,30 @@ export default function RoomMissionCard({
   const [now, setNow] = useState(0);
   const [guestToken, setGuestToken] = useState<string | null>(null);
   const [animalState, setAnimalState] = useState<AnimalPackState | null>(null);
+  const [connectionState, setConnectionState] = useState<ConnectionMissionState | null>(null);
   const [mode, setMode] = useState<"details" | "animal" | "qr" | "scan">("details");
   const [encounterToken, setEncounterToken] = useState<MissionEncounterToken | null>(null);
   const [code, setCode] = useState("");
   const [feedback, setFeedback] = useState<string | null>(null);
+  const missionRef = useRef<RoomMission | null>(initialMission);
+  const guestTokenRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    missionRef.current = mission;
+  }, [mission]);
+
+  useEffect(() => {
+    guestTokenRef.current = guestToken;
+  }, [guestToken]);
 
   const loadMission = useCallback(async () => {
     const nextMission = await getActiveRoomMission(supabase, roomId);
     setMission(nextMission);
+    if (nextMission?.mission_type === "connection") {
+      setConnectionState(await getMyConnectionMissionState(supabase, nextMission.id));
+    } else {
+      setConnectionState(null);
+    }
     if (!nextMission) {
       setExpanded(false);
       setAnimalState(null);
@@ -73,20 +92,42 @@ export default function RoomMissionCard({
   }, [refreshAnimalState, supabase]);
 
   useEffect(() => {
+    let active = true;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
     Promise.resolve().then(() => {
       setNow(Date.now());
       void loadMission().catch((reason) => setError(reason instanceof Error ? reason.message : "Could not load the Mission."));
     });
-    const channel = supabase
-      .channel(`room-missions-${roomId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "room_missions", filter: `room_id=eq.${roomId}` }, () => void loadMission())
-      .on("postgres_changes", { event: "*", schema: "public", table: "mission_completions" }, () => void loadMission())
-      .on("postgres_changes", { event: "*", schema: "public", table: "mission_encounters" }, () => {
-        if (mission?.mission_type === "animal_pack") void refreshAnimalState(mission.id, guestToken);
-      })
-      .subscribe();
-    return () => { void supabase.removeChannel(channel); };
-  }, [guestToken, loadMission, mission?.id, mission?.mission_type, refreshAnimalState, roomId, supabase]);
+
+    const subscribe = async () => {
+      const channelName = `room-missions-${roomId}`;
+      const existingChannel = supabase.getChannels().find((candidate) => candidate.topic === `realtime:${channelName}`);
+      if (existingChannel) await supabase.removeChannel(existingChannel);
+      if (!active) return;
+
+      channel = supabase
+        .channel(channelName)
+        .on("postgres_changes", { event: "*", schema: "public", table: "room_missions", filter: `room_id=eq.${roomId}` }, () => void loadMission())
+        .on("postgres_changes", { event: "*", schema: "public", table: "mission_completions" }, () => void loadMission())
+        .on("postgres_changes", { event: "*", schema: "public", table: "mission_encounters" }, () => {
+          const currentMission = missionRef.current;
+          if (currentMission?.mission_type === "animal_pack") {
+            void refreshAnimalState(currentMission.id, guestTokenRef.current);
+          }
+        })
+        .subscribe();
+    };
+
+    void subscribe().catch((reason) => {
+      if (active) setError(reason instanceof Error ? reason.message : "Could not subscribe to Mission updates.");
+    });
+
+    return () => {
+      active = false;
+      if (channel) void supabase.removeChannel(channel);
+    };
+  }, [loadMission, refreshAnimalState, roomId, supabase]);
 
   useEffect(() => {
     if (!mission?.ends_at) return;
@@ -123,6 +164,7 @@ export default function RoomMissionCard({
   if (!mission) return null;
   const remaining = now ? getMissionTimeRemaining(mission.ends_at, now) : null;
   const isAnimalPack = mission.mission_type === "animal_pack";
+  const isConnection = mission.mission_type === "connection";
   const animalName = animalState ? (animalDetails[animalState.assignment_key]?.plural ?? "pack members") : "pack members";
   const tokenRefreshSeconds = encounterToken && now
     ? Math.max(0, Math.ceil((Date.parse(encounterToken.expires_at) - now - 5_000) / 1000))
@@ -160,9 +202,9 @@ export default function RoomMissionCard({
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded bg-[#ef2f82] px-2 py-1 text-[11px] font-black uppercase text-white">{isAnimalPack ? "Find Your Pack" : "New Mission"}</span>
+            <span className="rounded bg-[#ef2f82] px-2 py-1 text-[11px] font-black uppercase text-white">{isAnimalPack ? "Find Your Pack" : isConnection ? "Meet New People" : "New Mission"}</span>
             {remaining && <span className="text-xs font-black text-pink-200">{remaining.expired ? "Ending..." : `${remaining.label} remaining`}</span>}
-            {(animalState?.completed || mission.viewer_completed) && <span className="text-xs font-black uppercase text-emerald-300">Completed</span>}
+            {(animalState?.completed || connectionState?.completed || mission.viewer_completed) && <span className="text-xs font-black uppercase text-emerald-300">Completed</span>}
           </div>
           <h2 className="mt-2 text-xl font-black text-white">{mission.title}</h2>
         </div>
@@ -206,6 +248,31 @@ export default function RoomMissionCard({
                 {feedback && <p className={`mt-4 text-sm font-black ${feedback.includes("✓") ? "text-emerald-300" : "text-amber-200"}`}>{feedback}</p>}
               </div>
             ) : <p className="text-sm font-bold text-zinc-300">Joining Find Your Pack…</p>
+          ) : isConnection ? (
+            <div className="text-center">
+              {mission.description && <p className="mx-auto max-w-3xl whitespace-pre-wrap text-sm leading-6 text-zinc-300">{mission.description}</p>}
+              {connectionState ? (
+                <>
+                  <p className="mt-4 text-4xl font-black text-pink-300">
+                    {Math.min(connectionState.progress, connectionState.target_connections)} / {connectionState.target_connections}
+                  </p>
+                  <p className="mt-1 text-sm font-black text-purple-200">
+                    {connectionState.target_connections === 1 ? "new person met" : "new people met"}
+                  </p>
+                  {connectionState.completed ? (
+                    <div className="mt-5 rounded-lg border border-emerald-400/30 bg-emerald-950/30 p-4">
+                      <p className="text-xl font-black text-emerald-300">MISSION COMPLETE</p>
+                      <p className="mt-1 text-sm text-emerald-100">You met {connectionState.target_connections} new {connectionState.target_connections === 1 ? "person" : "people"} on PartyUp.</p>
+                    </div>
+                  ) : (
+                    <Link href="/connect" className="mt-5 inline-flex min-h-12 items-center rounded-md bg-[#9146ff] px-5 font-black text-white hover:bg-[#7b31e8]">
+                      Open PartyUp Connect
+                    </Link>
+                  )}
+                </>
+              ) : <p className="mt-4 text-sm font-bold text-zinc-300">Loading verified connection progress...</p>}
+              {mission.can_manage && <p className="mt-3 text-sm font-bold text-zinc-400">{mission.completion_count} completed</p>}
+            </div>
           ) : (
             <>
               {mission.description && <p className="max-w-3xl whitespace-pre-wrap text-sm leading-6 text-zinc-300">{mission.description}</p>}
