@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { FunctionsHttpError } from "@supabase/supabase-js";
 import { createSupabaseClient } from "@/lib/supabase";
 
 type DashboardCounts = {
@@ -196,7 +197,12 @@ export default function AdminDashboard() {
     setBusyAction("");
 
     if (actionError) {
-      setError(actionError.message);
+      if (actionError instanceof FunctionsHttpError) {
+        const response = await actionError.context.json().catch(() => null) as { error?: string } | null;
+        setError(response?.error || actionError.message);
+      } else {
+        setError(actionError.message);
+      }
       return;
     }
 
@@ -232,7 +238,12 @@ export default function AdminDashboard() {
     setBusyAction("");
 
     if (actionError) {
-      setError(actionError.message);
+      if (actionError instanceof FunctionsHttpError) {
+        const response = await actionError.context.json().catch(() => null) as { error?: string } | null;
+        setError(response?.error || actionError.message);
+      } else {
+        setError(actionError.message);
+      }
       return;
     }
 
@@ -265,7 +276,12 @@ export default function AdminDashboard() {
     setBusyAction("");
 
     if (actionError) {
-      setError(actionError.message);
+      if (actionError instanceof FunctionsHttpError) {
+        const response = await actionError.context.json().catch(() => null) as { error?: string } | null;
+        setError(response?.error || actionError.message);
+      } else {
+        setError(actionError.message);
+      }
       return;
     }
 

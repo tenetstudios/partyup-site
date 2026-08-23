@@ -16,6 +16,11 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
+function bearerToken(request: Request) {
+  const authorization = request.headers.get("Authorization") || "";
+  return authorization.startsWith("Bearer ") ? authorization.slice(7) : null;
+}
+
 function eventImagePath(publicUrl: unknown) {
   if (typeof publicUrl !== "string" || !publicUrl) return null;
   const marker = "/storage/v1/object/public/event-images/";
@@ -44,8 +49,13 @@ Deno.serve(async (req) => {
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const authorization = req.headers.get("Authorization");
+  const token = bearerToken(req);
 
-  if (!supabaseUrl || !anonKey || !serviceKey || !authorization) {
+  if (!supabaseUrl || !anonKey || !serviceKey) {
+    return jsonResponse({ error: "Server configuration is incomplete." }, 500);
+  }
+
+  if (!authorization || !token) {
     return jsonResponse({ error: "Server configuration or authentication is missing." }, 401);
   }
 
@@ -69,17 +79,23 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: "Type DELETE to confirm permanent room deletion." }, 400);
   }
 
+  const admin = createClient(supabaseUrl, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { data: userData, error: userError } = await admin.auth.getUser(token);
+  if (userError || !userData.user) {
+    console.error("ADMIN DELETE ROOM AUTH ERROR", userError?.message || "User not found");
+    return jsonResponse({ error: "Authentication required." }, 401);
+  }
+
   const userClient = createClient(supabaseUrl, anonKey, {
     global: { headers: { Authorization: authorization } },
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  const { data: userData, error: userError } = await userClient.auth.getUser();
-  if (userError || !userData.user) {
-    return jsonResponse({ error: "Authentication required." }, 401);
-  }
 
   const { data: isAdmin, error: accessError } = await userClient.rpc("is_site_admin");
   if (accessError || isAdmin !== true) {
+    console.error("ADMIN DELETE ROOM ACCESS ERROR", accessError?.message || "Not a site administrator");
     return jsonResponse({ error: "Site administrator access required." }, 403);
   }
 
@@ -87,11 +103,10 @@ Deno.serve(async (req) => {
     p_reason: reason,
     p_room_id: body.roomId,
   });
-  if (deletionError) return jsonResponse({ error: deletionError.message }, 400);
-
-  const admin = createClient(supabaseUrl, serviceKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+  if (deletionError) {
+    console.error("ADMIN DELETE ROOM DATABASE ERROR", deletionError.message);
+    return jsonResponse({ error: deletionError.message }, 400);
+  }
   const cleanupErrors: string[] = [];
 
   try {
