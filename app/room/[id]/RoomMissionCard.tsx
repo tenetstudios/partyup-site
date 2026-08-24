@@ -165,6 +165,7 @@ export default function RoomMissionCard({
   const remaining = now ? getMissionTimeRemaining(mission.ends_at, now) : null;
   const isAnimalPack = mission.mission_type === "animal_pack";
   const isConnection = mission.mission_type === "connection";
+  const isWild = mission.mission_type === "wild_faction";
   const animalName = animalState ? (animalDetails[animalState.assignment_key]?.plural ?? "pack members") : "pack members";
   const tokenRefreshSeconds = encounterToken && now
     ? Math.max(0, Math.ceil((Date.parse(encounterToken.expires_at) - now - 5_000) / 1000))
@@ -202,7 +203,7 @@ export default function RoomMissionCard({
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded bg-[#ef2f82] px-2 py-1 text-[11px] font-black uppercase text-white">{isAnimalPack ? "Find Your Pack" : isConnection ? "Meet New People" : "New Mission"}</span>
+            <span className="rounded bg-[#ef2f82] px-2 py-1 text-[11px] font-black uppercase text-white">{isAnimalPack ? "Find Your Pack" : isConnection ? "Meet New People" : isWild ? "Into the Wild" : "New Mission"}</span>
             {remaining && <span className="text-xs font-black text-pink-200">{remaining.expired ? "Ending..." : `${remaining.label} remaining`}</span>}
             {(animalState?.completed || connectionState?.completed || mission.viewer_completed) && <span className="text-xs font-black uppercase text-emerald-300">Completed</span>}
           </div>
@@ -271,6 +272,13 @@ export default function RoomMissionCard({
                   )}
                 </>
               ) : <p className="mt-4 text-sm font-bold text-zinc-300">Loading verified connection progress...</p>}
+              {mission.can_manage && <p className="mt-3 text-sm font-bold text-zinc-400">{mission.completion_count} completed</p>}
+            </div>
+          ) : isWild ? (
+            <div className="text-center">
+              {mission.description && <p className="mx-auto max-w-3xl whitespace-pre-wrap text-sm leading-6 text-zinc-300">{mission.description}</p>}
+              <p className="mt-3 text-sm font-black text-fuchsia-200">+{mission.config.influence_reward ?? 0} faction influence</p>
+              <Link href={`/room/${roomId}/wild`} className="mt-5 inline-flex min-h-12 items-center rounded-md bg-fuchsia-600 px-5 font-black text-white hover:bg-fuchsia-500">Open Into the Wild</Link>
               {mission.can_manage && <p className="mt-3 text-sm font-bold text-zinc-400">{mission.completion_count} completed</p>}
             </div>
           ) : (

@@ -78,7 +78,7 @@ export default function RoomMissionManager({
     setMission(nextMission);
     setHistory(nextHistory);
     setOperations(
-      nextMission && nextMission.mission_type !== "connection"
+      nextMission && !["connection", "wild_faction"].includes(nextMission.mission_type)
         ? await getMissionOperationsDashboard(supabase, nextMission.id)
         : null,
     );
@@ -504,7 +504,7 @@ export default function RoomMissionManager({
                     </div>
                     <div className="flex items-center gap-3">
                       <span className="text-sm font-black text-zinc-300">{item.completion_count} completed</span>
-                      {item.mission_type !== "connection" && <button type="button" onClick={() => void toggleHistoryOperations(item.id)} className="rounded border border-white/15 px-2 py-1 text-xs font-black text-zinc-200">{historyOperationsMissionId === item.id ? "Hide Operations" : "View Operations"}</button>}
+                      {!["connection", "wild_faction"].includes(item.mission_type) && <button type="button" onClick={() => void toggleHistoryOperations(item.id)} className="rounded border border-white/15 px-2 py-1 text-xs font-black text-zinc-200">{historyOperationsMissionId === item.id ? "Hide Operations" : "View Operations"}</button>}
                       <button type="button" onClick={() => void toggleHistoryResults(item.id)} className="rounded border border-white/15 px-2 py-1 text-xs font-black text-purple-200">{historyResultsMissionId === item.id ? "Hide" : "View Completed"}</button>
                     </div>
                   </div>

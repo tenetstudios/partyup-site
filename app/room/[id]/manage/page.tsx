@@ -14,6 +14,7 @@ import ChatReportInbox from "./ChatReportInbox";
 import ClearRoomPanel from "./ClearRoomPanel";
 import RoomIdleLoopManager from "./RoomIdleLoopManager";
 import RoomSettingsAccordion from "./RoomSettingsAccordion";
+import WildHostManager from "./WildHostManager";
 
 export default async function ManageRoomPage({
   params,
@@ -74,6 +75,7 @@ const { data: room } = await supabase
           engagement={(
             <>
               {room.status !== "ended" && <RoomAnnouncementManager roomId={id} />}
+              <WildHostManager roomId={id} roomEnded={room.status === "ended"} />
               <RoomMissionManager roomId={id} roomEnded={room.status === "ended"} />
             </>
           )}

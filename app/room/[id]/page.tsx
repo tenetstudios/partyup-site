@@ -20,6 +20,7 @@ import RoomMissionCard from "./RoomMissionCard";
 import RoomChat from "./RoomChat";
 import RoomStatusWatcher from "./RoomStatusWatcher";
 import WebLiveKitRoom from "./WebLiveKitRoom";
+import WildRoomCard from "./WildRoomCard";
 
 type RoomRecord = LiveRoom & {
   host_id?: string | null;
@@ -201,6 +202,7 @@ export default async function RoomPage({
               <div className="mt-6 flex flex-wrap justify-center gap-3">
                 <Link href={`/room/${id}/memories`} className="rounded-md bg-[#9146ff] px-5 py-3 text-sm font-black">View Memories</Link>
                 <Link href={`/recap/${id}`} className="rounded-md border border-white/15 px-5 py-3 text-sm font-black">Open Recap</Link>
+                <Link href={`/room/${id}/wild`} className="rounded-md border border-fuchsia-300/25 px-5 py-3 text-sm font-black text-fuchsia-200">View Into the Wild</Link>
               </div>
             </section>
             <RoomInfoBar room={typedRoom} />
@@ -213,6 +215,7 @@ export default async function RoomPage({
 
           <div className="order-1 flex min-w-0 flex-col gap-5 xl:order-2">
             <RoomAnnouncementBanner roomId={id} initialAnnouncement={activeAnnouncement} />
+            <WildRoomCard roomId={id} />
             <RoomMissionCard roomId={id} initialMission={activeMission} />
             <section className="aspect-video min-h-[360px] overflow-hidden rounded-[12px] border border-[#7f3dff]/45 bg-black shadow-[0_24px_70px_rgba(0,0,0,0.38)]">
               <WebLiveKitRoom roomId={id} />

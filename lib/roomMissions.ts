@@ -6,12 +6,16 @@ export type RoomMission = {
   created_by_identity_id: string;
   title: string;
   description: string | null;
-  mission_type: "generic" | "animal_pack" | "connection";
+  mission_type: "generic" | "animal_pack" | "connection" | "wild_faction";
   config: {
     animals?: string[];
     target_encounters?: number;
     target_connections?: number;
     completion_event?: "partyup_connection_created";
+    game_id?: string;
+    faction_key?: string;
+    territory_key?: string;
+    influence_reward?: number;
   };
   status: "draft" | "active" | "ended";
   starts_at: string | null;
