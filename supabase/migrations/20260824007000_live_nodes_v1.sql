@@ -148,13 +148,18 @@ begin
         select jsonb_build_object(
           'claim_id', claim.id,
           'identity_id', claim.identity_id,
-          'display_name', identity.display_name,
-          'avatar_url', identity.avatar_url,
+          'display_name', coalesce(
+            nullif(to_jsonb(profile)->>'display_name', ''),
+            profile.username,
+            'Guest ' || left(claim.identity_id::text, 4)
+          ),
+          'avatar_url', profile.avatar_url,
           'claimed_at', claim.claimed_at,
           'fulfilled_at', claim.fulfilled_at
         )
         from public.live_node_claims claim
         join public.partyup_identities identity on identity.id = claim.identity_id
+        left join public.profiles profile on profile.id = identity.user_id
         where claim.node_id = node.id and claim.claim_position = 1
       )
     ) order by node.created_at desc
