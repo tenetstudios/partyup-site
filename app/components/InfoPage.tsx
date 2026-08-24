@@ -43,14 +43,16 @@ export function InfoPageShell({
 }
 
 export function InfoSection({
+  id,
   title,
   children,
 }: {
+  id?: string;
   title: string;
   children: React.ReactNode;
 }) {
   return (
-    <section className={`${partyUpTheme.glassCard} p-5 md:p-6`}>
+    <section id={id} className={`${partyUpTheme.glassCard} scroll-mt-24 p-5 md:p-6`}>
       <h2 className="text-xl font-black">{title}</h2>
       <div className="mt-4 space-y-4 text-[15px] font-medium leading-7 text-[#c9c2d7]">
         {children}

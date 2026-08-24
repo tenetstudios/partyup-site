@@ -37,6 +37,7 @@ export default function TermsPage() {
           <li>exploit, scam, or deceive others</li>
           <li>violate another person&apos;s privacy</li>
           <li>upload or share unlawful content</li>
+          <li>create, solicit, share, promote, or facilitate child sexual abuse material or child sexual exploitation</li>
           <li>interfere with PartyUp systems</li>
           <li>abuse Match or guest systems</li>
           <li>evade legitimate moderation or access restrictions</li>
