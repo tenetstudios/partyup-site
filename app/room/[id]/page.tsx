@@ -193,6 +193,7 @@ export default async function RoomPage({
 
         {ended ? (
           <div className="mx-auto grid w-full max-w-5xl flex-1 content-start gap-5">
+            <WildRoomCard roomId={id} />
             <section className="rounded-[10px] border border-purple-300/20 bg-[#120b1a] p-8 text-center">
               <p className="text-xs font-black uppercase text-[#ff83b8]">Past event</p>
               <h2 className="mt-2 text-3xl font-black">This event has ended</h2>
@@ -202,7 +203,6 @@ export default async function RoomPage({
               <div className="mt-6 flex flex-wrap justify-center gap-3">
                 <Link href={`/room/${id}/memories`} className="rounded-md bg-[#9146ff] px-5 py-3 text-sm font-black">View Memories</Link>
                 <Link href={`/recap/${id}`} className="rounded-md border border-white/15 px-5 py-3 text-sm font-black">Open Recap</Link>
-                <Link href={`/room/${id}/wild`} className="rounded-md border border-fuchsia-300/25 px-5 py-3 text-sm font-black text-fuchsia-200">View Into the Wild</Link>
               </div>
             </section>
             <RoomInfoBar room={typedRoom} />

@@ -39,7 +39,15 @@ export default function WildRoomCard({ roomId }: { roomId: string }) {
     };
   }, [load, roomId, supabase]);
 
-  if (!state?.game || state.game.status !== "active") return null;
+  if (!state?.game) return null;
+
+  const assignmentScore = state.assignment
+    ? state.game.winner_summary?.scores.find((score) => score.faction_key === state.assignment?.key) ?? null
+    : null;
+  const assignmentWon = Boolean(
+    state.assignment
+      && state.game.winner_summary?.winners.some((winner) => winner.faction_key === state.assignment?.key),
+  );
 
   async function enter() {
     setBusy(true);
@@ -56,6 +64,40 @@ export default function WildRoomCard({ roomId }: { roomId: string }) {
       setBusy(false);
     }
   }
+
+  if (state.game.status === "ended") {
+    return (
+      <section className={`rounded-xl border p-5 ${assignmentWon ? "border-emerald-300/40 bg-[linear-gradient(135deg,rgba(49,46,129,.94),rgba(20,83,45,.48),rgba(15,8,28,.97))] shadow-[0_18px_55px_rgba(52,211,153,.14)]" : "border-fuchsia-400/25 bg-[linear-gradient(135deg,rgba(39,20,60,.94),rgba(15,8,28,.97))]"}`}>
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className={`text-xs font-black tracking-[0.24em] ${assignmentWon ? "text-emerald-300" : "text-fuchsia-300"}`}>
+              {assignmentWon ? "YOUR FACTION WON" : "INTO THE WILD"}
+            </p>
+            <p className="mt-2 text-xl font-black text-white">
+              {assignmentWon && state.assignment
+                ? `${state.assignment.emoji} ${state.assignment.label.toUpperCase()} WON THE WILD`
+                : "THE WILD HAS ENDED"}
+            </p>
+            {state.assignment ? (
+              <p className="mt-2 text-sm leading-6 text-zinc-300">
+                {assignmentWon ? "Final result: " : `Your faction: ${state.assignment.emoji} ${state.assignment.label}. `}
+                {assignmentScore
+                  ? `${assignmentScore.territories_controlled} ${assignmentScore.territories_controlled === 1 ? "territory" : "territories"} controlled · ${assignmentScore.total_influence} final influence.`
+                  : "Your final result is ready."}
+              </p>
+            ) : (
+              <p className="mt-2 text-sm text-zinc-300">Final territories and influence are ready to view.</p>
+            )}
+          </div>
+          <Link href={`/room/${roomId}/wild`} className="inline-flex min-h-12 shrink-0 items-center justify-center rounded-lg bg-fuchsia-600 px-5 text-sm font-black text-white hover:bg-fuchsia-500">
+            View Final Results
+          </Link>
+        </div>
+      </section>
+    );
+  }
+
+  if (state.game.status !== "active") return null;
 
   return (
     <section className="rounded-xl border border-fuchsia-400/35 bg-[linear-gradient(135deg,rgba(49,16,85,.92),rgba(15,8,28,.96))] p-4 shadow-[0_18px_50px_rgba(91,33,182,.18)]">

@@ -243,6 +243,12 @@ export default function WildClient({ roomId }: { roomId: string }) {
 
   const factions = state.game.config.factions;
   const winners = state.game.winner_summary?.winners ?? [];
+  const assignmentScore = state.assignment
+    ? state.game.winner_summary?.scores.find((score) => score.faction_key === state.assignment?.key) ?? null
+    : null;
+  const assignmentWon = Boolean(
+    state.assignment && winners.some((winner) => winner.faction_key === state.assignment?.key),
+  );
   const encounterRequirement = state.mission?.config.encounter_relationship === "same_faction" ? `Meet another ${state.assignment?.emoji ?? ""} ${state.assignment?.label ?? "faction"} player.` : state.mission?.config.encounter_relationship === "different_faction" ? "Meet a player from another faction." : state.mission?.config.encounter_relationship === "specific_faction" ? `Meet a ${wildFactionByKey(state, state.mission.config.target_faction)?.emoji ?? ""} ${wildFactionByKey(state, state.mission.config.target_faction)?.label ?? "specific faction"} player.` : null;
 
   return (
@@ -258,6 +264,7 @@ export default function WildClient({ roomId }: { roomId: string }) {
             <p className="text-sm font-black tracking-[0.2em] text-fuchsia-300">THE WILD HAS ENDED</p>
             <h2 className="mt-3 text-3xl font-black">{winners.length === 1 ? `${winners[0].emoji} ${winners[0].label.toUpperCase()} WINS` : winners.length ? `${winners.map((winner) => `${winner.emoji} ${winner.label}`).join(" + ")} TIE` : "CONTESTED"}</h2>
             <div className="mt-4 flex flex-wrap justify-center gap-4">{(state.game.winner_summary?.scores ?? []).map((score) => <p key={score.faction_key} className="text-sm font-bold text-zinc-300">{score.emoji} {score.label}: {score.territories_controlled} territories · {score.total_influence} influence</p>)}</div>
+            {state.assignment && <div className={`mt-6 rounded-xl border px-5 py-4 ${assignmentWon ? "border-emerald-300/35 bg-emerald-500/10" : "border-white/10 bg-white/[0.04]"}`}><p className={`text-xs font-black tracking-[0.18em] ${assignmentWon ? "text-emerald-300" : "text-zinc-400"}`}>{assignmentWon ? "YOUR FACTION WON" : "YOUR FACTION"}</p><p className="mt-2 text-xl font-black">{state.assignment.emoji} {state.assignment.label.toUpperCase()}</p>{assignmentScore && <p className="mt-2 text-sm text-zinc-300">{assignmentScore.territories_controlled} {assignmentScore.territories_controlled === 1 ? "territory" : "territories"} controlled · {assignmentScore.total_influence} final influence</p>}</div>}
           </section>
         ) : state.assignment ? (
           <section className="mt-7 rounded-2xl border border-white/10 bg-black/35 p-5"><p className="text-xs font-black text-zinc-400">YOUR FACTION</p><p className="mt-2 text-3xl font-black">{state.assignment.emoji} {state.assignment.label.toUpperCase()}</p></section>
