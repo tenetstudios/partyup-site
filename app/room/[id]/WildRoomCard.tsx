@@ -6,15 +6,27 @@ import { createSupabaseClient } from "@/lib/supabase";
 import { createGuestSession, readStoredGuestSession } from "@/lib/matchmaking";
 import { enterWildGame, getWildRoomState, type WildRoomState } from "@/lib/wild";
 
+function dismissedResultStorageKey(gameId: string) {
+  return `partyup_wild_result_dismissed:${gameId}`;
+}
+
 export default function WildRoomCard({ roomId }: { roomId: string }) {
   const [supabase] = useState(() => createSupabaseClient());
   const [state, setState] = useState<WildRoomState | null>(null);
+  const [dismissedGameId, setDismissedGameId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const guestToken = readStoredGuestSession()?.guestToken ?? null;
-    setState(await getWildRoomState(supabase, roomId, guestToken));
+    const next = await getWildRoomState(supabase, roomId, guestToken);
+    setDismissedGameId(
+      next.game?.status === "ended"
+        && window.localStorage.getItem(dismissedResultStorageKey(next.game.id)) === "1"
+        ? next.game.id
+        : null,
+    );
+    setState(next);
   }, [roomId, supabase]);
 
   useEffect(() => {
@@ -65,9 +77,26 @@ export default function WildRoomCard({ roomId }: { roomId: string }) {
     }
   }
 
+  function dismissFinalResult() {
+    if (!state?.game || state.game.status !== "ended") return;
+    window.localStorage.setItem(dismissedResultStorageKey(state.game.id), "1");
+    setDismissedGameId(state.game.id);
+  }
+
   if (state.game.status === "ended") {
+    if (dismissedGameId === state.game.id) return null;
+
     return (
-      <section className={`rounded-xl border p-5 ${assignmentWon ? "border-emerald-300/40 bg-[linear-gradient(135deg,rgba(49,46,129,.94),rgba(20,83,45,.48),rgba(15,8,28,.97))] shadow-[0_18px_55px_rgba(52,211,153,.14)]" : "border-fuchsia-400/25 bg-[linear-gradient(135deg,rgba(39,20,60,.94),rgba(15,8,28,.97))]"}`}>
+      <section className={`relative rounded-xl border p-5 pr-14 ${assignmentWon ? "border-emerald-300/40 bg-[linear-gradient(135deg,rgba(49,46,129,.94),rgba(20,83,45,.48),rgba(15,8,28,.97))] shadow-[0_18px_55px_rgba(52,211,153,.14)]" : "border-fuchsia-400/25 bg-[linear-gradient(135deg,rgba(39,20,60,.94),rgba(15,8,28,.97))]"}`}>
+        <button
+          type="button"
+          onClick={dismissFinalResult}
+          aria-label="Dismiss Into the Wild final result"
+          title="Dismiss final result"
+          className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full border border-white/15 bg-black/25 text-2xl leading-none text-zinc-300 transition hover:border-white/30 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-300"
+        >
+          <span aria-hidden="true">&times;</span>
+        </button>
         <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className={`text-xs font-black tracking-[0.24em] ${assignmentWon ? "text-emerald-300" : "text-fuchsia-300"}`}>
