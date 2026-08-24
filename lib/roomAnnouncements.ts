@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { requestPushDispatch } from "./pushDispatch";
 
 export type RoomAnnouncement = {
   id: string;
@@ -20,6 +21,7 @@ export type RoomAnnouncementInput = {
   ctaLabel?: string;
   ctaUrl?: string;
   expiresAt?: string;
+  notifyAttendees?: boolean;
 };
 
 export function normalizeAnnouncementInput(input: RoomAnnouncementInput) {
@@ -124,18 +126,21 @@ export async function publishRoomAnnouncement(
   input: RoomAnnouncementInput,
 ) {
   const normalized = normalizeAnnouncementInput(input);
-  const { data, error } = await supabase.rpc("publish_room_announcement", {
+  const { data, error } = await supabase.rpc("publish_room_announcement_with_push", {
     p_room_id: roomId,
     p_title: normalized.title,
     p_message: normalized.message,
     p_cta_label: normalized.ctaLabel,
     p_cta_url: normalized.ctaUrl,
     p_expires_at: normalized.expiresAt,
+    p_notify_attendees: input.notifyAttendees ?? false,
   });
 
   if (error) {
     throw new Error(error.message);
   }
+
+  if (input.notifyAttendees) requestPushDispatch(supabase, roomId);
 
   return firstAnnouncement(data);
 }

@@ -15,3 +15,6 @@ verify_jwt = false
 
 [functions.admin-delete-room]
 verify_jwt = false
+
+[functions.dispatch-push-notifications]
+verify_jwt = false

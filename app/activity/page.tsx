@@ -8,7 +8,7 @@ import { resolveMyEventRecaps } from "@/lib/recaps";
 import { createSupabaseClient } from "@/lib/supabase";
 import { FollowedSeriesEvent, formatSeriesDate } from "@/lib/eventSeries";
 
-type ActivityItem = { id: string; actor_id: string | null; type: string; title: string; body: string; room_id: string | null; recap_room_id: string | null; is_read: boolean; created_at: string };
+type ActivityItem = { id: string; actor_id: string | null; type: string; title: string; body: string; room_id: string | null; recap_room_id: string | null; data: Record<string, unknown> | null; is_read: boolean; created_at: string };
 
 function formatTime(value: string) {
   const date = new Date(value);
@@ -32,7 +32,7 @@ export default function ActivityPage() {
       if (!userData.user) { setItems([]); setSeriesEvents([]); return; }
       await resolveMyEventRecaps(supabase);
       const [{ data, error: loadError }, seriesResult] = await Promise.all([
-        supabase.from("notifications").select("id,actor_id,type,title,body,room_id,recap_room_id,is_read,created_at").eq("user_id", userData.user.id).order("created_at", { ascending: false }).limit(50),
+        supabase.from("notifications").select("id,actor_id,type,title,body,room_id,recap_room_id,data,is_read,created_at").eq("user_id", userData.user.id).order("created_at", { ascending: false }).limit(50),
         supabase.rpc("get_my_followed_series_events"),
       ]);
       if (loadError) throw new Error(loadError.message);
@@ -95,8 +95,12 @@ export default function ActivityPage() {
               <p className="mt-2 text-sm text-[#aaa4b8]">Your event recaps and connection updates will stay here.</p>
             </div>
           ) : items.map((item) => {
-            const recapRoomId = item.recap_room_id || (item.type === "event_recap" ? item.room_id : null);
-            const href = recapRoomId ? `/recap/${recapRoomId}` : item.room_id ? `/room/${item.room_id}` : "/activity";
+            const recapRoomId = item.recap_room_id || (["event_recap", "recap_ready"].includes(item.type) ? item.room_id : null);
+            const href = recapRoomId
+              ? `/recap/${recapRoomId}`
+              : item.type === "wild_result" && item.room_id
+                ? `/room/${item.room_id}/wild`
+                : item.room_id ? `/room/${item.room_id}` : "/activity";
 
             return (
               <Link

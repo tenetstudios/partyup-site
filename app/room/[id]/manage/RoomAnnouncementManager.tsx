@@ -16,6 +16,7 @@ type FormState = {
   ctaLabel: string;
   ctaUrl: string;
   expiresAt: string;
+  notifyAttendees: boolean;
 };
 
 const emptyForm: FormState = {
@@ -24,6 +25,7 @@ const emptyForm: FormState = {
   ctaLabel: "",
   ctaUrl: "",
   expiresAt: "",
+  notifyAttendees: false,
 };
 
 function toDatetimeLocal(value: string | null) {
@@ -47,6 +49,7 @@ function formFromAnnouncement(announcement: RoomAnnouncement): FormState {
     ctaLabel: announcement.cta_label ?? "",
     ctaUrl: announcement.cta_url ?? "",
     expiresAt: toDatetimeLocal(announcement.expires_at),
+    notifyAttendees: false,
   };
 }
 
@@ -131,7 +134,7 @@ export default function RoomAnnouncementManager({ roomId }: { roomId: string }) 
     return null;
   }
 
-  function updateField(field: keyof FormState, value: string) {
+  function updateField(field: keyof FormState, value: string | boolean) {
     setForm((current) => ({ ...current, [field]: value }));
     setError(null);
     setSuccess(null);
@@ -177,6 +180,7 @@ export default function RoomAnnouncementManager({ roomId }: { roomId: string }) 
         ctaLabel: form.ctaLabel,
         ctaUrl: form.ctaUrl,
         expiresAt: form.expiresAt ? new Date(form.expiresAt).toISOString() : "",
+        notifyAttendees: mode === "create" ? form.notifyAttendees : false,
       };
 
       const saved =
@@ -304,6 +308,21 @@ export default function RoomAnnouncementManager({ roomId }: { roomId: string }) 
                 className="w-full rounded-md bg-black px-3 py-3 text-sm text-white outline-none placeholder:text-zinc-500"
               />
             </label>
+
+            {mode === "create" && (
+              <label className="flex items-center justify-between gap-4 rounded-md border border-purple-300/15 bg-purple-950/20 p-3">
+                <span>
+                  <span className="block text-sm font-black text-purple-200">Notify attendees</span>
+                  <span className="mt-1 block text-xs font-semibold text-zinc-400">Also send this announcement as a push notification.</span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={form.notifyAttendees}
+                  onChange={(event) => updateField("notifyAttendees", event.target.checked)}
+                  className="h-5 w-5 accent-purple-600"
+                />
+              </label>
+            )}
 
             <label className="block">
               <span className="mb-1 block text-sm font-black text-purple-300">Message</span>

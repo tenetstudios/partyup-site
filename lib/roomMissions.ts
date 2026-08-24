@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { requestPushDispatch } from "./pushDispatch";
 
 export type RoomMission = {
   id: string;
@@ -283,6 +284,7 @@ export async function publishRoomMission(
     throw new Error(error.message);
   }
 
+  requestPushDispatch(supabase, roomId);
   return firstRow<RoomMission>(data);
 }
 
@@ -298,6 +300,7 @@ export async function publishAnimalPackMission(
     p_duration_minutes: input.durationMinutes,
   });
   if (error) throw new Error(error.message);
+  requestPushDispatch(supabase, roomId);
   return firstRow<RoomMission>(data);
 }
 
@@ -319,6 +322,7 @@ export async function publishConnectionMission(
     p_duration_minutes: input.durationMinutes,
   });
   if (error) throw new Error(error.message);
+  requestPushDispatch(supabase, roomId);
   return firstRow<RoomMission>(data);
 }
 
