@@ -2,9 +2,14 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import { createSupabaseClient } from "@/lib/supabase";
 import { createGuestSession, readStoredGuestSession } from "@/lib/matchmaking";
-import { completeWildMission, enterWildGame, getWildRoomState, wildFactionByKey, type WildRoomState } from "@/lib/wild";
+import { completeWildMission, createWildEncounterToken, enterWildGame, getWildEncounterState, getWildRoomState, redeemWildEncounterToken, wildFactionByKey, type WildEncounterState, type WildEncounterStatus, type WildRoomState } from "@/lib/wild";
+
+const encounterMessages: Record<WildEncounterStatus, string> = {
+  valid: "Verified encounter ✓", self_scan: "You can't scan yourself.", wrong_mission: "This code belongs to another Mission.", wrong_game: "This player isn't in this Wild game.", wrong_room: "This code belongs to another room.", wrong_faction: "This objective belongs to another faction.", wrong_animal: "That player is in another Animal Pack.", same_faction_required: "Find someone from your own faction.", different_faction_required: "Find someone from another faction.", specific_faction_required: "That player isn't in the required faction.", duplicate: "You've already verified with this player for this Mission.", expired: "That code expired. Ask them to refresh it.", mission_ended: "This Mission is no longer active.", game_ended: "The Wild has ended.", invalid: "That temporary Mission code isn't valid.",
+};
 
 export default function WildClient({ roomId }: { roomId: string }) {
   const [supabase] = useState(() => createSupabaseClient());
@@ -12,12 +17,25 @@ export default function WildClient({ roomId }: { roomId: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [capture, setCapture] = useState<string | null>(null);
+  const [encounterState, setEncounterState] = useState<WildEncounterState | null>(null);
+  const [encounterMode, setEncounterMode] = useState<"details" | "qr" | "code">("details");
+  const [encounterToken, setEncounterToken] = useState<{ qr_payload: string; short_code: string; expires_at: string } | null>(null);
+  const [encounterCode, setEncounterCode] = useState("");
+  const [encounterFeedback, setEncounterFeedback] = useState<string | null>(null);
   const gameIdRef = useRef<string | null>(null);
   const controllersRef = useRef<Record<string, string | null>>({});
   const loadedRef = useRef(false);
 
+  const ensureGuestToken = useCallback(async () => {
+    const { data } = await supabase.auth.getUser();
+    let token = readStoredGuestSession()?.guestToken ?? null;
+    if (!data.user && !token) token = (await createGuestSession(supabase)).guestToken;
+    return token;
+  }, [supabase]);
+
   const load = useCallback(async (guestToken?: string | null) => {
-    const next = await getWildRoomState(supabase, roomId, guestToken ?? readStoredGuestSession()?.guestToken ?? null);
+    const token = guestToken ?? readStoredGuestSession()?.guestToken ?? null;
+    const next = await getWildRoomState(supabase, roomId, token);
     if (loadedRef.current) {
       for (const territory of next.territories) {
         const prior = controllersRef.current[territory.key];
@@ -31,6 +49,12 @@ export default function WildClient({ roomId }: { roomId: string }) {
     loadedRef.current = true;
     gameIdRef.current = next.game?.id ?? null;
     setState(next);
+    if (next.assignment && next.mission?.config.verification_type === "encounter") {
+      setEncounterState(await getWildEncounterState(supabase, next.mission.id, token));
+    } else {
+      setEncounterState(null);
+      setEncounterMode("details");
+    }
   }, [roomId, supabase]);
 
   useEffect(() => {
@@ -56,6 +80,7 @@ export default function WildClient({ roomId }: { roomId: string }) {
         .on("postgres_changes", { event: "*", schema: "public", table: "wild_territories" }, refreshGame)
         .on("postgres_changes", { event: "*", schema: "public", table: "room_missions", filter: `room_id=eq.${roomId}` }, () => void load())
         .on("postgres_changes", { event: "*", schema: "public", table: "mission_completions" }, () => void load())
+        .on("postgres_changes", { event: "*", schema: "public", table: "mission_encounters" }, refreshGame)
         .subscribe();
     };
     void subscribe();
@@ -72,12 +97,24 @@ export default function WildClient({ roomId }: { roomId: string }) {
     return () => window.clearTimeout(timer);
   }, [capture]);
 
-  async function ensureGuestToken() {
-    const { data } = await supabase.auth.getUser();
-    let token = readStoredGuestSession()?.guestToken ?? null;
-    if (!data.user && !token) token = (await createGuestSession(supabase)).guestToken;
-    return token;
-  }
+  const encounterMissionId = state?.mission?.config.verification_type === "encounter" ? state.mission.id : null;
+
+  useEffect(() => {
+    if (encounterMode !== "qr" || !encounterMissionId) return;
+    let cancelled = false;
+    let refreshTimer: number | null = null;
+    const refresh = async () => {
+      try {
+        const token = await ensureGuestToken();
+        const next = await createWildEncounterToken(supabase, encounterMissionId, token);
+        if (cancelled) return;
+        setEncounterToken(next);
+        refreshTimer = window.setTimeout(() => void refresh(), Math.max(5_000, Date.parse(next.expires_at) - Date.now() - 5_000));
+      } catch (reason) { if (!cancelled) setError(reason instanceof Error ? reason.message : "Could not create a temporary encounter code."); }
+    };
+    void refresh();
+    return () => { cancelled = true; if (refreshTimer) window.clearTimeout(refreshTimer); };
+  }, [encounterMissionId, encounterMode, ensureGuestToken, supabase]);
 
   async function enter() {
     if (!state?.game) return;
@@ -101,11 +138,25 @@ export default function WildClient({ roomId }: { roomId: string }) {
     finally { setBusy(false); }
   }
 
+  async function redeemEncounter() {
+    if (!state?.mission || !encounterCode.trim()) return;
+    setBusy(true); setError(null); setEncounterFeedback(null);
+    try {
+      const token = await ensureGuestToken();
+      const result = await redeemWildEncounterToken(supabase, state.mission.id, encounterCode.trim(), token);
+      setEncounterFeedback(encounterMessages[result.status]);
+      setEncounterCode("");
+      await load(token);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not verify this encounter."); }
+    finally { setBusy(false); }
+  }
+
   if (!state) return <main className="mx-auto max-w-4xl p-6 text-white">Loading the Wild…</main>;
   if (!state.game) return <main className="mx-auto max-w-4xl p-6 text-white"><Link href={`/room/${roomId}`} className="text-purple-300">← Back to room</Link><h1 className="mt-8 text-4xl font-black">THE WILD IS QUIET</h1><p className="mt-3 text-zinc-400">The host has not started Into the Wild.</p></main>;
 
   const factions = state.game.config.factions;
   const winners = state.game.winner_summary?.winners ?? [];
+  const encounterRequirement = state.mission?.config.encounter_relationship === "same_faction" ? `Meet another ${state.assignment?.emoji ?? ""} ${state.assignment?.label ?? "faction"} player.` : state.mission?.config.encounter_relationship === "different_faction" ? "Meet a player from another faction." : state.mission?.config.encounter_relationship === "specific_faction" ? `Meet a ${wildFactionByKey(state, state.mission.config.target_faction)?.emoji ?? ""} ${wildFactionByKey(state, state.mission.config.target_faction)?.label ?? "specific faction"} player.` : null;
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,#36105d_0,#12091f_42%,#07050b_100%)] px-4 py-8 text-white">
@@ -135,7 +186,7 @@ export default function WildClient({ roomId }: { roomId: string }) {
           })}
         </section>
 
-        {state.assignment && state.game.status === "active" && <section className="mt-8 rounded-2xl border border-fuchsia-300/25 bg-black/35 p-5"><p className="text-xs font-black tracking-[0.2em] text-fuchsia-300">YOUR MISSION</p>{state.mission ? <><h2 className="mt-3 text-2xl font-black">{state.mission.title}</h2>{state.mission.description && <p className="mt-2 text-zinc-300">{state.mission.description}</p>}<p className="mt-3 text-sm font-black text-purple-200">+{state.mission.config.influence_reward} influence · {state.territories.find((item) => item.key === state.mission?.config.territory_key)?.display_name}</p>{!state.mission.eligible ? <p className="mt-4 text-sm font-black text-amber-300">This objective belongs to another faction.</p> : state.mission.viewer_completed ? <p className="mt-4 font-black text-emerald-300">✓ Mission complete. Influence added.</p> : <button type="button" onClick={() => void complete()} disabled={busy} className="mt-4 rounded-lg bg-fuchsia-600 px-5 py-3 font-black disabled:opacity-50">{busy ? "Completing…" : "Complete Mission"}</button>}</> : <p className="mt-3 text-zinc-400">No active Mission right now.</p>}</section>}
+        {state.assignment && state.game.status === "active" && <section className="mt-8 rounded-2xl border border-fuchsia-300/25 bg-black/35 p-5"><p className="text-xs font-black tracking-[0.2em] text-fuchsia-300">YOUR MISSION</p>{state.mission ? <><h2 className="mt-3 text-2xl font-black">{state.mission.title}</h2>{state.mission.description && <p className="mt-2 text-zinc-300">{state.mission.description}</p>}<p className="mt-3 text-sm font-black text-purple-200">+{state.mission.config.influence_reward} influence · {state.territories.find((item) => item.key === state.mission?.config.territory_key)?.display_name}</p>{state.mission.config.verification_type === "encounter" ? <div className="mt-4"><p className="font-black text-white">Requirement: {encounterRequirement}</p>{encounterState?.eligible ? <p className="mt-2 text-3xl font-black text-fuchsia-300">{Math.min(encounterState.progress, encounterState.required_encounters)} / {encounterState.required_encounters}</p> : <p className="mt-2 text-sm font-black text-amber-300">You can help an eligible player by showing your QR.</p>}{encounterState?.completed ? <p className="mt-4 font-black text-emerald-300">VERIFIED ✓ Influence awarded.</p> : <div className="mt-4 flex flex-wrap gap-3"><button type="button" onClick={() => setEncounterMode("qr")} className="rounded-lg bg-purple-600 px-5 py-3 font-black">Show My QR</button>{encounterState?.eligible && <button type="button" onClick={() => setEncounterMode("code")} className="rounded-lg bg-fuchsia-600 px-5 py-3 font-black">Enter Player Code</button>}</div>}{encounterMode === "qr" && <div className="mt-5 w-fit rounded-xl bg-white p-5 text-center text-black">{encounterToken ? <><QRCodeSVG value={encounterToken.qr_payload} size={220} level="M" /><p className="mt-4 text-2xl font-black tracking-[0.25em]">{encounterToken.short_code}</p><p className="mt-2 text-xs font-bold text-zinc-500">Refreshes every 60 seconds</p></> : <p className="font-bold">Creating secure code…</p>}</div>}{encounterMode === "code" && encounterState?.eligible && <div className="mt-5 max-w-sm"><input value={encounterCode} onChange={(event) => setEncounterCode(event.target.value.toUpperCase())} onKeyDown={(event) => { if (event.key === "Enter") void redeemEncounter(); }} maxLength={64} placeholder="F7K2A1B9" className="w-full rounded bg-black px-4 py-3 text-center text-xl font-black uppercase tracking-[0.2em] text-white" /><button type="button" onClick={() => void redeemEncounter()} disabled={busy || !encounterCode.trim()} className="mt-3 w-full rounded bg-fuchsia-600 px-5 py-3 font-black disabled:opacity-50">{busy ? "Checking…" : "Verify Encounter"}</button></div>}{encounterFeedback && <p className={`mt-4 text-sm font-black ${encounterFeedback.includes("✓") ? "text-emerald-300" : "text-amber-300"}`}>{encounterFeedback}</p>}</div> : !state.mission.eligible ? <p className="mt-4 text-sm font-black text-amber-300">This objective belongs to another faction.</p> : state.mission.viewer_completed ? <p className="mt-4 font-black text-emerald-300">✓ Mission complete. Influence added.</p> : <button type="button" onClick={() => void complete()} disabled={busy} className="mt-4 rounded-lg bg-fuchsia-600 px-5 py-3 font-black disabled:opacity-50">{busy ? "Completing…" : "Complete Mission"}</button>}</> : <p className="mt-3 text-zinc-400">No active Mission right now.</p>}</section>}
 
         {state.assignment && <section className="mt-8 rounded-2xl border border-white/10 bg-black/35 p-5"><p className="text-xs font-black tracking-[0.2em] text-purple-300">YOUR IMPACT</p><div className="mt-4 flex gap-8"><div><p className="text-3xl font-black">{state.impact.missions_completed}</p><p className="text-sm text-zinc-400">Missions completed</p></div><div><p className="text-3xl font-black">+{state.impact.influence_added}</p><p className="text-sm text-zinc-400">Influence added</p></div></div></section>}
         {error && <p className="mt-5 rounded-lg bg-rose-950/40 p-3 text-sm font-bold text-rose-300">{error}</p>}

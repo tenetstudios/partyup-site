@@ -16,6 +16,10 @@ export type RoomMission = {
     faction_key?: string;
     territory_key?: string;
     influence_reward?: number;
+    verification_type?: "none" | "encounter";
+    encounter_relationship?: "same_faction" | "different_faction" | "specific_faction" | null;
+    required_encounters?: number;
+    target_faction?: string | null;
   };
   status: "draft" | "active" | "ended";
   starts_at: string | null;

@@ -27,10 +27,29 @@ export type WildMission = {
     faction_key: string;
     territory_key: string;
     influence_reward: number;
+    verification_type?: "none" | "encounter";
+    encounter_relationship?: "same_faction" | "different_faction" | "specific_faction" | null;
+    required_encounters?: number;
+    target_faction?: string | null;
   };
   viewer_completed: boolean;
   eligible: boolean;
 };
+
+export type WildEncounterState = {
+  progress: number;
+  required_encounters: number;
+  completed: boolean;
+  eligible: boolean;
+  verification_type: "encounter";
+  encounter_relationship: "same_faction" | "different_faction" | "specific_faction";
+  target_faction: string | null;
+  verified_encounter_count: number;
+  mission_completion_count: number;
+  mission_active: boolean;
+};
+
+export type WildEncounterStatus = "valid" | "self_scan" | "wrong_mission" | "wrong_game" | "wrong_room" | "wrong_faction" | "wrong_animal" | "same_faction_required" | "different_faction_required" | "specific_faction_required" | "duplicate" | "expired" | "mission_ended" | "game_ended" | "invalid";
 
 export type WildWinnerScore = {
   faction_key: string;
@@ -111,6 +130,10 @@ export async function publishWildMission(
     description?: string | null;
     influenceReward: number;
     durationMinutes: number;
+    verificationType?: "none" | "encounter";
+    encounterRelationship?: "same_faction" | "different_faction" | "specific_faction" | null;
+    requiredEncounters?: number;
+    targetFaction?: string | null;
   },
 ) {
   const { data, error } = await supabase.rpc("publish_wild_faction_mission", {
@@ -121,9 +144,32 @@ export async function publishWildMission(
     p_description: input.description ?? null,
     p_influence_reward: input.influenceReward,
     p_duration_minutes: input.durationMinutes,
+    p_verification_type: input.verificationType ?? "none",
+    p_encounter_relationship: input.encounterRelationship ?? null,
+    p_required_encounters: input.requiredEncounters ?? 1,
+    p_target_faction: input.targetFaction ?? null,
   });
   if (error) throw new Error(error.message);
   return data;
+}
+
+export async function getWildEncounterState(supabase: SupabaseClient, missionId: string, guestToken?: string | null) {
+  const { data, error } = await supabase.rpc("get_my_wild_encounter_state", { p_mission_id: missionId, p_guest_token: guestToken ?? null });
+  if (error) throw new Error(error.message);
+  const state = data as WildEncounterState;
+  return { ...state, progress: Number(state.progress ?? 0), required_encounters: Number(state.required_encounters ?? 1), verified_encounter_count: Number(state.verified_encounter_count ?? 0), mission_completion_count: Number(state.mission_completion_count ?? 0) };
+}
+
+export async function createWildEncounterToken(supabase: SupabaseClient, missionId: string, guestToken?: string | null) {
+  const { data, error } = await supabase.rpc("create_mission_encounter_token", { p_mission_id: missionId, p_guest_token: guestToken ?? null });
+  if (error) throw new Error(error.message);
+  return data as { token: string; qr_payload: string; short_code: string; expires_at: string };
+}
+
+export async function redeemWildEncounterToken(supabase: SupabaseClient, missionId: string, value: string, guestToken?: string | null) {
+  const { data, error } = await supabase.rpc("redeem_mission_encounter_token", { p_mission_id: missionId, p_token_or_code: value, p_guest_token: guestToken ?? null });
+  if (error) throw new Error(error.message);
+  return data as { status: WildEncounterStatus; progress?: number; target_encounters?: number; completed?: boolean; owner_completed?: boolean };
 }
 
 export async function completeWildMission(
