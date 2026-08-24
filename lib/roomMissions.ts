@@ -7,7 +7,7 @@ export type RoomMission = {
   created_by_identity_id: string;
   title: string;
   description: string | null;
-  mission_type: "generic" | "animal_pack" | "connection" | "wild_faction";
+  mission_type: "generic" | "animal_pack" | "connection" | "wild_faction" | "live_node";
   config: {
     animals?: string[];
     target_encounters?: number;
@@ -17,7 +17,10 @@ export type RoomMission = {
     faction_key?: string;
     territory_key?: string;
     influence_reward?: number;
-    verification_type?: "none" | "encounter" | "memory_upload" | "match_faction";
+    verification_type?: "none" | "encounter" | "memory_upload" | "match_faction" | "live_node";
+    node_id?: string;
+    required_claim?: boolean;
+    reward_description?: string | null;
     encounter_relationship?: "same_faction" | "different_faction" | "specific_faction" | null;
     required_encounters?: number;
     target_faction?: string | null;

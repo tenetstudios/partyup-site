@@ -80,7 +80,7 @@ export default function RoomMissionManager({
     setMission(nextMission);
     setHistory(nextHistory);
     setOperations(
-      nextMission && !["connection", "wild_faction"].includes(nextMission.mission_type)
+      nextMission && !["connection", "wild_faction", "live_node"].includes(nextMission.mission_type)
         ? await getMissionOperationsDashboard(supabase, nextMission.id)
         : null,
     );
