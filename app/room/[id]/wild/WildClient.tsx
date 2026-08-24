@@ -1,18 +1,27 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { createSupabaseClient } from "@/lib/supabase";
-import { createGuestSession, ensurePartyUpIdentity, readStoredGuestSession } from "@/lib/matchmaking";
+import { createGuestSession, ensurePartyUpIdentity, getOrCreateEventMatchPool, readStoredGuestSession } from "@/lib/matchmaking";
 import { claimMemoryMissionCompletion, verifyMemoryMissionCompletion } from "@/lib/roomMissions";
-import { completeWildMission, createWildEncounterToken, enterWildGame, getWildEncounterState, getWildRoomState, redeemWildEncounterToken, wildFactionByKey, type WildEncounterState, type WildEncounterStatus, type WildRoomState } from "@/lib/wild";
+import { completeWildMission, createWildEncounterToken, enterWildGame, getWildEncounterState, getWildMatchState, getWildRoomState, redeemWildEncounterToken, wildFactionByKey, type WildEncounterState, type WildEncounterStatus, type WildMatchState, type WildRoomState } from "@/lib/wild";
+
+function formatCountdown(endsAt: string | null, now: number) {
+  if (!endsAt) return "No time limit";
+  const seconds = Math.ceil((Date.parse(endsAt) - now) / 1000);
+  if (seconds <= 0) return "MISSION EXPIRED";
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")} remaining`;
+}
 
 const encounterMessages: Record<WildEncounterStatus, string> = {
   valid: "Verified encounter ✓", self_scan: "You can't scan yourself.", wrong_mission: "This code belongs to another Mission.", wrong_game: "This player isn't in this Wild game.", wrong_room: "This code belongs to another room.", wrong_faction: "This objective belongs to another faction.", wrong_animal: "That player is in another Animal Pack.", same_faction_required: "Find someone from your own faction.", different_faction_required: "Find someone from another faction.", specific_faction_required: "That player isn't in the required faction.", duplicate: "You've already verified with this player for this Mission.", expired: "That code expired. Ask them to refresh it.", mission_ended: "This Mission is no longer active.", game_ended: "The Wild has ended.", invalid: "That temporary Mission code isn't valid.",
 };
 
 export default function WildClient({ roomId }: { roomId: string }) {
+  const router = useRouter();
   const [supabase] = useState(() => createSupabaseClient());
   const [state, setState] = useState<WildRoomState | null>(null);
   const [busy, setBusy] = useState(false);
@@ -20,6 +29,8 @@ export default function WildClient({ roomId }: { roomId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [capture, setCapture] = useState<string | null>(null);
   const [encounterState, setEncounterState] = useState<WildEncounterState | null>(null);
+  const [matchState, setMatchState] = useState<WildMatchState | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const [encounterMode, setEncounterMode] = useState<"details" | "qr" | "code">("details");
   const [encounterToken, setEncounterToken] = useState<{ qr_payload: string; short_code: string; expires_at: string } | null>(null);
   const [encounterCode, setEncounterCode] = useState("");
@@ -57,6 +68,11 @@ export default function WildClient({ roomId }: { roomId: string }) {
       setEncounterState(null);
       setEncounterMode("details");
     }
+    if (next.assignment && next.mission?.config.verification_type === "match_faction") {
+      setMatchState(await getWildMatchState(supabase, next.mission.id, token));
+    } else {
+      setMatchState(null);
+    }
   }, [roomId, supabase]);
 
   useEffect(() => {
@@ -83,6 +99,7 @@ export default function WildClient({ roomId }: { roomId: string }) {
         .on("postgres_changes", { event: "*", schema: "public", table: "room_missions", filter: `room_id=eq.${roomId}` }, () => void load())
         .on("postgres_changes", { event: "*", schema: "public", table: "mission_completions" }, () => void load())
         .on("postgres_changes", { event: "*", schema: "public", table: "mission_encounters" }, refreshGame)
+        .on("postgres_changes", { event: "*", schema: "public", table: "mission_match_verifications" }, () => void load())
         .subscribe();
     };
     void subscribe();
@@ -92,6 +109,11 @@ export default function WildClient({ roomId }: { roomId: string }) {
       if (channel) void supabase.removeChannel(channel);
     };
   }, [load, roomId, supabase]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (!capture) return;
@@ -205,6 +227,17 @@ export default function WildClient({ roomId }: { roomId: string }) {
     finally { setBusy(false); }
   }
 
+  async function startEventMatch() {
+    setBusy(true); setError(null);
+    try {
+      const pool = await getOrCreateEventMatchPool(supabase, roomId);
+      router.push(`/match?pool=${encodeURIComponent(pool.poolId)}&roomId=${encodeURIComponent(roomId)}`);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not open this event's Match pool.");
+      setBusy(false);
+    }
+  }
+
   if (!state) return <main className="mx-auto max-w-4xl p-6 text-white">Loading the Wild…</main>;
   if (!state.game) return <main className="mx-auto max-w-4xl p-6 text-white"><Link href={`/room/${roomId}`} className="text-purple-300">← Back to room</Link><h1 className="mt-8 text-4xl font-black">THE WILD IS QUIET</h1><p className="mt-3 text-zinc-400">The host has not started Into the Wild.</p></main>;
 
@@ -247,7 +280,14 @@ export default function WildClient({ roomId }: { roomId: string }) {
               <h2 className="mt-3 text-2xl font-black">{state.mission.title}</h2>
               {state.mission.description && <p className="mt-2 text-zinc-300">{state.mission.description}</p>}
               <p className="mt-3 text-sm font-black text-purple-200">+{state.mission.config.influence_reward} influence · {state.territories.find((item) => item.key === state.mission?.config.territory_key)?.display_name}</p>
-              {state.mission.config.verification_type === "memory_upload" ? (
+              <p className="mt-2 text-sm font-black text-zinc-300">{formatCountdown(state.mission.ends_at, now)}</p>
+              {state.mission.config.verification_type === "match_faction" ? (
+                <div className="mt-4">
+                  <p className="font-black text-white">Match with unique players from opposing factions.</p>
+                  {matchState?.eligible ? <p className="mt-2 text-3xl font-black text-fuchsia-300">{Math.min(matchState.progress, matchState.required_matches)} / {matchState.required_matches}</p> : <p className="mt-3 text-sm font-black text-amber-300">This objective belongs to another faction.</p>}
+                  {matchState?.completed ? <p className="mt-4 font-black text-emerald-300">MISSION COMPLETE ✓ Influence awarded.</p> : matchState?.eligible && <button type="button" onClick={() => void startEventMatch()} disabled={busy || !matchState.mission_active} className="mt-4 rounded-lg bg-fuchsia-600 px-5 py-3 font-black disabled:opacity-50">{busy ? "Opening Match…" : "Match with people here"}</button>}
+                </div>
+              ) : state.mission.config.verification_type === "memory_upload" ? (
                 <div className="mt-4">
                   <p className="font-black text-white">Requirement: {state.mission.config.required_media_type === "image" ? "Upload a new photo." : state.mission.config.required_media_type === "video" ? "Upload a new video." : "Upload a new photo or video."}</p>
                   {!state.mission.eligible ? <p className="mt-3 text-sm font-black text-amber-300">This objective belongs to another faction.</p> : state.mission.viewer_completed ? <p className="mt-4 font-black text-emerald-300">MEMORY VERIFIED ✓ Influence awarded.</p> : <div className="mt-4 flex flex-wrap gap-3">

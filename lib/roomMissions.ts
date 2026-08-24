@@ -16,12 +16,14 @@ export type RoomMission = {
     faction_key?: string;
     territory_key?: string;
     influence_reward?: number;
-    verification_type?: "none" | "encounter" | "memory_upload";
+    verification_type?: "none" | "encounter" | "memory_upload" | "match_faction";
     encounter_relationship?: "same_faction" | "different_faction" | "specific_faction" | null;
     required_encounters?: number;
     target_faction?: string | null;
     required_media_type?: "any" | "image" | "video";
     required_memories?: number;
+    match_relationship?: "opposing_faction";
+    required_matches?: number;
   };
   status: "draft" | "active" | "ended";
   starts_at: string | null;
