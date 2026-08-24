@@ -460,3 +460,11 @@ export async function verifyMemoryMissionCompletion(
   if (error) throw new Error(error.message);
   return data as { status: "verified"; mission_id: string; memory_id: string; completed: boolean };
 }
+
+export async function claimMemoryMissionCompletion(supabase: SupabaseClient, missionId: string) {
+  const { data, error } = await supabase.rpc("claim_memory_mission_completion", {
+    p_mission_id: missionId,
+  });
+  if (error) throw new Error(error.message);
+  return data as { status: "verified"; mission_id: string; memory_id: string; completed: boolean };
+}

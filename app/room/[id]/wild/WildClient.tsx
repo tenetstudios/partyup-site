@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { createSupabaseClient } from "@/lib/supabase";
-import { createGuestSession, readStoredGuestSession } from "@/lib/matchmaking";
+import { createGuestSession, ensurePartyUpIdentity, readStoredGuestSession } from "@/lib/matchmaking";
+import { claimMemoryMissionCompletion, verifyMemoryMissionCompletion } from "@/lib/roomMissions";
 import { completeWildMission, createWildEncounterToken, enterWildGame, getWildEncounterState, getWildRoomState, redeemWildEncounterToken, wildFactionByKey, type WildEncounterState, type WildEncounterStatus, type WildRoomState } from "@/lib/wild";
 
 const encounterMessages: Record<WildEncounterStatus, string> = {
@@ -15,6 +16,7 @@ export default function WildClient({ roomId }: { roomId: string }) {
   const [supabase] = useState(() => createSupabaseClient());
   const [state, setState] = useState<WildRoomState | null>(null);
   const [busy, setBusy] = useState(false);
+  const [memoryUploading, setMemoryUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [capture, setCapture] = useState<string | null>(null);
   const [encounterState, setEncounterState] = useState<WildEncounterState | null>(null);
@@ -131,11 +133,63 @@ export default function WildClient({ roomId }: { roomId: string }) {
     if (!state?.mission) return;
     setBusy(true); setError(null);
     try {
-      const token = await ensureGuestToken();
-      await completeWildMission(supabase, state.mission.id, token);
-      await load(token);
+      if (state.mission.config.verification_type === "memory_upload") {
+        await claimMemoryMissionCompletion(supabase, state.mission.id);
+        await load();
+      } else {
+        const token = await ensureGuestToken();
+        await completeWildMission(supabase, state.mission.id, token);
+        await load(token);
+      }
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not complete this Wild Mission."); }
     finally { setBusy(false); }
+  }
+
+  async function uploadMissionMemory(file: File | null) {
+    if (!file || !state?.mission || memoryUploading) return;
+    setMemoryUploading(true); setError(null);
+    let uploadedPath: string | null = null;
+    let memoryCreated = false;
+    try {
+      const { data } = await supabase.auth.getUser();
+      if (!data.user) throw new Error("Sign in to upload and verify a Mission Memory.");
+
+      const mediaType = file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : null;
+      if (!mediaType) throw new Error("Choose a photo or video file.");
+      const requiredType = state.mission.config.required_media_type ?? "any";
+      if (requiredType !== "any" && mediaType !== requiredType) {
+        throw new Error(requiredType === "image" ? "This Mission requires a photo." : "This Mission requires a video.");
+      }
+      const sizeLimit = mediaType === "image" ? 12 * 1024 * 1024 : 50 * 1024 * 1024;
+      if (file.size > sizeLimit) throw new Error(mediaType === "image" ? "Photos must be 12 MB or smaller." : "Videos must be 50 MB or smaller.");
+
+      const identity = await ensurePartyUpIdentity(supabase);
+      const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-");
+      uploadedPath = `${roomId}/${identity.id}/${Date.now()}-${cleanName}`;
+      const { error: uploadError } = await supabase.storage.from("room-memories").upload(uploadedPath, file, {
+        contentType: file.type,
+        upsert: false,
+      });
+      if (uploadError) throw new Error(uploadError.message);
+
+      const { data: memory, error: insertError } = await supabase.from("room_memories").insert({
+        room_id: roomId,
+        uploader_identity_id: identity.id,
+        media_type: mediaType,
+        media_path: uploadedPath,
+      }).select("id").single<{ id: string }>();
+      if (insertError) throw new Error(insertError.message);
+      memoryCreated = true;
+
+      await verifyMemoryMissionCompletion(supabase, state.mission.id, memory.id);
+      await load();
+    } catch (reason) {
+      if (uploadedPath && !memoryCreated) await supabase.storage.from("room-memories").remove([uploadedPath]);
+      const detail = reason instanceof Error ? reason.message : "Could not upload this Memory.";
+      setError(memoryCreated ? `Memory uploaded, but Mission verification failed: ${detail}` : detail);
+    } finally {
+      setMemoryUploading(false);
+    }
   }
 
   async function redeemEncounter() {
@@ -196,7 +250,23 @@ export default function WildClient({ roomId }: { roomId: string }) {
               {state.mission.config.verification_type === "memory_upload" ? (
                 <div className="mt-4">
                   <p className="font-black text-white">Requirement: {state.mission.config.required_media_type === "image" ? "Upload a new photo." : state.mission.config.required_media_type === "video" ? "Upload a new video." : "Upload a new photo or video."}</p>
-                  {!state.mission.eligible ? <p className="mt-3 text-sm font-black text-amber-300">This objective belongs to another faction.</p> : state.mission.viewer_completed ? <p className="mt-4 font-black text-emerald-300">MEMORY VERIFIED ✓ Influence awarded.</p> : <Link href={`/room/${roomId}/memories?missionId=${state.mission.id}`} className="mt-4 inline-flex rounded-lg bg-fuchsia-600 px-5 py-3 font-black">Add Memory</Link>}
+                  {!state.mission.eligible ? <p className="mt-3 text-sm font-black text-amber-300">This objective belongs to another faction.</p> : state.mission.viewer_completed ? <p className="mt-4 font-black text-emerald-300">MEMORY VERIFIED ✓ Influence awarded.</p> : <div className="mt-4 flex flex-wrap gap-3">
+                    <label className={`inline-flex cursor-pointer items-center rounded-lg bg-fuchsia-600 px-5 py-3 font-black ${memoryUploading || busy ? "pointer-events-none opacity-50" : ""}`}>
+                      {memoryUploading ? "Uploading…" : state.mission.config.required_media_type === "image" ? "Upload Photo" : state.mission.config.required_media_type === "video" ? "Upload Video" : "Upload Memory"}
+                      <input
+                        type="file"
+                        className="sr-only"
+                        accept={state.mission.config.required_media_type === "image" ? "image/*" : state.mission.config.required_media_type === "video" ? "video/mp4,video/quicktime,video/webm" : "image/*,video/mp4,video/quicktime,video/webm"}
+                        disabled={memoryUploading || busy}
+                        onChange={(event) => {
+                          const file = event.currentTarget.files?.[0] ?? null;
+                          event.currentTarget.value = "";
+                          void uploadMissionMemory(file);
+                        }}
+                      />
+                    </label>
+                    <button type="button" onClick={() => void complete()} disabled={busy || memoryUploading} className="rounded-lg bg-purple-600 px-5 py-3 font-black disabled:opacity-50">{busy ? "Checking…" : "Complete Mission"}</button>
+                  </div>}
                 </div>
               ) : state.mission.config.verification_type === "encounter" ? (
                 <div className="mt-4">
