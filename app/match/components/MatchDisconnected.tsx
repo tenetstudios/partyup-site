@@ -5,9 +5,13 @@ import React from "react";
 export default function MatchDisconnected({
   message = "The call has ended. You can match again or return to PartyUp.",
   onRematch,
+  returnHref = "/",
+  returnLabel = "Return Home",
 }: {
   message?: string;
   onRematch?: () => void;
+  returnHref?: string;
+  returnLabel?: string;
 }) {
   return (
     <div className="mx-auto max-w-3xl">
@@ -18,7 +22,7 @@ export default function MatchDisconnected({
         <p className="mt-5 text-sm font-bold text-white">Your next connection is one signal away.</p>
         <div className="mt-7 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
           <button onClick={onRematch} className="min-h-12 rounded-full bg-pink-500 px-6 py-3 font-black text-white transition hover:-translate-y-0.5 hover:bg-pink-400 active:translate-y-0">Find someone new</button>
-          <Link href="/" className="px-5 py-3 text-sm font-bold text-zinc-300 hover:text-white">Return Home</Link>
+          <Link href={returnHref} className="px-5 py-3 text-sm font-bold text-zinc-300 hover:text-white">{returnLabel}</Link>
         </div>
       </div>
     </div>

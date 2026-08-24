@@ -641,6 +641,8 @@ export default function MatchScreen({
         <MatchDisconnected
           message={disconnectedMessage ?? undefined}
           onRematch={startMatching}
+          returnHref={initialRoomId ? `/room/${encodeURIComponent(initialRoomId)}` : "/"}
+          returnLabel={initialRoomId ? "Return to Event" : "Return Home"}
         />
       )}
     </div>
