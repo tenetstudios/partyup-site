@@ -16,10 +16,12 @@ export type RoomMission = {
     faction_key?: string;
     territory_key?: string;
     influence_reward?: number;
-    verification_type?: "none" | "encounter";
+    verification_type?: "none" | "encounter" | "memory_upload";
     encounter_relationship?: "same_faction" | "different_faction" | "specific_faction" | null;
     required_encounters?: number;
     target_faction?: string | null;
+    required_media_type?: "any" | "image" | "video";
+    required_memories?: number;
   };
   status: "draft" | "active" | "ended";
   starts_at: string | null;
@@ -40,6 +42,8 @@ export type RoomMissionInput = {
   title: string;
   description?: string;
   durationMinutes?: number | null;
+  verificationType?: "none" | "memory_upload";
+  requiredMediaType?: "any" | "image" | "video";
 };
 
 export type AnimalPackState = {
@@ -264,11 +268,13 @@ export async function publishRoomMission(
   input: RoomMissionInput,
 ) {
   const normalized = normalizeRoomMissionInput(input);
-  const { data, error } = await supabase.rpc("publish_room_mission", {
+  const memoryVerification = input.verificationType === "memory_upload";
+  const { data, error } = await supabase.rpc(memoryVerification ? "publish_memory_room_mission" : "publish_room_mission", {
     p_room_id: roomId,
     p_title: normalized.title,
     p_description: normalized.description,
     p_duration_minutes: normalized.durationMinutes,
+    ...(memoryVerification ? { p_required_media_type: input.requiredMediaType ?? "any" } : {}),
   });
 
   if (error) {
@@ -440,4 +446,17 @@ export async function completeRoomMission(supabase: SupabaseClient, missionId: s
   }
 
   return firstRow<{ id: string; completed_at: string }>(data);
+}
+
+export async function verifyMemoryMissionCompletion(
+  supabase: SupabaseClient,
+  missionId: string,
+  memoryId: string,
+) {
+  const { data, error } = await supabase.rpc("verify_memory_mission_completion", {
+    p_mission_id: missionId,
+    p_memory_id: memoryId,
+  });
+  if (error) throw new Error(error.message);
+  return data as { status: "verified"; mission_id: string; memory_id: string; completed: boolean };
 }

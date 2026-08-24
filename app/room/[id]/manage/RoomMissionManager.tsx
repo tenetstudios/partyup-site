@@ -52,6 +52,8 @@ export default function RoomMissionManager({
   const [animalCount, setAnimalCount] = useState("6");
   const [targetEncounters, setTargetEncounters] = useState("3");
   const [targetConnections, setTargetConnections] = useState("3");
+  const [genericVerification, setGenericVerification] = useState<"none" | "memory_upload">("none");
+  const [requiredMediaType, setRequiredMediaType] = useState<"any" | "image" | "video">("any");
   const [hostResults, setHostResults] = useState<MissionCompletedParticipants | null>(null);
   const [operations, setOperations] = useState<MissionOperationsData | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
@@ -192,6 +194,8 @@ export default function RoomMissionManager({
           title,
           description,
           durationMinutes: duration ? Number(duration) : null,
+          verificationType: genericVerification,
+          requiredMediaType,
         });
       }
       setTitle("");
@@ -460,6 +464,8 @@ export default function RoomMissionManager({
                 className="w-full resize-none rounded-md bg-black px-3 py-3 text-sm text-white outline-none placeholder:text-zinc-500"
               />
             </label>}
+            {missionType === "generic" && <><label className="block"><span className="mb-1 block text-sm font-black text-purple-300">Verification</span><select value={genericVerification} onChange={(event) => setGenericVerification(event.target.value as "none" | "memory_upload")} className="w-full rounded-md bg-black px-3 py-3 text-sm text-white outline-none"><option value="none">None — manual completion</option><option value="memory_upload">Memory upload</option></select></label>{genericVerification === "memory_upload" && <><label className="block"><span className="mb-1 block text-sm font-black text-purple-300">Required media</span><select value={requiredMediaType} onChange={(event) => setRequiredMediaType(event.target.value as typeof requiredMediaType)} className="w-full rounded-md bg-black px-3 py-3 text-sm text-white outline-none"><option value="any">Photo or video</option><option value="image">Photo</option><option value="video">Video</option></select></label><div className="rounded-md border border-purple-300/25 bg-purple-950/20 p-3 text-sm leading-5 text-purple-100">Participants must post a new Room Memory while this Mission is active. Existing or removed Memories cannot qualify.</div></>}
+            </>}
             <label className="block">
               <span className="mb-1 block text-sm font-black text-purple-300">Duration</span>
               <select

@@ -14,6 +14,7 @@ import {
   type RoomMemory,
 } from "@/lib/memories";
 import { ensurePartyUpIdentity } from "@/lib/matchmaking";
+import { verifyMemoryMissionCompletion } from "@/lib/roomMissions";
 import { createSupabaseClient } from "@/lib/supabase";
 
 type Room = {
@@ -69,7 +70,7 @@ function BookmarkIcon({ filled = false }: { filled?: boolean }) {
   );
 }
 
-export default function RoomMemoriesClient({ roomId }: { roomId: string }) {
+export default function RoomMemoriesClient({ roomId, missionId = null }: { roomId: string; missionId?: string | null }) {
   const supabase = useMemo(() => createSupabaseClient(), []);
   const [room, setRoom] = useState<Room | null>(null);
   const [memories, setMemories] = useState<RoomMemory[]>([]);
@@ -182,16 +183,29 @@ export default function RoomMemoriesClient({ roomId }: { roomId: string }) {
         throw new Error(uploadError.message);
       }
 
-      const { error: insertError } = await supabase.from("room_memories").insert({
-        room_id: roomId,
-        uploader_identity_id: currentIdentityId,
-        media_type: mediaType,
-        media_path: filePath,
-      });
+      const { data: insertedMemory, error: insertError } = await supabase
+        .from("room_memories")
+        .insert({
+          room_id: roomId,
+          uploader_identity_id: currentIdentityId,
+          media_type: mediaType,
+          media_path: filePath,
+        })
+        .select("id")
+        .single<{ id: string }>();
 
       if (insertError) {
         await supabase.storage.from("room-memories").remove([filePath]);
         throw new Error(insertError.message);
+      }
+
+      if (missionId && insertedMemory) {
+        try {
+          await verifyMemoryMissionCompletion(supabase, missionId, insertedMemory.id);
+          setMessage("Memory verified — Mission complete ✓");
+        } catch (verificationError) {
+          setMessage(`Memory posted, but it did not complete the Mission: ${verificationError instanceof Error ? verificationError.message : "verification failed"}`);
+        }
       }
 
       await loadMemories();
@@ -298,6 +312,8 @@ export default function RoomMemoriesClient({ roomId }: { roomId: string }) {
             />
           </label>}
         </div>
+
+        {missionId && !ended && <div className={`${partyUpTheme.glassElevated} mt-6 px-4 py-3 text-sm font-bold text-purple-100`}>Mission upload: post a new qualifying Memory below. Only this newly uploaded Memory will be submitted as Mission evidence.</div>}
 
         {ended && <div className={`${partyUpTheme.glassElevated} mt-6 px-4 py-3 text-sm font-bold text-purple-100`}>This event has ended. Its Memories are retained and no new uploads are accepted.</div>}
 

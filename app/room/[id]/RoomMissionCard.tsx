@@ -166,6 +166,7 @@ export default function RoomMissionCard({
   const isAnimalPack = mission.mission_type === "animal_pack";
   const isConnection = mission.mission_type === "connection";
   const isWild = mission.mission_type === "wild_faction";
+  const isMemoryMission = mission.config.verification_type === "memory_upload";
   const animalName = animalState ? (animalDetails[animalState.assignment_key]?.plural ?? "pack members") : "pack members";
   const tokenRefreshSeconds = encounterToken && now
     ? Math.max(0, Math.ceil((Date.parse(encounterToken.expires_at) - now - 5_000) / 1000))
@@ -278,14 +279,18 @@ export default function RoomMissionCard({
             <div className="text-center">
               {mission.description && <p className="mx-auto max-w-3xl whitespace-pre-wrap text-sm leading-6 text-zinc-300">{mission.description}</p>}
               <p className="mt-3 text-sm font-black text-fuchsia-200">+{mission.config.influence_reward ?? 0} faction influence</p>
-              <Link href={`/room/${roomId}/wild`} className="mt-5 inline-flex min-h-12 items-center rounded-md bg-fuchsia-600 px-5 font-black text-white hover:bg-fuchsia-500">Open Into the Wild</Link>
+              {isMemoryMission && <p className="mt-3 text-sm font-black text-purple-200">Requirement: {mission.config.required_media_type === "image" ? "Upload a new photo." : mission.config.required_media_type === "video" ? "Upload a new video." : "Upload a new photo or video."}</p>}
+              <Link href={isMemoryMission && !mission.viewer_completed ? `/room/${roomId}/memories?missionId=${mission.id}` : `/room/${roomId}/wild`} className="mt-5 inline-flex min-h-12 items-center rounded-md bg-fuchsia-600 px-5 font-black text-white hover:bg-fuchsia-500">{isMemoryMission ? mission.viewer_completed ? "Memory verified ✓" : "Add Memory" : "Open Into the Wild"}</Link>
               {mission.can_manage && <p className="mt-3 text-sm font-bold text-zinc-400">{mission.completion_count} completed</p>}
             </div>
           ) : (
             <>
               {mission.description && <p className="max-w-3xl whitespace-pre-wrap text-sm leading-6 text-zinc-300">{mission.description}</p>}
+              {isMemoryMission && <p className="mt-3 text-sm font-black text-purple-200">Requirement: {mission.config.required_media_type === "image" ? "Upload a new photo." : mission.config.required_media_type === "video" ? "Upload a new video." : "Upload a new photo or video."}</p>}
               <div className="mt-4 flex flex-wrap items-center gap-3">
+                {isMemoryMission && !mission.viewer_completed ? <Link href={`/room/${roomId}/memories?missionId=${mission.id}`} className="inline-flex min-h-11 items-center rounded-md bg-[#ef2f82] px-5 text-sm font-black text-white hover:bg-[#d92773]">Add Memory</Link> : isMemoryMission ? <span className="rounded-md bg-emerald-800 px-5 py-3 text-sm font-black text-white">Memory verified ✓</span> :
                 <button type="button" onClick={() => void markComplete()} disabled={busy || mission.viewer_completed || Boolean(remaining?.expired)} className={`min-h-11 rounded-md px-5 text-sm font-black text-white disabled:cursor-not-allowed ${mission.viewer_completed ? "bg-emerald-700" : "bg-[#ef2f82] hover:bg-[#d92773] disabled:opacity-50"}`}>{mission.viewer_completed ? "Completed" : busy ? "Completing..." : "Mark Complete"}</button>
+                }
                 {mission.can_manage && <span className="text-sm font-bold text-zinc-400">{mission.completion_count} completed</span>}
               </div>
             </>
