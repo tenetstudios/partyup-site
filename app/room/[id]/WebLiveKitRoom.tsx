@@ -1,7 +1,7 @@
 "use client";
 
 import type React from "react";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import {
   LiveKitRoom,
@@ -20,6 +20,11 @@ type RoomLiveState = {
   signal_authoritative: boolean;
 };
 
+type MyStreamQueueState = {
+  status: "waiting" | "live" | "ended" | "removed";
+  priority: number;
+};
+
 const subscribeToClientEnvironment = () => () => undefined;
 
 export default function WebLiveKitRoom({ roomId }: { roomId: string }) {
@@ -28,8 +33,11 @@ export default function WebLiveKitRoom({ roomId }: { roomId: string }) {
   const [shouldConnect, setShouldConnect] = useState(false);
   const [publisherIntent, setPublisherIntent] = useState(false);
   const [canInitiateStream, setCanInitiateStream] = useState(false);
+  const [myQueueState, setMyQueueState] = useState<MyStreamQueueState | null>(null);
+  const [activeBroadcasterId, setActiveBroadcasterId] = useState<string | null>(null);
   const [idleMedia, setIdleMedia] = useState<RoomIdleMedia | null>(null);
   const [liveState, setLiveState] = useState<RoomLiveState | null>(null);
+  const previouslyAllowedToPublish = useRef(false);
   const livekitUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL;
 
   function resetConnection() {
@@ -42,25 +50,33 @@ export default function WebLiveKitRoom({ roomId }: { roomId: string }) {
     const supabase = createSupabaseClient();
 
     async function loadFrameState() {
-      const [{ data: userData }, { data: nextLiveState }] = await Promise.all([
+      const [{ data: userData }, { data: nextLiveState }, { data: activeQueueEntry }] = await Promise.all([
         supabase.auth.getUser(),
         supabase
           .from("room_live_state")
           .select("is_live,signal_authoritative")
           .eq("room_id", roomId)
           .maybeSingle(),
+        supabase
+          .from("room_stream_queue")
+          .select("user_id")
+          .eq("room_id", roomId)
+          .eq("status", "live")
+          .maybeSingle(),
       ]);
 
       setLiveState((nextLiveState as RoomLiveState | null) ?? null);
+      setActiveBroadcasterId(activeQueueEntry?.user_id ?? null);
       setIdleMedia(await getRoomIdleMedia(supabase, roomId).catch(() => null));
 
       const user = userData.user;
       if (!user) {
         setCanInitiateStream(false);
+        setMyQueueState(null);
         return;
       }
 
-      const [{ data: room }, { data: attendee }] = await Promise.all([
+      const [{ data: room }, { data: attendee }, { data: ownQueueEntry }] = await Promise.all([
         supabase.from("event_rooms").select("host_id").eq("id", roomId).maybeSingle(),
         supabase
           .from("event_attendees")
@@ -68,11 +84,19 @@ export default function WebLiveKitRoom({ roomId }: { roomId: string }) {
           .eq("event_room_id", roomId)
           .eq("user_id", user.id)
           .maybeSingle(),
+        supabase
+          .from("room_stream_queue")
+          .select("status,priority")
+          .eq("room_id", roomId)
+          .eq("user_id", user.id)
+          .maybeSingle(),
       ]);
 
+      const queueState = (ownQueueEntry as MyStreamQueueState | null) ?? null;
+      setMyQueueState(queueState);
       setCanInitiateStream(
         room?.host_id === user.id ||
-          (attendee?.status === "accepted" && attendee?.can_stream === true),
+          (attendee?.status === "accepted" && attendee?.can_stream === true && queueState?.status === "live"),
       );
     }
 
@@ -91,11 +115,17 @@ export default function WebLiveKitRoom({ roomId }: { roomId: string }) {
         (payload) => {
           const row = payload.new as RoomLiveState;
           setLiveState(row);
+          void loadFrameState();
         },
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "event_attendees", filter: `event_room_id=eq.${roomId}` },
+        () => void loadFrameState(),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "room_stream_queue", filter: `room_id=eq.${roomId}` },
         () => void loadFrameState(),
       )
       .subscribe();
@@ -116,6 +146,26 @@ export default function WebLiveKitRoom({ roomId }: { roomId: string }) {
       }
     });
   }, [liveState, publisherIntent]);
+
+  useEffect(() => {
+    if (!publisherIntent || canInitiateStream) return;
+    queueMicrotask(() => {
+      setPublisherIntent(false);
+      setShouldConnect(false);
+      setToken("");
+      setError("");
+    });
+  }, [canInitiateStream, publisherIntent]);
+
+  useEffect(() => {
+    const newlyAllowed = canInitiateStream && !previouslyAllowedToPublish.current;
+    previouslyAllowedToPublish.current = canInitiateStream;
+    if (!newlyAllowed || !shouldConnect || publisherIntent) return;
+
+    setShouldConnect(false);
+    setToken("");
+    queueMicrotask(() => setShouldConnect(true));
+  }, [canInitiateStream, publisherIntent, shouldConnect]);
 
   useEffect(() => {
     if (!shouldConnect) return;
@@ -178,6 +228,7 @@ export default function WebLiveKitRoom({ roomId }: { roomId: string }) {
             }}
           />
         )}
+        {myQueueState?.status === "waiting" && <StreamQueueNotice />}
       </PlayerFrame>
     );
   }
@@ -197,7 +248,8 @@ export default function WebLiveKitRoom({ roomId }: { roomId: string }) {
     >
       <CustomStreamView
         canInitiateStream={canInitiateStream}
-        expectedLive={Boolean(liveState?.is_live)}
+        expectedLive={Boolean(activeBroadcasterId) || Boolean(liveState?.is_live)}
+        activeBroadcasterId={activeBroadcasterId}
         idleMedia={idleMedia?.enabled ? idleMedia : null}
         onLeave={() => {
           setPublisherIntent(false);
@@ -214,6 +266,7 @@ export default function WebLiveKitRoom({ roomId }: { roomId: string }) {
 }
 
 function CustomStreamView({
+  activeBroadcasterId,
   canInitiateStream,
   expectedLive,
   idleMedia,
@@ -221,6 +274,7 @@ function CustomStreamView({
   onPublishingChange,
   roomId,
 }: {
+  activeBroadcasterId: string | null;
   canInitiateStream: boolean;
   expectedLive: boolean;
   idleMedia: RoomIdleMedia | null;
@@ -240,9 +294,13 @@ function CustomStreamView({
     { onlySubscribed: false },
   );
 
-  const videoTracks = tracks.filter((trackRef) => {
+  const publishedVideoTracks = tracks.filter((trackRef) => {
     return trackRef.publication?.track && !trackRef.publication.isMuted;
   });
+
+  const videoTracks = activeBroadcasterId
+    ? publishedVideoTracks.filter((trackRef) => trackRef.participant.identity === activeBroadcasterId)
+    : publishedVideoTracks;
 
   function getTrackKey(trackRef: (typeof videoTracks)[number]) {
     return `${trackRef.participant.identity}-${trackRef.source}`;
@@ -430,6 +488,15 @@ function StreamIcon() {
         <rect x="5" y="8" width="22" height="14" rx="2" />
         <path d="M12 26h8M16 22v4M12 17a4 4 0 0 1 8 0M9 17a7 7 0 0 1 14 0M15 17h2" />
       </svg>
+    </div>
+  );
+}
+
+function StreamQueueNotice() {
+  return (
+    <div className="absolute bottom-5 left-1/2 z-30 w-[min(92%,420px)] -translate-x-1/2 rounded-lg border border-purple-300/25 bg-[#160824]/95 px-4 py-3 text-center shadow-xl backdrop-blur">
+      <p className="text-sm font-black text-purple-100">You&apos;re in the stream queue</p>
+      <p className="mt-1 text-xs font-bold text-zinc-400">The host will give you a Go Live button when it&apos;s your turn.</p>
     </div>
   );
 }

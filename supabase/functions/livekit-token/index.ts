@@ -63,18 +63,28 @@ Deno.serve(async (req) => {
   if (room.status === "ended") return jsonResponse({ error: "This event has ended." }, 410);
 
   const isHost = room.host_id === userData.user.id;
-  const { data: attendee } = await admin
-    .from("event_attendees")
-    .select("status,can_stream")
-    .eq("event_room_id", room.id)
-    .eq("user_id", userData.user.id)
-    .maybeSingle();
+  const [{ data: attendee }, { data: queueEntry }] = await Promise.all([
+    admin
+      .from("event_attendees")
+      .select("status,can_stream")
+      .eq("event_room_id", room.id)
+      .eq("user_id", userData.user.id)
+      .maybeSingle(),
+    admin
+      .from("room_stream_queue")
+      .select("status")
+      .eq("room_id", room.id)
+      .eq("user_id", userData.user.id)
+      .maybeSingle(),
+  ]);
   const isAccepted = attendee?.status === "accepted";
   if (room.is_private && !isHost && !isAccepted) {
     return jsonResponse({ error: "You are not approved for this private room." }, 403);
   }
 
-  const mayPublish = body.canPublish === true && (isHost || (isAccepted && attendee?.can_stream === true));
+  const mayPublish = body.canPublish === true && (
+    isHost || (isAccepted && attendee?.can_stream === true && queueEntry?.status === "live")
+  );
   const participantName = typeof body.participantName === "string" && body.participantName.trim()
     ? body.participantName.trim().slice(0, 80)
     : `Guest ${userData.user.id.slice(0, 4)}`;
