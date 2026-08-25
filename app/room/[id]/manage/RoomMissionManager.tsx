@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createSupabaseClient } from "@/lib/supabase";
 import {
+  clearPastRoomMission,
   endRoomMission,
   getActiveRoomMission,
   getMissionCompletedParticipants,
@@ -62,6 +63,7 @@ export default function RoomMissionManager({
   const [historyOperationsMissionId, setHistoryOperationsMissionId] = useState<string | null>(null);
   const [historyOperations, setHistoryOperations] = useState<MissionOperationsData | null>(null);
   const [busy, setBusy] = useState(false);
+  const [clearingHistoryId, setClearingHistoryId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const recommendedParticipants = Number(animalCount) * (Number(targetEncounters) + 1);
@@ -294,6 +296,30 @@ export default function RoomMissionManager({
     setHistoryResults({ ...next, participants: [...historyResults.participants, ...next.participants] });
   }
 
+  async function clearHistoryItem(item: RoomMissionHistoryItem) {
+    if (!window.confirm(`Clear “${item.title}” from Past Missions? Its results and analytics will remain stored.`)) return;
+    setClearingHistoryId(item.id);
+    setError(null);
+    setSuccess(null);
+    try {
+      await clearPastRoomMission(supabase, item.id);
+      if (historyResultsMissionId === item.id) {
+        setHistoryResultsMissionId(null);
+        setHistoryResults(null);
+      }
+      if (historyOperationsMissionId === item.id) {
+        setHistoryOperationsMissionId(null);
+        setHistoryOperations(null);
+      }
+      await loadData();
+      setSuccess("Past Mission cleared from the dashboard.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not clear the past Mission.");
+    } finally {
+      setClearingHistoryId(null);
+    }
+  }
+
   return (
     <section id="missions" className="mt-8 rounded-xl border border-white/10 bg-[#12051e]">
       <div className="border-b border-white/10 p-4">
@@ -512,6 +538,7 @@ export default function RoomMissionManager({
                       <span className="text-sm font-black text-zinc-300">{item.completion_count} completed</span>
                       {!["connection", "wild_faction"].includes(item.mission_type) && <button type="button" onClick={() => void toggleHistoryOperations(item.id)} className="rounded border border-white/15 px-2 py-1 text-xs font-black text-zinc-200">{historyOperationsMissionId === item.id ? "Hide Operations" : "View Operations"}</button>}
                       <button type="button" onClick={() => void toggleHistoryResults(item.id)} className="rounded border border-white/15 px-2 py-1 text-xs font-black text-purple-200">{historyResultsMissionId === item.id ? "Hide" : "View Completed"}</button>
+                      <button type="button" aria-label={`Clear ${item.title} from Past Missions`} title="Clear from dashboard" disabled={clearingHistoryId === item.id} onClick={() => void clearHistoryItem(item)} className="grid h-8 w-8 place-items-center rounded border border-red-400/25 text-lg font-black leading-none text-red-200 hover:bg-red-950/40 disabled:opacity-50">×</button>
                     </div>
                   </div>
                   {historyOperationsMissionId === item.id && historyOperations && <MissionOperationsDashboard dashboard={historyOperations} />}

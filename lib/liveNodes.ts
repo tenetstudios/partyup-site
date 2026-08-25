@@ -66,6 +66,12 @@ export async function getRoomLiveNodes(supabase: SupabaseClient, roomId: string)
   return (data ?? []) as LiveNode[];
 }
 
+export async function clearFinishedLiveNode(supabase: SupabaseClient, nodeId: string) {
+  const { data, error } = await supabase.rpc("clear_finished_live_node", { p_node_id: nodeId });
+  if (error) throw new Error(error.message);
+  return Boolean(data);
+}
+
 export async function createLiveNode(
   supabase: SupabaseClient,
   roomId: string,

@@ -5,6 +5,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createSupabaseClient } from "@/lib/supabase";
 import {
+  clearFinishedLiveNode,
   createLiveNode,
   fulfillLiveNodeClaim,
   getRoomLiveNodes,
@@ -208,6 +209,11 @@ export default function LiveNodesManager({ roomId, roomEnded = false }: { roomId
     }, "A new secure poster is ready. Replace any older printout.");
   }
 
+  async function clearNode(node: LiveNode) {
+    if (!window.confirm(`Clear “${node.name}” from Live Nodes? Claims and winner records will remain stored.`)) return;
+    await run(node.id, () => clearFinishedLiveNode(supabase, node.id), "Finished Live Node cleared from the dashboard.");
+  }
+
   return (
     <section className="mt-8 overflow-hidden rounded-xl border border-fuchsia-400/20 bg-[#12051e]">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 p-4">
@@ -229,8 +235,9 @@ export default function LiveNodesManager({ roomId, roomEnded = false }: { roomId
         {nodes.map((node) => {
           const token = tokens[node.id];
           const nodeUrl = token && origin ? `${origin}/n/${token}` : null;
+          const canClear = node.status === "ended" || (node.status === "claimed" && Boolean(node.winner?.fulfilled_at));
           return <article key={node.id} className="rounded-lg border border-white/10 bg-black/30 p-4">
-            <div className="flex flex-wrap justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[0.16em] text-fuchsia-300">{node.status}</p><h3 className="mt-1 text-lg font-black">{node.name}</h3>{node.reward_description && <p className="mt-1 text-sm text-zinc-300">Reward: {node.reward_description}</p>}</div><p className="text-sm font-black">Claims {node.claim_count} / {node.max_claims}</p></div>
+            <div className="flex flex-wrap justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[0.16em] text-fuchsia-300">{node.status}</p><h3 className="mt-1 text-lg font-black">{node.name}</h3>{node.reward_description && <p className="mt-1 text-sm text-zinc-300">Reward: {node.reward_description}</p>}</div><div className="flex items-center gap-2"><p className="text-sm font-black">Claims {node.claim_count} / {node.max_claims}</p>{canClear && <button type="button" aria-label={`Clear ${node.name} from Live Nodes`} title="Clear from dashboard" disabled={busyId === node.id} onClick={() => void clearNode(node)} className="grid h-8 w-8 place-items-center rounded border border-red-400/25 text-lg font-black leading-none text-red-200 hover:bg-red-950/40 disabled:opacity-50">×</button>}</div></div>
             {nodeUrl ? <LiveNodePoster node={node} nodeUrl={nodeUrl} /> : node.status === "draft" || node.status === "armed" ? <p className="mt-3 text-xs text-zinc-500">Secure token ending in {node.token_hint}. Regenerate it if you need a new downloadable poster.</p> : null}
             {node.winner && <div className="mt-4 rounded-md border border-emerald-400/20 bg-emerald-950/20 p-3"><p className="text-xs font-black text-emerald-300">WINNER</p><p className="mt-1 font-black">{node.winner.display_name}</p><p className="text-xs text-zinc-400">Claimed {new Date(node.winner.claimed_at).toLocaleString()}</p><p className="mt-1 text-xs font-bold">{node.winner.fulfilled_at ? "Prize given" : "Prize not yet fulfilled"}</p></div>}
             {!roomEnded && <div className="mt-4 flex flex-wrap gap-2">
