@@ -55,6 +55,11 @@ export type LiveNodeScanState = {
   fulfilled_at?: string | null;
 };
 
+export type LiveNodeClaimHandoff = {
+  handoff_token: string;
+  expires_at: string;
+};
+
 export async function getRoomLiveNodes(supabase: SupabaseClient, roomId: string) {
   const { data, error } = await supabase.rpc("get_room_live_nodes", { p_room_id: roomId });
   if (error) throw new Error(error.message);
@@ -125,6 +130,32 @@ export async function claimLiveNode(
 ) {
   const { data, error } = await supabase.rpc("claim_live_node", {
     p_token: token,
+    p_guest_token: guestToken ?? null,
+  });
+  if (error) throw new Error(error.message);
+  return data as LiveNodeScanState;
+}
+
+export async function createLiveNodeClaimHandoff(
+  supabase: SupabaseClient,
+  token: string,
+  guestToken?: string | null,
+) {
+  const { data, error } = await supabase.rpc("create_live_node_claim_handoff", {
+    p_token: token,
+    p_guest_token: guestToken ?? null,
+  });
+  if (error) throw new Error(error.message);
+  return data as LiveNodeClaimHandoff;
+}
+
+export async function consumeLiveNodeClaimHandoff(
+  supabase: SupabaseClient,
+  handoffToken: string,
+  guestToken?: string | null,
+) {
+  const { data, error } = await supabase.rpc("consume_live_node_claim_handoff", {
+    p_handoff_token: handoffToken,
     p_guest_token: guestToken ?? null,
   });
   if (error) throw new Error(error.message);

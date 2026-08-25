@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { claimLiveNode, getLiveNodeScanState, type LiveNodeScanState } from "@/lib/liveNodes";
+import { claimLiveNode, createLiveNodeClaimHandoff, getLiveNodeScanState, type LiveNodeScanState } from "@/lib/liveNodes";
 import { createGuestSession, readStoredGuestSession } from "@/lib/matchmaking";
 import { createSupabaseClient } from "@/lib/supabase";
 
@@ -23,6 +23,8 @@ export default function LiveNodeClaimClient({ token }: { token: string }) {
   const [guestToken, setGuestToken] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [appHandoffToken, setAppHandoffToken] = useState<string | null>(null);
+  const [appHandoffSettled, setAppHandoffSettled] = useState(false);
 
   const load = useCallback(async () => {
     const { data } = await supabase.auth.getUser();
@@ -45,6 +47,20 @@ export default function LiveNodeClaimClient({ token }: { token: string }) {
 
   const content = state ? copyFor(state) : null;
   const won = state?.status === "winner" || state?.status === "already_claimed_by_you";
+  const appUrl = `partyup://n/${encodeURIComponent(token)}${appHandoffToken ? `?handoff=${encodeURIComponent(appHandoffToken)}` : ""}`;
+
+  useEffect(() => {
+    if (!won || appHandoffToken) return;
+    let active = true;
+    void createLiveNodeClaimHandoff(supabase, token, guestToken)
+      .then((handoff) => { if (active) setAppHandoffToken(handoff.handoff_token); })
+      .catch(() => {
+        // The normal deep link still works when browser and app already resolve
+        // to the same PartyUp identity.
+      })
+      .finally(() => { if (active) setAppHandoffSettled(true); });
+    return () => { active = false; };
+  }, [appHandoffToken, guestToken, supabase, token, won]);
 
   return <main className="grid min-h-screen place-items-center bg-[radial-gradient(circle_at_top,#35104b_0,#07000f_52%)] px-5 py-10 text-white">
     <section className={`w-full max-w-md rounded-2xl border p-6 text-center shadow-2xl ${won ? "border-emerald-300/40 bg-emerald-950/25" : "border-fuchsia-300/20 bg-black/40"}`}>
@@ -55,7 +71,9 @@ export default function LiveNodeClaimClient({ token }: { token: string }) {
         {state?.reward_description && <div className="mt-5 rounded-xl border border-white/10 bg-white/5 p-4"><p className="text-xs font-black text-zinc-400">REWARD</p><p className="mt-1 text-xl font-black">{state.reward_description}</p></div>}
         {state?.status === "active" && state.eligible !== false && <button type="button" disabled={busy} onClick={() => void claim()} className="mt-6 min-h-12 w-full rounded-lg bg-fuchsia-600 px-5 font-black hover:bg-fuchsia-500 disabled:opacity-50">{busy ? "Claiming…" : "Claim Live Node"}</button>}
         {state?.room_id && <Link href={`/room/${encodeURIComponent(state.room_id)}`} className="mt-4 inline-flex min-h-11 items-center justify-center rounded-lg border border-white/15 px-5 text-sm font-black hover:bg-white/10">Open Room</Link>}
-        <a href={`partyup://n/${encodeURIComponent(token)}`} className="mt-4 block text-sm font-black text-fuchsia-300 hover:text-fuchsia-200">Open in the PartyUp app</a>
+        {won && !appHandoffSettled
+          ? <p className="mt-4 text-sm font-black text-zinc-400">Preparing your secure return to PartyUp…</p>
+          : <a href={appUrl} className="mt-4 block text-sm font-black text-fuchsia-300 hover:text-fuchsia-200">{won ? "Return to your room in PartyUp" : "Open in the PartyUp app"}</a>}
       </>}
       {error && <p className="mt-4 rounded-lg bg-red-950/50 p-3 text-sm font-bold text-red-200">{error}</p>}
     </section>
