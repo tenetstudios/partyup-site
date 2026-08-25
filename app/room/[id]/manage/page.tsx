@@ -26,19 +26,19 @@ export default async function ManageRoomPage({
 
   const supabase = createSupabaseClient();
 
-const { data: room } = await supabase
-  .from("event_rooms")
-  .select("host_id,status")
-  .eq("id", id)
-  .single();
+  const { data: room } = await supabase
+    .from("event_rooms")
+    .select("host_id,status")
+    .eq("id", id)
+    .single();
 
   if (!room) {
-  return (
-    <main className="grid min-h-screen place-items-center bg-[#07000f] text-white">
-      <h1 className="text-3xl font-black">Room not found</h1>
-    </main>
-  );
-}
+    return (
+      <main className="grid min-h-screen place-items-center bg-[#07000f] text-white">
+        <h1 className="text-3xl font-black">Room not found</h1>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-[#07000f] text-white">
@@ -64,9 +64,9 @@ const { data: room } = await supabase
         <HostDashboardOverview roomId={id} roomEnded={room.status === "ended"} />
 
         <RoomSettingsAccordion
-          defaultOpen={room.status === "ended" ? "engagement" : "roomBroadcast"}
           roomBroadcast={room.status !== "ended" ? (
             <>
+              <RoomManagePanel roomId={id} />
               <RoomDetailsEditor roomId={id} />
               <RoomEntryLinkPanel roomId={id} />
               <RoomIdleLoopManager roomId={id} />
@@ -85,7 +85,6 @@ const { data: room } = await supabase
             <>
               {room.status !== "ended" && <ChatModerationManager roomId={id} />}
               <ChatReportInbox roomId={id} />
-              {room.status !== "ended" && <RoomManagePanel roomId={id} />}
               {room.status !== "ended" && <ClearRoomPanel roomId={id} hostId={room.host_id} />}
             </>
           )}

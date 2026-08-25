@@ -219,7 +219,7 @@ export default function RoomManagePanel({ roomId }: { roomId: string }) {
   return (
     <section id="people-queue" className="mt-8 overflow-hidden rounded-xl border border-white/10 bg-[#12051e]">
       <div className="border-b border-white/10 p-4">
-        <h2 className="font-black">Queue & Members</h2>
+        <h2 className="font-black">Stream Broadcast Queue & Members</h2>
         <p className="mt-1 text-sm text-zinc-500">You decide who gets the main feed and who goes next.</p>
       </div>
 

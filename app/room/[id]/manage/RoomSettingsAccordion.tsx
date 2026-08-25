@@ -5,7 +5,6 @@ import { type ReactNode, useState } from "react";
 type SectionKey = "roomBroadcast" | "engagement" | "safety" | "lifecycle";
 
 type RoomSettingsAccordionProps = {
-  defaultOpen?: SectionKey;
   engagement?: ReactNode;
   lifecycle?: ReactNode;
   roomBroadcast?: ReactNode;
@@ -15,7 +14,7 @@ type RoomSettingsAccordionProps = {
 const sectionDetails: Record<SectionKey, { title: string; subtitle: string }> = {
   roomBroadcast: {
     title: "Room & broadcast",
-    subtitle: "Room details, guest entry, and what plays between live streams.",
+    subtitle: "Live broadcast queue, room details, guest entry, and standby media.",
   },
   engagement: {
     title: "Engagement",
@@ -23,7 +22,7 @@ const sectionDetails: Record<SectionKey, { title: string; subtitle: string }> = 
   },
   safety: {
     title: "Safety & access",
-    subtitle: "Chat controls, reports, queue operations, and participant cleanup.",
+    subtitle: "Chat controls, reports, and participant cleanup.",
   },
   lifecycle: {
     title: "Event lifecycle",
@@ -32,13 +31,12 @@ const sectionDetails: Record<SectionKey, { title: string; subtitle: string }> = 
 };
 
 export default function RoomSettingsAccordion({
-  defaultOpen = "roomBroadcast",
   engagement,
   lifecycle,
   roomBroadcast,
   safety,
 }: RoomSettingsAccordionProps) {
-  const [openSection, setOpenSection] = useState<SectionKey | null>(defaultOpen);
+  const [openSection, setOpenSection] = useState<SectionKey | null>(null);
   const sections: Array<{ key: SectionKey; content?: ReactNode }> = [
     { key: "roomBroadcast", content: roomBroadcast },
     { key: "engagement", content: engagement },
