@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import ActiveRoomReturn from "@/app/components/ActiveRoomReturn";
 import RoomClearNotice from "@/app/components/RoomClearNotice";
 import "./globals.css";
@@ -52,6 +53,7 @@ export default function RootLayout({
         {children}
         <ActiveRoomReturn />
         <RoomClearNotice />
+        <Analytics />
       </body>
     </html>
   );
