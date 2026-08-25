@@ -24,6 +24,7 @@ export default function ActivityPage() {
   const [seriesEvents, setSeriesEvents] = useState<FollowedSeriesEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [dismissError, setDismissError] = useState<string | null>(null);
 
   const loadActivity = useCallback(async () => {
     setLoading(true);
@@ -32,7 +33,7 @@ export default function ActivityPage() {
       if (!userData.user) { setItems([]); setSeriesEvents([]); return; }
       await resolveMyEventRecaps(supabase);
       const [{ data, error: loadError }, seriesResult] = await Promise.all([
-        supabase.from("notifications").select("id,actor_id,type,title,body,room_id,recap_room_id,data,is_read,created_at").eq("user_id", userData.user.id).order("created_at", { ascending: false }).limit(50),
+        supabase.from("notifications").select("id,actor_id,type,title,body,room_id,recap_room_id,data,is_read,created_at").eq("user_id", userData.user.id).is("dismissed_at", null).order("created_at", { ascending: false }).limit(50),
         supabase.rpc("get_my_followed_series_events"),
       ]);
       if (loadError) throw new Error(loadError.message);
@@ -51,6 +52,24 @@ export default function ActivityPage() {
     if (item.is_read) return;
     setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, is_read: true } : entry));
     await supabase.from("notifications").update({ is_read: true }).eq("id", item.id);
+  }
+
+  async function dismissNotification(item: ActivityItem) {
+    setDismissError(null);
+    setItems((current) => current.filter((entry) => entry.id !== item.id));
+    const { data, error: dismissRpcError } = await supabase.rpc("dismiss_my_notification", {
+      p_notification_id: item.id,
+    });
+
+    if (dismissRpcError || !data) {
+      setItems((current) => [...current, item].sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at)));
+      setDismissError(dismissRpcError?.message || "Could not dismiss that notification.");
+      return;
+    }
+
+    window.dispatchEvent(new CustomEvent("partyup:notification-dismissed", {
+      detail: { wasUnread: !item.is_read },
+    }));
   }
 
   return (
@@ -84,7 +103,9 @@ export default function ActivityPage() {
           </section>
         )}
 
-        <div className="mt-8 grid gap-3">
+        {dismissError && <div className="mt-8 rounded-lg border border-amber-300/20 bg-amber-950/30 p-4 text-sm font-bold text-amber-100">{dismissError}</div>}
+
+        <div className={`${dismissError ? "mt-3" : "mt-8"} grid gap-3`}>
           {loading ? (
             <div className={`${partyUpTheme.glassElevated} p-6 text-sm font-bold text-[#aaa4b8]`}>Loading Activity...</div>
           ) : error ? (
@@ -103,22 +124,20 @@ export default function ActivityPage() {
                 : item.room_id ? `/room/${item.room_id}` : "/activity";
 
             return (
-              <Link
-                key={item.id}
-                href={href}
-                onClick={() => void markRead(item)}
-                className={`${partyUpTheme.glassInteractive} group flex gap-4 p-5 ${item.is_read ? "" : "ring-1 ring-[#8b3dff]/55"}`}
-              >
-                <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${item.is_read ? "bg-white/15" : "bg-[#c35dff] shadow-[0_0_12px_rgba(195,93,255,0.7)]"}`} />
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-start justify-between gap-4">
-                    <strong className="text-base font-black">{item.title}</strong>
-                    <span className={`shrink-0 text-xs font-bold ${partyUpTheme.textMuted}`}>{formatTime(item.created_at)}</span>
+              <article key={item.id} className={`${partyUpTheme.glassInteractive} flex items-start ${item.is_read ? "" : "ring-1 ring-[#8b3dff]/55"}`}>
+                <Link href={href} onClick={() => void markRead(item)} className="group flex min-w-0 flex-1 gap-4 p-5 pr-2">
+                  <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${item.is_read ? "bg-white/15" : "bg-[#c35dff] shadow-[0_0_12px_rgba(195,93,255,0.7)]"}`} />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-start justify-between gap-4">
+                      <strong className="text-base font-black">{item.title}</strong>
+                      <span className={`shrink-0 text-xs font-bold ${partyUpTheme.textMuted}`}>{formatTime(item.created_at)}</span>
+                    </span>
+                    <span className="mt-1 block text-sm font-semibold leading-6 text-[#b8b0c4]">{item.body}</span>
+                    {recapRoomId && <span className="mt-3 block text-sm font-black text-[#c35dff] group-hover:text-white">Open recap</span>}
                   </span>
-                  <span className="mt-1 block text-sm font-semibold leading-6 text-[#b8b0c4]">{item.body}</span>
-                  {recapRoomId && <span className="mt-3 block text-sm font-black text-[#c35dff] group-hover:text-white">Open recap</span>}
-                </span>
-              </Link>
+                </Link>
+                <button type="button" aria-label={`Dismiss ${item.title}`} title="Dismiss notification" onClick={() => void dismissNotification(item)} className="mr-3 mt-3 grid h-9 w-9 shrink-0 place-items-center rounded-md border border-white/10 text-xl font-black leading-none text-[#aaa4b8] hover:border-red-300/30 hover:bg-red-950/30 hover:text-red-200">×</button>
+              </article>
             );
           })}
         </div>

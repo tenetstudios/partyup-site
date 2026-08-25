@@ -48,20 +48,30 @@ export default function HomeHeader({ liveCount }: { liveCount?: number }) {
   useEffect(() => {
     const supabase = createSupabaseClient();
     let channel: ReturnType<typeof supabase.channel> | null = null;
+    let refreshUnread: (() => Promise<void>) | null = null;
+
+    function onNotificationDismissed() {
+      if (refreshUnread) void refreshUnread();
+    }
+
+    window.addEventListener("partyup:notification-dismissed", onNotificationDismissed);
 
     async function start() {
       const { data } = await supabase.auth.getUser();
       if (!data.user) return;
       try { await resolveMyEventRecaps(supabase); } catch { /* Existing Activity remains usable before migration deployment. */ }
-      const refresh = async () => {
-        const { count } = await supabase.from("notifications").select("id", { count: "exact", head: true }).eq("user_id", data.user!.id).eq("is_read", false);
+      refreshUnread = async () => {
+        const { count } = await supabase.from("notifications").select("id", { count: "exact", head: true }).eq("user_id", data.user!.id).eq("is_read", false).is("dismissed_at", null);
         setUnreadCount(count || 0);
       };
-      await refresh();
-      channel = supabase.channel(`web-notifications-${data.user.id}`).on("postgres_changes", { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${data.user.id}` }, refresh).subscribe();
+      await refreshUnread();
+      channel = supabase.channel(`web-notifications-${data.user.id}`).on("postgres_changes", { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${data.user.id}` }, () => { if (refreshUnread) void refreshUnread(); }).subscribe();
     }
     void start();
-    return () => { if (channel) void supabase.removeChannel(channel); };
+    return () => {
+      window.removeEventListener("partyup:notification-dismissed", onNotificationDismissed);
+      if (channel) void supabase.removeChannel(channel);
+    };
   }, []);
 
   useEffect(() => {
