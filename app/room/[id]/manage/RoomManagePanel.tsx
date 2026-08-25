@@ -10,6 +10,7 @@ type Attendee = {
   avatar_url: string | null;
   status: string | null;
   can_stream: boolean | null;
+  reputation_given: boolean | null;
 };
 
 type StreamQueueEntry = {
@@ -44,6 +45,7 @@ export default function RoomManagePanel({ roomId }: { roomId: string }) {
   const [attendees, setAttendees] = useState<Attendee[]>([]);
   const [streamQueue, setStreamQueue] = useState<StreamQueueEntry[]>([]);
   const [isHost, setIsHost] = useState(false);
+  const [hostId, setHostId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyUserId, setBusyUserId] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -67,6 +69,7 @@ export default function RoomManagePanel({ roomId }: { roomId: string }) {
 
     const host = room?.host_id === user.id;
     setIsHost(host);
+    setHostId(room?.host_id ?? null);
     if (!host) {
       setLoading(false);
       return;
@@ -76,7 +79,7 @@ export default function RoomManagePanel({ roomId }: { roomId: string }) {
       await Promise.all([
         supabase
           .from("event_attendees")
-          .select("event_room_id,user_id,username,avatar_url,status,can_stream")
+          .select("event_room_id,user_id,username,avatar_url,status,can_stream,reputation_given")
           .eq("event_room_id", roomId)
           .order("username", { ascending: true }),
         supabase
@@ -190,6 +193,16 @@ export default function RoomManagePanel({ roomId }: { roomId: string }) {
     const supabase = createSupabaseClient();
     await runQueueAction(userId, () =>
       supabase.from("event_attendees").delete().eq("event_room_id", roomId).eq("user_id", userId),
+    );
+  }
+
+  function giveReputation(userId: string) {
+    const supabase = createSupabaseClient();
+    return runQueueAction(userId, () =>
+      supabase.rpc("give_room_member_reputation", {
+        p_room_id: roomId,
+        p_user_id: userId,
+      }),
     );
   }
 
@@ -308,6 +321,20 @@ export default function RoomManagePanel({ roomId }: { roomId: string }) {
                   <div className="flex items-center gap-3"><Avatar attendee={attendee} /><div><p className="font-black">{displayName(attendee)}</p><p className="text-xs text-zinc-500">{currentStream?.user_id === attendee.user_id ? "Current broadcaster" : inQueue ? "Waiting to stream" : "Member"}</p></div></div>
                   <div className="flex flex-wrap gap-2">
                     <button type="button" disabled={inQueue || Boolean(busyUserId)} onClick={() => approveStream(attendee.user_id)} className="rounded-md bg-[#9146ff] px-3 py-2 text-xs font-black hover:bg-[#7b31e8] disabled:cursor-not-allowed disabled:bg-purple-950 disabled:text-purple-300">{inQueue ? "In stream queue" : busyUserId === attendee.user_id ? "Approving…" : "Approve stream"}</button>
+                    {attendee.user_id !== hostId && (
+                      <button
+                        type="button"
+                        disabled={Boolean(attendee.reputation_given) || Boolean(busyUserId)}
+                        onClick={() => giveReputation(attendee.user_id)}
+                        className="rounded-md border border-amber-300/35 bg-amber-400/10 px-3 py-2 text-xs font-black text-amber-200 hover:bg-amber-400/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-zinc-500"
+                      >
+                        {attendee.reputation_given
+                          ? "Rep given"
+                          : busyUserId === attendee.user_id
+                            ? "Giving rep…"
+                            : "Give +2 Rep"}
+                      </button>
+                    )}
                     <button type="button" disabled={Boolean(busyUserId)} onClick={() => kickUser(attendee.user_id)} className="rounded-md border border-red-500/40 px-3 py-2 text-xs font-black text-red-300 hover:bg-red-500/10 disabled:opacity-50">Kick</button>
                   </div>
                 </div>
