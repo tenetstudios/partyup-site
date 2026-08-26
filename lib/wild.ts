@@ -28,7 +28,7 @@ export type WildMission = {
     faction_key: string;
     territory_key: string;
     influence_reward: number;
-    verification_type?: "none" | "encounter" | "memory_upload" | "match_faction";
+    verification_type?: "none" | "encounter" | "memory_upload" | "match_faction" | "live_node";
     encounter_relationship?: "same_faction" | "different_faction" | "specific_faction" | null;
     required_encounters?: number;
     target_faction?: string | null;
@@ -36,6 +36,10 @@ export type WildMission = {
     required_memories?: number;
     match_relationship?: "opposing_faction";
     required_matches?: number;
+    scope?: "faction" | "squad";
+    progress_mode?: "aggregate";
+    required_progress?: number;
+    node_id?: string | null;
   };
   viewer_completed: boolean;
   eligible: boolean;
@@ -67,6 +71,35 @@ export type WildMatchState = {
 };
 
 export type WildEncounterStatus = "valid" | "self_scan" | "wrong_mission" | "wrong_game" | "wrong_room" | "wrong_faction" | "wrong_animal" | "same_faction_required" | "different_faction_required" | "specific_faction_required" | "duplicate" | "expired" | "mission_ended" | "game_ended" | "invalid";
+
+export type WildSquadFormationStatus = WildEncounterStatus | "already_in_squad" | "squad_full";
+
+export type WildSquadState = {
+  id: string;
+  game_id: string;
+  faction_key: string;
+  label: string;
+  status: "provisional" | "active" | "ended";
+  member_count: number;
+  minimum_members: number;
+  maximum_members: number;
+  formation_progress: number;
+  members_needed: number;
+  can_add_members: boolean;
+  members: { identity_id: string; display_name: string; avatar_url: string | null; joined_at: string; is_you: boolean }[];
+};
+
+export type WildSquadMissionState = {
+  squad_id: string | null;
+  progress: number;
+  required_progress: number;
+  personal_progress: number;
+  completed: boolean;
+  eligible: boolean;
+  verification_type: "encounter" | "match_faction" | "memory_upload" | "live_node";
+  mission_active: boolean;
+};
+export type WildSquadOverview = { id: string; faction_key: string; status: "provisional" | "active" | "ended"; member_count: number; missions_completed: number };
 
 export type WildWinnerScore = {
   faction_key: string;
@@ -147,14 +180,37 @@ export async function publishWildMission(
     description?: string | null;
     influenceReward: number;
     durationMinutes: number;
-    verificationType?: "none" | "encounter" | "memory_upload" | "match_faction";
+    verificationType?: "none" | "encounter" | "memory_upload" | "match_faction" | "live_node";
     encounterRelationship?: "same_faction" | "different_faction" | "specific_faction" | null;
     requiredEncounters?: number;
     targetFaction?: string | null;
     requiredMediaType?: "any" | "image" | "video";
     requiredMatches?: number;
+    scope?: "faction" | "squad";
+    requiredProgress?: number;
+    liveNodeId?: string | null;
   },
 ) {
+  if (input.scope === "squad") {
+    const { data, error } = await supabase.rpc("publish_wild_squad_mission", {
+      p_game_id: input.gameId,
+      p_faction_key: input.factionKey,
+      p_territory_key: input.territoryKey,
+      p_title: input.title,
+      p_description: input.description ?? null,
+      p_influence_reward: input.influenceReward,
+      p_duration_minutes: input.durationMinutes,
+      p_verification_type: input.verificationType,
+      p_required_progress: input.requiredProgress ?? input.requiredMatches ?? input.requiredEncounters ?? 1,
+      p_encounter_relationship: input.encounterRelationship ?? null,
+      p_target_faction: input.targetFaction ?? null,
+      p_required_media_type: input.requiredMediaType ?? "any",
+      p_live_node_id: input.liveNodeId ?? null,
+    });
+    if (error) throw new Error(error.message);
+    requestPushDispatch(supabase, (data as { room_id?: string } | null)?.room_id);
+    return data;
+  }
   const memoryVerification = input.verificationType === "memory_upload";
   const matchVerification = input.verificationType === "match_faction";
   const { data, error } = await supabase.rpc(memoryVerification ? "publish_wild_memory_mission" : matchVerification ? "publish_wild_match_mission" : "publish_wild_faction_mission", {
@@ -240,6 +296,47 @@ export async function endWildGame(supabase: SupabaseClient, gameId: string) {
   if (error) throw new Error(error.message);
   requestPushDispatch(supabase, (data as { room_id?: string } | null)?.room_id);
   return data;
+}
+
+export async function beginWildSquad(supabase: SupabaseClient, gameId: string, guestToken?: string | null) {
+  const { data, error } = await supabase.rpc("begin_wild_squad", { p_game_id: gameId, p_guest_token: guestToken ?? null });
+  if (error) throw new Error(error.message);
+  return data as string;
+}
+
+export async function getMyWildSquadState(supabase: SupabaseClient, gameId: string, guestToken?: string | null) {
+  const { data, error } = await supabase.rpc("get_my_wild_squad_state", { p_game_id: gameId, p_guest_token: guestToken ?? null });
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  const squad = data as WildSquadState;
+  return { ...squad, member_count: Number(squad.member_count), formation_progress: Number(squad.formation_progress), members_needed: Number(squad.members_needed) };
+}
+
+export async function createWildSquadToken(supabase: SupabaseClient, gameId: string, guestToken?: string | null) {
+  const { data, error } = await supabase.rpc("create_wild_squad_token", { p_game_id: gameId, p_guest_token: guestToken ?? null });
+  if (error) throw new Error(error.message);
+  return data as { token: string; qr_payload: string; short_code: string; expires_at: string };
+}
+
+export async function redeemWildSquadToken(supabase: SupabaseClient, gameId: string, value: string, guestToken?: string | null) {
+  const { data, error } = await supabase.rpc("redeem_wild_squad_token", { p_game_id: gameId, p_token_or_code: value, p_guest_token: guestToken ?? null });
+  if (error) throw new Error(error.message);
+  const result = data as { status: WildSquadFormationStatus; squad_id?: string; member_count?: number; formed?: boolean; just_formed?: boolean; room_id?: string };
+  if (result.just_formed) requestPushDispatch(supabase, result.room_id);
+  return result;
+}
+
+export async function getMyWildSquadMissionState(supabase: SupabaseClient, missionId: string, guestToken?: string | null) {
+  const { data, error } = await supabase.rpc("get_my_wild_squad_mission_state", { p_mission_id: missionId, p_guest_token: guestToken ?? null });
+  if (error) throw new Error(error.message);
+  const state = data as WildSquadMissionState;
+  return { ...state, progress: Number(state.progress), required_progress: Number(state.required_progress), personal_progress: Number(state.personal_progress) };
+}
+
+export async function getWildSquadsOverview(supabase: SupabaseClient, gameId: string) {
+  const { data, error } = await supabase.rpc("get_wild_squads_overview", { p_game_id: gameId });
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as WildSquadOverview[]).map((item) => ({ ...item, member_count: Number(item.member_count), missions_completed: Number(item.missions_completed) }));
 }
 
 export function wildFactionByKey(state: WildRoomState, key: string | null | undefined) {
