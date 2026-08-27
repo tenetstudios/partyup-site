@@ -89,26 +89,28 @@ export default function EndedRoomArchive({ roomId, hostId }: { roomId: string; h
   const [loading, setLoading] = useState(true);
 
   const loadArchive = useCallback(async () => {
-    const { data: userData } = await supabase.auth.getUser();
+    const [{ data: userData }, hostResult] = await Promise.all([
+      supabase.auth.getUser(),
+      hostId ? getHostReputationProfile(supabase, hostId).catch(() => null) : Promise.resolve(null),
+    ]);
     const user = userData.user;
     setCurrentUserId(user?.id ?? null);
     setIsHost(Boolean(user && hostId && user.id === hostId));
+    setHostProfile(hostResult?.profile ?? null);
+    setIsFollowing(hostResult?.social.is_following ?? false);
 
     if (!user) {
       setLoading(false);
       return;
     }
 
-    const [messageResult, memoryResult, hostResult] = await Promise.all([
+    const [messageResult, memoryResult] = await Promise.all([
       supabase.from("room_recap_messages").select("message").eq("room_id", roomId).maybeSingle(),
       getRoomMemories(supabase, roomId).catch(() => []),
-      hostId ? getHostReputationProfile(supabase, hostId).catch(() => null) : Promise.resolve(null),
     ]);
 
     setHostMessage(messageResult.data?.message?.trim() || null);
     setMemories(memoryResult.slice(0, 6));
-    setHostProfile(hostResult?.profile ?? null);
-    setIsFollowing(hostResult?.social.is_following ?? false);
     setLoading(false);
   }, [hostId, roomId, supabase]);
 
