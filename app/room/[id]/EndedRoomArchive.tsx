@@ -150,35 +150,40 @@ export default function EndedRoomArchive({ roomId, hostId }: { roomId: string; h
       <section className="rounded-xl border border-pink-300/20 bg-[linear-gradient(135deg,rgba(90,26,74,.32),rgba(18,11,26,.96))] p-6 md:p-8">
         <div className="flex flex-wrap items-center gap-4">
           {hostId ? (
-            <Link href={`/user/${hostId}`} className="flex min-w-0 flex-1 items-center gap-3">
-              <span className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full border border-pink-200/25 bg-[#7c3aed] text-sm font-black text-white">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              <Link href={`/user/${hostId}`} className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full border border-pink-200/25 bg-[#7c3aed] text-sm font-black text-white">
                 {hostProfile?.avatar_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={hostProfile.avatar_url} alt="" className="h-full w-full object-cover" />
                 ) : (
                   (hostProfile ? getHostDisplayName(hostProfile) : "Host").slice(0, 2).toUpperCase()
                 )}
-              </span>
+              </Link>
               <span className="min-w-0">
                 <span className="block text-xs font-black uppercase tracking-[0.18em] text-[#ff83b8]">A message from the host</span>
-                <span className="mt-1 block truncate text-sm font-black text-white">
-                  {hostProfile ? getHostDisplayName(hostProfile) : "Event host"}
+                <span className="mt-1 flex min-w-0 items-center gap-2">
+                  <Link href={`/user/${hostId}`} className="truncate text-sm font-black text-white hover:text-pink-100">
+                    {hostProfile ? getHostDisplayName(hostProfile) : "Event host"}
+                  </Link>
+                  {currentUserId && currentUserId !== hostId ? (
+                    <>
+                      <span className="text-xs font-black text-zinc-500" aria-hidden="true">·</span>
+                      <button
+                        type="button"
+                        disabled={followBusy}
+                        onClick={() => void toggleFollow()}
+                        className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-black disabled:opacity-60 ${isFollowing ? "border border-white/15 bg-white/[0.06] text-zinc-200" : "bg-[#ef2f91] text-white hover:bg-[#d9277f]"}`}
+                      >
+                        {followBusy ? "Saving..." : isFollowing ? "Following" : "Follow"}
+                      </button>
+                    </>
+                  ) : null}
                 </span>
               </span>
-            </Link>
+            </div>
           ) : (
             <p className="text-xs font-black uppercase tracking-[0.18em] text-[#ff83b8]">A message from the host</p>
           )}
-          {hostId && currentUserId && currentUserId !== hostId ? (
-            <button
-              type="button"
-              disabled={followBusy}
-              onClick={() => void toggleFollow()}
-              className={`rounded-full px-4 py-2 text-sm font-black disabled:opacity-60 ${isFollowing ? "border border-white/15 bg-white/[0.06] text-white" : "bg-[#ef2f91] text-white hover:bg-[#d9277f]"}`}
-            >
-              {followBusy ? "Saving..." : isFollowing ? "Following" : "Follow"}
-            </button>
-          ) : null}
         </div>
         <p className="mt-3 max-w-3xl text-xl font-bold leading-8 text-white">
           {loading ? "Opening the event archive..." : hostMessage || "Thanks for joining. This event has ended."}
