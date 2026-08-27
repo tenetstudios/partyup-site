@@ -124,14 +124,14 @@ export default function EndedRoomArchive({ roomId, hostId }: { roomId: string; h
 
   return (
     <div className="grid gap-6">
-      {isHost ? <RoomIdleLoopManager roomId={roomId} presentation="event-replay" /> : <ReplayViewer roomId={roomId} />}
-
       <section className="rounded-xl border border-pink-300/20 bg-[linear-gradient(135deg,rgba(90,26,74,.32),rgba(18,11,26,.96))] p-6 md:p-8">
         <p className="text-xs font-black uppercase tracking-[0.18em] text-[#ff83b8]">A message from the host</p>
         <p className="mt-3 max-w-3xl text-xl font-bold leading-8 text-white">
           {loading ? "Opening the event archive..." : hostMessage || "Thanks for joining. This event has ended."}
         </p>
       </section>
+
+      {isHost ? <RoomIdleLoopManager roomId={roomId} presentation="event-replay" /> : <ReplayViewer roomId={roomId} />}
 
       <section className="rounded-xl border border-white/10 bg-white/[0.035] p-5 md:p-6">
         <div className="flex flex-wrap items-end justify-between gap-4">
