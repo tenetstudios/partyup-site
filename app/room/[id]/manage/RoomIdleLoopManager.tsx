@@ -25,7 +25,13 @@ async function readVideoDuration(file: File) {
   }
 }
 
-export default function RoomIdleLoopManager({ roomId }: { roomId: string }) {
+export default function RoomIdleLoopManager({
+  roomId,
+  presentation = "idle-loop",
+}: {
+  roomId: string;
+  presentation?: "idle-loop" | "event-replay";
+}) {
   const supabase = useMemo(() => createSupabaseClient(), []);
   const inputRef = useRef<HTMLInputElement>(null);
   const [media, setMedia] = useState<RoomIdleMedia | null>(null);
@@ -128,7 +134,7 @@ export default function RoomIdleLoopManager({ roomId }: { roomId: string }) {
     }
 
     await loadMedia();
-    setStatus("Idle Loop saved and enabled.");
+    setStatus(presentation === "event-replay" ? "Event Replay saved and enabled." : "Idle Loop saved and enabled.");
     setBusy(false);
   }
 
@@ -149,7 +155,7 @@ export default function RoomIdleLoopManager({ roomId }: { roomId: string }) {
 
   async function removeMedia() {
     if (!media || busy) return;
-    if (!window.confirm("Remove this Idle Loop? The uploaded media will be permanently deleted.")) return;
+    if (!window.confirm(`Remove this ${presentation === "event-replay" ? "Event Replay" : "Idle Loop"}? The uploaded media will be permanently deleted.`)) return;
 
     setBusy(true);
     setError(null);
@@ -165,44 +171,66 @@ export default function RoomIdleLoopManager({ roomId }: { roomId: string }) {
     const { error: removeError } = await supabase.storage.from("room-idle-media").remove([mediaPath]);
     if (removeError) setError(`Idle Loop was removed, but its file cleanup failed: ${removeError.message}`);
     setMedia(null);
-    setStatus("Idle Loop removed.");
+    setStatus(presentation === "event-replay" ? "Event Replay removed." : "Idle Loop removed.");
     setBusy(false);
   }
 
   return (
-    <section id="idle-loop" className="mt-8 rounded-xl border border-purple-300/20 bg-[#12051e]">
+    <section id={presentation === "event-replay" ? "event-replay" : "idle-loop"} className="mt-8 rounded-xl border border-purple-300/20 bg-[#12051e]">
       <div className="border-b border-white/10 p-4">
-        <p className="text-xs font-black uppercase tracking-[0.16em] text-purple-300">Streaming</p>
-        <h2 className="mt-1 text-lg font-black">Idle Loop</h2>
+        <p className="text-xs font-black uppercase tracking-[0.16em] text-purple-300">
+          {presentation === "event-replay" ? "Event archive" : "Streaming"}
+        </p>
+        <h2 className="mt-1 text-lg font-black">
+          {presentation === "event-replay" ? "Event Replay" : "Idle Loop"}
+        </h2>
         <p className="mt-1 text-sm text-zinc-400">
-          Play a highlight reel or visual while nobody is live.
+          {presentation === "event-replay"
+            ? "Replace the ended livestream panel with a short highlight reel."
+            : "Play a highlight reel or visual while nobody is live."}
         </p>
       </div>
 
       <div className="space-y-4 p-4">
+        {presentation === "event-replay" && !media && (
+          <div className="grid aspect-video min-h-[280px] place-items-center rounded-lg border border-white/10 bg-black px-6 text-center">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-zinc-500">Broadcast offline</p>
+              <h3 className="mt-2 text-3xl font-black text-white">Livestream ended</h3>
+              <p className="mt-3 text-sm font-bold text-zinc-500">Upload an Event Replay to replace this placeholder.</p>
+            </div>
+          </div>
+        )}
+
         {media && (
           <div className="relative aspect-video overflow-hidden rounded-lg border border-white/10 bg-black">
             {media.media_type === "video" ? (
-              <video src={media.signed_url} autoPlay loop muted playsInline className="h-full w-full object-cover" />
+              <video src={media.signed_url} autoPlay loop muted playsInline controls={presentation === "event-replay"} className="h-full w-full object-cover" />
             ) : (
               <Image src={media.signed_url} alt="Idle Loop preview" fill unoptimized className="object-cover" />
             )}
             <span className="absolute left-3 top-3 rounded-md bg-black/70 px-2 py-1 text-xs font-black text-white">
-              HIGHLIGHTS
+              {presentation === "event-replay"
+                ? media.enabled ? "EVENT ENDED · REPLAY" : "EVENT REPLAY OFF"
+                : "HIGHLIGHTS"}
             </span>
           </div>
         )}
 
         <p className="text-xs leading-5 text-zinc-500">
           MP4/H.264 is recommended: up to 30 seconds and 20 MB. GIF is supported up to 10 MB.
-          Idle media always starts muted.
+          {presentation === "event-replay" ? " Replay videos start muted and loop automatically." : " Idle media always starts muted."}
         </p>
 
         {media && (
           <label className="flex items-center justify-between gap-4 rounded-md border border-white/10 bg-black/20 p-3">
             <span>
-              <span className="block text-sm font-black text-white">Play when nobody is live</span>
-              <span className="mt-1 block text-xs text-zinc-500">Real livestreams always take priority.</span>
+              <span className="block text-sm font-black text-white">
+                {presentation === "event-replay" ? "Show on the ended room" : "Play when nobody is live"}
+              </span>
+              <span className="mt-1 block text-xs text-zinc-500">
+                {presentation === "event-replay" ? "Turn this off to show the Livestream ended placeholder." : "Real livestreams always take priority."}
+              </span>
             </span>
             <input type="checkbox" checked={media.enabled} onChange={() => void toggleEnabled()} disabled={busy} className="h-5 w-5 accent-purple-500" />
           </label>

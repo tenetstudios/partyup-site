@@ -64,15 +64,21 @@ export default async function ManageRoomPage({
         <HostDashboardOverview roomId={id} roomEnded={room.status === "ended"} />
 
         <RoomSettingsAccordion
-          roomBroadcast={room.status !== "ended" ? (
+          roomBroadcast={(
             <>
-              <RoomManagePanel roomId={id} />
-              <RoomDetailsEditor roomId={id} />
-              <RoomEntryLinkPanel roomId={id} />
-              <RoomIdleLoopManager roomId={id} />
-              <ObsStreamPanel roomId={id} />
+              {room.status !== "ended" ? (
+                <>
+                  <RoomManagePanel roomId={id} />
+                  <RoomDetailsEditor roomId={id} />
+                  <RoomEntryLinkPanel roomId={id} />
+                  <RoomIdleLoopManager roomId={id} />
+                  <ObsStreamPanel roomId={id} />
+                </>
+              ) : (
+                <RoomIdleLoopManager roomId={id} presentation="event-replay" />
+              )}
             </>
-          ) : undefined}
+          )}
           engagement={(
             <>
               {room.status !== "ended" && <RoomAnnouncementManager roomId={id} />}

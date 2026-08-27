@@ -11,6 +11,7 @@ import {
 import { getActiveRoomAnnouncement } from "@/lib/roomAnnouncements";
 import { getActiveRoomMission } from "@/lib/roomMissions";
 import EventMatchButton from "./EventMatchButton";
+import EndedRoomArchive from "./EndedRoomArchive";
 import JoinRoomButton from "./JoinRoomButton";
 import LeaveRoomContextButton from "./LeaveRoomContextButton";
 import ManageRoomLink from "./ManageRoomLink";
@@ -181,30 +182,20 @@ export default async function RoomPage({
   const typedRoom = room as RoomRecord;
   const onlineCount = asNumber(typedRoom.current_users) ?? 0;
   const ended = asText(typedRoom.status)?.toLowerCase() === "ended";
-  const activeAnnouncement = await getActiveRoomAnnouncement(supabase, id);
+  const activeAnnouncement = ended ? null : await getActiveRoomAnnouncement(supabase, id);
   const activeMission = ended ? null : await getActiveRoomMission(supabase, id);
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_50%_-20%,rgba(77,35,132,0.28),transparent_32%),#07000f] text-white">
       {!ended && <RoomAnalyticsTracker roomId={id} eventType="room_entry" />}
-      <RoomStatusWatcher roomId={id} />
+      {!ended && <RoomStatusWatcher roomId={id} />}
       <div className="mx-auto flex min-h-screen max-w-[1760px] flex-col gap-8 px-5 py-8 lg:px-7">
         <RoomHeader room={typedRoom} onlineCount={onlineCount} />
 
         {ended ? (
-          <div className="mx-auto grid w-full max-w-5xl flex-1 content-start gap-5">
+          <div className="mx-auto grid w-full max-w-6xl flex-1 content-start gap-6">
+            <EndedRoomArchive roomId={id} hostId={typedRoom.host_id ?? null} />
             <WildRoomCard roomId={id} />
-            <section className="rounded-[10px] border border-purple-300/20 bg-[#120b1a] p-8 text-center">
-              <p className="text-xs font-black uppercase text-[#ff83b8]">Past event</p>
-              <h2 className="mt-2 text-3xl font-black">This event has ended</h2>
-              <p className="mx-auto mt-3 max-w-2xl leading-7 text-[#aaa4b8]">
-                The live room is closed. Its Memories, recap, attendance, and Event Series history remain available.
-              </p>
-              <div className="mt-6 flex flex-wrap justify-center gap-3">
-                <Link href={`/room/${id}/memories`} className="rounded-md bg-[#9146ff] px-5 py-3 text-sm font-black">View Memories</Link>
-                <Link href={`/recap/${id}`} className="rounded-md border border-white/15 px-5 py-3 text-sm font-black">Open Recap</Link>
-              </div>
-            </section>
             <RoomInfoBar room={typedRoom} />
           </div>
         ) : (
