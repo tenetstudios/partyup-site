@@ -28,7 +28,7 @@ export type WildMission = {
     faction_key: string;
     territory_key: string;
     influence_reward: number;
-    verification_type?: "none" | "encounter" | "memory_upload" | "match_faction" | "live_node";
+    verification_type?: "none" | "encounter" | "memory_upload" | "match_faction" | "live_node" | "form_squad";
     encounter_relationship?: "same_faction" | "different_faction" | "specific_faction" | null;
     required_encounters?: number;
     target_faction?: string | null;
@@ -96,7 +96,7 @@ export type WildSquadMissionState = {
   personal_progress: number;
   completed: boolean;
   eligible: boolean;
-  verification_type: "encounter" | "match_faction" | "memory_upload" | "live_node";
+  verification_type: "encounter" | "match_faction" | "memory_upload" | "live_node" | "form_squad";
   mission_active: boolean;
 };
 export type WildSquadOverview = { id: string; faction_key: string; status: "provisional" | "active" | "ended"; member_count: number; missions_completed: number };
@@ -180,7 +180,7 @@ export async function publishWildMission(
     description?: string | null;
     influenceReward: number;
     durationMinutes: number;
-    verificationType?: "none" | "encounter" | "memory_upload" | "match_faction" | "live_node";
+    verificationType?: "none" | "encounter" | "memory_upload" | "match_faction" | "live_node" | "form_squad";
     encounterRelationship?: "same_faction" | "different_faction" | "specific_faction" | null;
     requiredEncounters?: number;
     targetFaction?: string | null;

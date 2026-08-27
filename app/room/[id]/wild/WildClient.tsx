@@ -323,6 +323,7 @@ export default function WildClient({ roomId }: { roomId: string }) {
   );
   const encounterRequirement = state.mission?.config.encounter_relationship === "same_faction" ? `Meet another ${state.assignment?.emoji ?? ""} ${state.assignment?.label ?? "faction"} player.` : state.mission?.config.encounter_relationship === "different_faction" ? "Meet a player from another faction." : state.mission?.config.encounter_relationship === "specific_faction" ? `Meet a ${wildFactionByKey(state, state.mission.config.target_faction)?.emoji ?? ""} ${wildFactionByKey(state, state.mission.config.target_faction)?.label ?? "specific faction"} player.` : null;
   const isSquadMission = state.mission?.config.scope === "squad";
+  const isFormSquadMission = state.mission?.config.verification_type === "form_squad";
   const missionEligible = isSquadMission ? Boolean(squadMissionState?.eligible) : Boolean(state.mission?.eligible);
   const missionCompleted = isSquadMission ? Boolean(squadMissionState?.completed) : Boolean(state.mission?.viewer_completed);
 
@@ -347,24 +348,13 @@ export default function WildClient({ roomId }: { roomId: string }) {
           <section className="mt-7 rounded-2xl border border-fuchsia-300/30 bg-black/35 p-6"><p className="font-black">Get your faction. Complete Missions. Help your side take the map.</p><button type="button" onClick={() => void enter()} disabled={busy || state.room_closed} className="mt-4 rounded-lg bg-fuchsia-600 px-5 py-3 font-black disabled:opacity-50">{busy ? "Entering…" : "Enter the Wild"}</button></section>
         )}
 
-        {state.assignment && (
+        {state.assignment && squad && !isFormSquadMission && (
           <section className="mt-8 rounded-2xl border border-emerald-300/20 bg-emerald-950/10 p-5">
-            <p className="text-xs font-black tracking-[0.2em] text-emerald-300">{squad?.status === "active" || squad?.status === "ended" ? "YOUR SQUAD" : "FORM A SQUAD"}</p>
-            {squad ? <>
-              <h2 className="mt-2 text-2xl font-black">{state.assignment.emoji} {squad.label}</h2>
-              <div className="mt-3 flex flex-wrap gap-2">{squad.members.map((member) => <span key={member.identity_id} className="rounded-full bg-white/[0.07] px-3 py-1.5 text-sm font-bold">{member.display_name}{member.is_you ? " (you)" : ""}</span>)}</div>
-              <p className="mt-3 text-sm font-bold text-zinc-300">{squad.member_count} {squad.member_count === 1 ? "member" : "members"}</p>
-              {squad.status === "provisional" && <p className="mt-2 text-3xl font-black text-emerald-300">{squad.formation_progress} / 2</p>}
-              {squad.status === "active" && <p className="mt-2 font-black text-emerald-300">SQUAD FORMED ✓</p>}
-              {squad.can_add_members && <div className="mt-4 flex flex-wrap gap-3"><button type="button" onClick={() => setSquadMode("qr")} className="rounded-lg bg-emerald-700 px-5 py-3 font-black">Show My Code</button><button type="button" onClick={() => setSquadMode("code")} className="rounded-lg bg-fuchsia-600 px-5 py-3 font-black">Scan Player</button></div>}
-            </> : state.game.status === "active" ? <>
-              <h2 className="mt-2 text-2xl font-black">Find 2 other members of your faction.</h2>
-              <p className="mt-2 text-3xl font-black text-emerald-300">0 / 2</p>
-              <button type="button" onClick={() => void startSquad()} disabled={busy} className="mt-4 rounded-lg bg-emerald-700 px-5 py-3 font-black disabled:opacity-50">{busy ? "Starting…" : "Form a Squad"}</button>
-            </> : <p className="mt-3 text-sm text-zinc-400">Final squad membership is read-only.</p>}
-            {squadMode === "qr" && squad?.can_add_members && <div className="mt-5 w-fit rounded-xl bg-white p-5 text-center text-black">{squadToken ? <><QRCodeSVG value={squadToken.qr_payload} size={220} level="M" /><p className="mt-4 text-2xl font-black tracking-[0.25em]">{squadToken.short_code}</p><p className="mt-2 text-xs font-bold text-zinc-500">Same-faction players scan this temporary code</p></> : <p className="font-bold">Creating secure code…</p>}</div>}
-            {squadMode === "code" && squad?.can_add_members && <div className="mt-5 max-w-sm"><input value={squadCode} onChange={(event) => setSquadCode(event.target.value.toUpperCase())} onKeyDown={(event) => { if (event.key === "Enter") void redeemSquad(); }} maxLength={64} placeholder="F7K2A1B9" className="w-full rounded bg-black px-4 py-3 text-center text-xl font-black uppercase tracking-[0.2em] text-white" /><button type="button" onClick={() => void redeemSquad()} disabled={busy || !squadCode.trim()} className="mt-3 w-full rounded bg-fuchsia-600 px-5 py-3 font-black disabled:opacity-50">{busy ? "Checking…" : "Verify Squad Member"}</button></div>}
-            {squadFeedback && <p className={`mt-4 text-sm font-black ${squadFeedback.includes("✓") ? "text-emerald-300" : "text-amber-300"}`}>{squadFeedback}</p>}
+            <p className="text-xs font-black tracking-[0.2em] text-emerald-300">YOUR SQUAD</p>
+            <h2 className="mt-2 text-2xl font-black">{state.assignment.emoji} {squad.label}</h2>
+            <div className="mt-3 flex flex-wrap gap-2">{squad.members.map((member) => <span key={member.identity_id} className="rounded-full bg-white/[0.07] px-3 py-1.5 text-sm font-bold">{member.display_name}{member.is_you ? " (you)" : ""}</span>)}</div>
+            <p className="mt-3 text-sm font-bold text-zinc-300">{squad.member_count} {squad.member_count === 1 ? "member" : "members"}</p>
+            {squad.status === "active" && <p className="mt-2 font-black text-emerald-300">SQUAD FORMED ✓</p>}
           </section>
         )}
 
@@ -384,8 +374,28 @@ export default function WildClient({ roomId }: { roomId: string }) {
               {state.mission.description && <p className="mt-2 text-zinc-300">{state.mission.description}</p>}
               <p className="mt-3 text-sm font-black text-purple-200">+{state.mission.config.influence_reward} influence · {state.territories.find((item) => item.key === state.mission?.config.territory_key)?.display_name}</p>
               <p className="mt-2 text-sm font-black text-zinc-300">{formatCountdown(state.mission.ends_at, now)}</p>
-              {isSquadMission && <div className="mt-4 rounded-xl border border-emerald-300/20 bg-emerald-950/20 p-4"><p className="text-xs font-black tracking-[0.18em] text-emerald-300">SQUAD MISSION · AGGREGATE</p>{squadMissionState?.eligible ? <><p className="mt-2 text-3xl font-black">{Math.min(squadMissionState.progress, squadMissionState.required_progress)} / {squadMissionState.required_progress}</p><p className="mt-1 text-sm text-zinc-300">Your contribution: {squadMissionState.personal_progress} verified {squadMissionState.personal_progress === 1 ? "action" : "actions"}</p></> : <p className="mt-2 text-sm font-bold text-amber-300">Form an active 3–5 player squad in the eligible faction to contribute.</p>}</div>}
-              {state.mission.config.verification_type === "match_faction" ? (
+              {isSquadMission && !isFormSquadMission && <div className="mt-4 rounded-xl border border-emerald-300/20 bg-emerald-950/20 p-4"><p className="text-xs font-black tracking-[0.18em] text-emerald-300">SQUAD MISSION · AGGREGATE</p>{squadMissionState?.eligible ? <><p className="mt-2 text-3xl font-black">{Math.min(squadMissionState.progress, squadMissionState.required_progress)} / {squadMissionState.required_progress}</p><p className="mt-1 text-sm text-zinc-300">Your contribution: {squadMissionState.personal_progress} verified {squadMissionState.personal_progress === 1 ? "action" : "actions"}</p></> : <p className="mt-2 text-sm font-bold text-amber-300">Form an active 3–5 player squad in the eligible faction to contribute.</p>}</div>}
+              {isFormSquadMission ? (
+                <div className="mt-4 rounded-xl border border-emerald-300/20 bg-emerald-950/20 p-4">
+                  {state.mission.eligible ? squad ? <>
+                    <p className="text-xs font-black tracking-[0.18em] text-emerald-300">FORM A SQUAD</p>
+                    <h3 className="mt-2 text-xl font-black">{state.assignment.emoji} {squad.label}</h3>
+                    <div className="mt-3 flex flex-wrap gap-2">{squad.members.map((member) => <span key={member.identity_id} className="rounded-full bg-white/[0.07] px-3 py-1.5 text-sm font-bold">{member.display_name}{member.is_you ? " (you)" : ""}</span>)}</div>
+                    <p className="mt-3 text-3xl font-black text-emerald-300">{Math.min(squad.formation_progress, 2)} / 2</p>
+                    {missionCompleted ? <p className="mt-3 font-black text-emerald-300">SQUAD FORMED ✓ Influence awarded.</p> : squad.status === "active" ? <p className="mt-3 text-sm font-black text-amber-300">Your squad was already formed before this Mission began.</p> : <>
+                      <p className="mt-2 text-sm font-bold text-zinc-300">Find {squad.members_needed} more same-faction {squad.members_needed === 1 ? "player" : "players"}.</p>
+                      {squad.can_add_members && <div className="mt-4 flex flex-wrap gap-3"><button type="button" onClick={() => setSquadMode("qr")} className="rounded-lg bg-emerald-700 px-5 py-3 font-black">Show My Code</button><button type="button" onClick={() => setSquadMode("code")} className="rounded-lg bg-fuchsia-600 px-5 py-3 font-black">Scan Player</button></div>}
+                    </>}
+                  </> : <>
+                    <p className="font-black">Find 2 other members of your faction.</p>
+                    <p className="mt-2 text-3xl font-black text-emerald-300">0 / 2</p>
+                    <button type="button" onClick={() => void startSquad()} disabled={busy} className="mt-4 rounded-lg bg-emerald-700 px-5 py-3 font-black disabled:opacity-50">{busy ? "Starting…" : "Form a Squad"}</button>
+                  </> : <p className="text-sm font-black text-amber-300">This objective belongs to another faction.</p>}
+                  {squadMode === "qr" && squad?.can_add_members && <div className="mt-5 w-fit rounded-xl bg-white p-5 text-center text-black">{squadToken ? <><QRCodeSVG value={squadToken.qr_payload} size={220} level="M" /><p className="mt-4 text-2xl font-black tracking-[0.25em]">{squadToken.short_code}</p><p className="mt-2 text-xs font-bold text-zinc-500">Same-faction players scan this temporary code</p></> : <p className="font-bold">Creating secure code…</p>}</div>}
+                  {squadMode === "code" && squad?.can_add_members && <div className="mt-5 max-w-sm"><input value={squadCode} onChange={(event) => setSquadCode(event.target.value.toUpperCase())} onKeyDown={(event) => { if (event.key === "Enter") void redeemSquad(); }} maxLength={64} placeholder="F7K2A1B9" className="w-full rounded bg-black px-4 py-3 text-center text-xl font-black uppercase tracking-[0.2em] text-white" /><button type="button" onClick={() => void redeemSquad()} disabled={busy || !squadCode.trim()} className="mt-3 w-full rounded bg-fuchsia-600 px-5 py-3 font-black disabled:opacity-50">{busy ? "Checking…" : "Verify Squad Member"}</button></div>}
+                  {squadFeedback && <p className={`mt-4 text-sm font-black ${squadFeedback.includes("✓") ? "text-emerald-300" : "text-amber-300"}`}>{squadFeedback}</p>}
+                </div>
+              ) : state.mission.config.verification_type === "match_faction" ? (
                 <div className="mt-4">
                   <p className="font-black text-white">Match with unique players from opposing factions.</p>
                   {!isSquadMission && (matchState?.eligible ? <p className="mt-2 text-3xl font-black text-fuchsia-300">{Math.min(matchState.progress, matchState.required_matches)} / {matchState.required_matches}</p> : <p className="mt-3 text-sm font-black text-amber-300">This objective belongs to another faction.</p>)}
