@@ -22,6 +22,7 @@ import RoomChat from "./RoomChat";
 import RoomStatusWatcher from "./RoomStatusWatcher";
 import WebLiveKitRoom from "./WebLiveKitRoom";
 import WildRoomCard from "./WildRoomCard";
+import LightningTriviaBanner from "./LightningTriviaBanner";
 
 type RoomRecord = LiveRoom & {
   host_id?: string | null;
@@ -206,6 +207,7 @@ export default async function RoomPage({
 
           <div className="order-1 flex min-w-0 flex-col gap-5 xl:order-2">
             <RoomAnnouncementBanner roomId={id} initialAnnouncement={activeAnnouncement} />
+            <LightningTriviaBanner roomId={id} />
             <WildRoomCard roomId={id} />
             <RoomMissionCard roomId={id} initialMission={activeMission} />
             <section className="aspect-video min-h-[360px] overflow-hidden rounded-[12px] border border-[#7f3dff]/45 bg-black shadow-[0_24px_70px_rgba(0,0,0,0.38)]">

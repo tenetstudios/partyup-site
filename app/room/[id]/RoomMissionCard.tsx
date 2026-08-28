@@ -161,7 +161,7 @@ export default function RoomMissionCard({
     return () => { cancelled = true; if (refreshTimeout) window.clearTimeout(refreshTimeout); };
   }, [guestToken, mission, mode, supabase]);
 
-  if (!mission) return null;
+  if (!mission || mission.mission_type === "lightning_trivia") return null;
   const remaining = now ? getMissionTimeRemaining(mission.ends_at, now) : null;
   const isAnimalPack = mission.mission_type === "animal_pack";
   const isConnection = mission.mission_type === "connection";

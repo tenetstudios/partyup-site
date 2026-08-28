@@ -16,6 +16,7 @@ import RoomIdleLoopManager from "./RoomIdleLoopManager";
 import RoomSettingsAccordion from "./RoomSettingsAccordion";
 import WildHostManager from "./WildHostManager";
 import LiveNodesManager from "./LiveNodesManager";
+import LightningTriviaManager from "./LightningTriviaManager";
 
 export default async function ManageRoomPage({
   params,
@@ -83,6 +84,7 @@ export default async function ManageRoomPage({
             <>
               {room.status !== "ended" && <RoomAnnouncementManager roomId={id} />}
               <WildHostManager roomId={id} roomEnded={room.status === "ended"} />
+              <LightningTriviaManager roomId={id} roomEnded={room.status === "ended"} />
               <LiveNodesManager roomId={id} roomEnded={room.status === "ended"} />
               <RoomMissionManager roomId={id} roomEnded={room.status === "ended"} />
             </>
