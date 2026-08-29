@@ -7,10 +7,27 @@ export type TriviaQuestion = {
   question_text: string;
   answers: string[];
   correct_answer: number;
-  category: string | null;
-  difficulty: string | null;
+  correct_answer_key: "A" | "B" | "C" | "D";
+  category: TriviaCategory;
+  difficulty: TriviaDifficulty;
+  humour: boolean;
+  is_active: boolean;
+  bank_scope: "partyup" | "custom";
   status: "active" | "archived";
+  updated_at: string;
 };
+
+export const triviaCategories = [
+  "humour", "music", "movies_tv", "pop_culture", "sports", "geography",
+  "science_nature", "history", "food_drink", "internet_gaming", "general_knowledge",
+] as const;
+export const triviaDifficulties = ["very_easy", "easy", "medium", "hard"] as const;
+export type TriviaCategory = (typeof triviaCategories)[number];
+export type TriviaDifficulty = (typeof triviaDifficulties)[number];
+
+export function triviaLabel(value: string) {
+  return value.split("_").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+}
 
 export type TriviaStanding = {
   faction_key: string;
@@ -139,6 +156,35 @@ export async function saveTriviaQuestion(
   });
   if (error) throw new Error(error.message);
   return data as TriviaQuestion;
+}
+
+export async function getTriviaQuestionBank(
+  supabase: SupabaseClient,
+  input: { roomId: string; search?: string; category?: string; difficulty?: string; humour?: boolean | null },
+) {
+  const { data, error } = await supabase.rpc("get_trivia_question_bank", {
+    p_room_id: input.roomId,
+    p_search: input.search?.trim() || null,
+    p_category: input.category || null,
+    p_difficulty: input.difficulty || null,
+    p_humour: input.humour ?? null,
+    p_limit: 500,
+  });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as TriviaQuestion[];
+}
+
+export async function generateTriviaQuestionIds(
+  supabase: SupabaseClient,
+  input: { roomId: string; category?: string; difficulty?: string },
+) {
+  const { data, error } = await supabase.rpc("generate_trivia_question_ids", {
+    p_room_id: input.roomId,
+    p_category: input.category || null,
+    p_difficulty: input.difficulty || null,
+  });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as string[];
 }
 
 export async function importTriviaQuestions(

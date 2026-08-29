@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FunctionsHttpError } from "@supabase/supabase-js";
 import { createSupabaseClient } from "@/lib/supabase";
+import TriviaQuestionBankAdmin from "./TriviaQuestionBankAdmin";
 
 type DashboardCounts = {
   users: number;
@@ -337,6 +338,8 @@ export default function AdminDashboard() {
           </div>
         ))}
       </section>
+
+      <TriviaQuestionBankAdmin supabase={supabase} />
 
       <section id="reports" className="mt-10 rounded-xl border border-white/10 bg-[#100a17] p-5 md:p-7">
         <div className="flex items-center justify-between gap-4">
