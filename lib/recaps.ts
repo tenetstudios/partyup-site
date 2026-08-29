@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { createRecapMediaSignedUrl, type RoomRecapMedia } from "@/lib/recapMedia";
 
 export type RecapConnection = {
   connection_id: string;
@@ -18,6 +19,15 @@ export type EventRecap = {
   cover_image_url: string | null;
   created_at: string;
   host_message: string | null;
+  host: {
+    user_id: string;
+    username: string | null;
+    display_name: string | null;
+    avatar_url: string | null;
+    is_following: boolean;
+    is_current_user: boolean;
+  } | null;
+  host_media: RoomRecapMedia | null;
   connections: RecapConnection[];
   metrics: { people: number; memories: number; matches: number; connections: number };
   personal: { connections: number; saved_memories: number };
@@ -30,9 +40,27 @@ export async function resolveMyEventRecaps(supabase: SupabaseClient) {
 
 export async function getEventRecap(supabase: SupabaseClient, roomId: string): Promise<EventRecap> {
   await resolveMyEventRecaps(supabase);
-  const { data, error } = await supabase.rpc("get_event_recap", { p_room_id: roomId });
-  if (error) throw new Error(error.message);
-  return data as EventRecap;
+  const [recapResult, contextResult] = await Promise.all([
+    supabase.rpc("get_event_recap", { p_room_id: roomId }),
+    supabase.rpc("get_event_recap_context", { p_room_id: roomId }),
+  ]);
+
+  if (recapResult.error) throw new Error(recapResult.error.message);
+  if (contextResult.error) throw new Error(contextResult.error.message);
+
+  const context = (contextResult.data ?? {}) as {
+    host?: EventRecap["host"];
+    host_media?: Omit<RoomRecapMedia, "signed_url"> | null;
+  };
+  const hostMedia = context.host_media
+    ? await createRecapMediaSignedUrl(supabase, context.host_media)
+    : null;
+
+  return {
+    ...(recapResult.data as Omit<EventRecap, "host" | "host_media">),
+    host: context.host ?? null,
+    host_media: hostMedia,
+  };
 }
 
 export function getRecapConnectionName(connection: RecapConnection) {

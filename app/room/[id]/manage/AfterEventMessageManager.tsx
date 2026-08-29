@@ -1,20 +1,115 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { getRoomRecapMedia, type RoomRecapMedia } from "@/lib/recapMedia";
 import { createSupabaseClient } from "@/lib/supabase";
+
+const recapImageSizeLimit = 10 * 1024 * 1024;
+const recapVideoSizeLimit = 20 * 1024 * 1024;
+
+const recapMediaExtensions: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/gif": "gif",
+  "video/mp4": "mp4",
+  "video/webm": "webm",
+};
 
 export default function AfterEventMessageManager({ roomId, roomEnded }: { roomId: string; roomEnded: boolean }) {
   const router = useRouter();
   const supabase = useMemo(() => createSupabaseClient(), []);
+  const mediaInputRef = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState("");
+  const [media, setMedia] = useState<RoomRecapMedia | null>(null);
   const [saving, setSaving] = useState(false);
+  const [mediaBusy, setMediaBusy] = useState(false);
   const [ending, setEnding] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
   useEffect(() => {
-    void supabase.from("room_recap_messages").select("message").eq("room_id", roomId).maybeSingle().then(({ data }) => setMessage(data?.message || ""));
+    void Promise.all([
+      supabase.from("room_recap_messages").select("message").eq("room_id", roomId).maybeSingle(),
+      getRoomRecapMedia(supabase, roomId).catch(() => null),
+    ]).then(([messageResult, mediaResult]) => {
+      setMessage(messageResult.data?.message || "");
+      setMedia(mediaResult);
+    });
   }, [roomId, supabase]);
+
+  async function uploadMedia(file: File) {
+    if (mediaBusy) return;
+
+    const extension = recapMediaExtensions[file.type];
+    const mediaType = file.type.startsWith("image/") ? "image" : "video";
+    if (!extension || (mediaType !== "image" && mediaType !== "video")) {
+      setStatus("Choose a JPG, PNG, WebP, GIF, MP4, or WebM file.");
+      return;
+    }
+
+    const sizeLimit = mediaType === "image" ? recapImageSizeLimit : recapVideoSizeLimit;
+    if (file.size > sizeLimit) {
+      setStatus(mediaType === "image" ? "Images must be 10 MB or smaller." : "Videos must be 20 MB or smaller.");
+      return;
+    }
+
+    setMediaBusy(true);
+    setStatus(null);
+    const mediaPath = `${roomId}/recap-media.${extension}`;
+    const previousPath = media?.media_path ?? null;
+    const { error: uploadError } = await supabase.storage
+      .from("room-recap-media")
+      .upload(mediaPath, file, { contentType: file.type, upsert: true });
+
+    if (uploadError) {
+      setStatus(uploadError.message);
+      setMediaBusy(false);
+      return;
+    }
+
+    const { error: saveError } = await supabase.rpc("set_room_recap_media", {
+      p_file_size_bytes: file.size,
+      p_media_path: mediaPath,
+      p_media_type: mediaType,
+      p_mime_type: file.type,
+      p_room_id: roomId,
+    });
+
+    if (saveError) {
+      if (previousPath !== mediaPath) await supabase.storage.from("room-recap-media").remove([mediaPath]);
+      setStatus(saveError.message);
+      setMediaBusy(false);
+      return;
+    }
+
+    if (previousPath && previousPath !== mediaPath) {
+      await supabase.storage.from("room-recap-media").remove([previousPath]);
+    }
+
+    setMedia(await getRoomRecapMedia(supabase, roomId));
+    setStatus("Recap media saved.");
+    setMediaBusy(false);
+  }
+
+  async function removeMedia() {
+    if (!media || mediaBusy) return;
+    setMediaBusy(true);
+    setStatus(null);
+    const mediaPath = media.media_path;
+    const { error } = await supabase.rpc("remove_room_recap_media", { p_room_id: roomId });
+
+    if (error) {
+      setStatus(error.message);
+      setMediaBusy(false);
+      return;
+    }
+
+    const { error: storageError } = await supabase.storage.from("room-recap-media").remove([mediaPath]);
+    setMedia(null);
+    setStatus(storageError ? `Media was removed from the recap, but file cleanup failed: ${storageError.message}` : "Recap media removed.");
+    setMediaBusy(false);
+  }
 
   async function save(successMessage = true) {
     setSaving(true);
@@ -32,7 +127,7 @@ export default function AfterEventMessageManager({ roomId, roomEnded }: { roomId
   }
 
   async function endEvent() {
-    if (ending || saving) return;
+    if (ending || saving || mediaBusy) return;
 
     const confirmed = window.confirm(
       "Save this after-event message and end the event? The room will become read-only while Memories, recaps, attendance, and Event Series history are kept.",
@@ -77,12 +172,51 @@ export default function AfterEventMessageManager({ roomId, roomEnded }: { roomId
         placeholder="Thanks for coming. See you next time."
         className="mt-2 min-h-28 w-full resize-y rounded-lg border border-white/10 bg-black/30 p-4 text-sm font-semibold text-white outline-none focus:border-[#9146ff]"
       />
+      <div className="mt-5 rounded-lg border border-white/10 bg-black/20 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-black text-purple-200">Message media <span className="font-semibold text-zinc-500">(optional)</span></p>
+            <p className="mt-1 text-xs font-semibold text-zinc-500">Add one image up to 10 MB or one video up to 20 MB.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <input
+              ref={mediaInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void uploadMedia(file);
+                event.target.value = "";
+              }}
+            />
+            <button type="button" disabled={mediaBusy || ending} onClick={() => mediaInputRef.current?.click()} className="rounded-md bg-[#9146ff] px-4 py-2 text-xs font-black hover:bg-[#7b31e8] disabled:opacity-50">
+              {mediaBusy ? "Working..." : media ? "Replace media" : "Add media"}
+            </button>
+            {media && (
+              <button type="button" disabled={mediaBusy || ending} onClick={() => void removeMedia()} className="rounded-md border border-red-400/35 px-4 py-2 text-xs font-black text-red-200 hover:bg-red-500/10 disabled:opacity-50">
+                Remove
+              </button>
+            )}
+          </div>
+        </div>
+        {media && (
+          <div className="mt-4 max-w-xl overflow-hidden rounded-lg border border-white/10 bg-black">
+            {media.media_type === "image" ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={media.signed_url} alt="Recap attachment preview" className="max-h-80 w-full object-contain" />
+            ) : (
+              <video src={media.signed_url} controls preload="metadata" className="max-h-80 w-full" />
+            )}
+          </div>
+        )}
+      </div>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-4">
         <span className="text-xs font-bold text-zinc-500">{message.length}/500</span>
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            disabled={saving || ending}
+            disabled={saving || ending || mediaBusy}
             onClick={() => void save()}
             className="rounded-full border border-purple-300/40 px-5 py-2.5 text-sm font-black text-purple-100 hover:bg-purple-400/10 disabled:opacity-60"
           >
@@ -91,7 +225,7 @@ export default function AfterEventMessageManager({ roomId, roomEnded }: { roomId
           {!roomEnded && (
             <button
               type="button"
-              disabled={saving || ending}
+              disabled={saving || ending || mediaBusy}
               onClick={() => void endEvent()}
               className="rounded-full bg-[#7c3aed] px-5 py-2.5 text-sm font-black text-white shadow-[0_8px_24px_rgba(124,58,237,0.38)] hover:bg-[#9146ff] disabled:opacity-60"
             >
