@@ -43,7 +43,7 @@ export default async function HomePage() {
         </div>
 
         <aside className="space-y-6 lg:pt-6">
-          <ActivityFeed rooms={rooms} profilesById={profilesById} loadError={loadError} />
+          <ActivityFeed rooms={rooms} profiles={Array.from(profilesById.values())} loadError={loadError} />
           <FollowingStrip />
         </aside>
       </div>

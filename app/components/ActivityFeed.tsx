@@ -1,6 +1,30 @@
-import React from "react";
+"use client";
+
 import Link from "next/link";
-import { HostProfile, LiveRoom, getActivity, getRoomTitle, getHostName } from "@/lib/homeHelpers";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { getMyConnections } from "@/lib/connections";
+import { asNumber, asText, HostProfile, LiveRoom, getActivity, getRoomTitle, getHostName } from "@/lib/homeHelpers";
+import { rankActivityFeedRooms, type ActivityFeedSignals, type RankedActivityRoom } from "@/lib/activityFeedRanking";
+import { createSupabaseClient } from "@/lib/supabase";
+
+const emptySignals: ActivityFeedSignals = {
+  currentUserId: null,
+  notificationRoomIds: [],
+  notificationActorIds: [],
+  connectedUserIds: new Set(),
+  followedUserIds: new Set(),
+  viewerCoordinates: null,
+  viewerLocation: null,
+};
+
+const reasonLabels: Record<RankedActivityRoom["reason"], string> = {
+  activity: "From your activity",
+  connection: "Connection",
+  discovery: "Discover",
+  following: "Following",
+  nearby: "Nearby",
+  yours: "Your room",
+};
 
 function getTimestamp(room: LiveRoom) {
   const raw =
@@ -52,18 +76,106 @@ function FeedIcon({ index }: { index: number }) {
   );
 }
 
+async function getGrantedBrowserCoordinates() {
+  if (typeof navigator === "undefined" || !navigator.geolocation || !navigator.permissions) return null;
+
+  try {
+    const permission = await navigator.permissions.query({ name: "geolocation" });
+    if (permission.state !== "granted") return null;
+
+    return await new Promise<{ latitude: number; longitude: number } | null>((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        (position) => resolve({ latitude: position.coords.latitude, longitude: position.coords.longitude }),
+        () => resolve(null),
+        { enableHighAccuracy: false, maximumAge: 10 * 60 * 1000, timeout: 4000 },
+      );
+    });
+  } catch {
+    return null;
+  }
+}
+
 export default function ActivityFeed({
   rooms,
-  profilesById,
+  profiles,
   loadError,
 }: {
   rooms: LiveRoom[];
-  profilesById: Map<string, HostProfile>;
+  profiles: HostProfile[];
   loadError?: string | null;
 }) {
-  const activityRooms = rooms
-    .filter((room) => room.status === "live" || room.status === "scheduled")
-    .slice(0, 5);
+  const supabase = useMemo(() => createSupabaseClient(), []);
+  const profilesById = useMemo(
+    () => new Map(profiles.map((profile) => [String(profile.id), profile])),
+    [profiles],
+  );
+  const [activityRooms, setActivityRooms] = useState<RankedActivityRoom[]>(() =>
+    rankActivityFeedRooms(rooms, emptySignals, 5, () => 0),
+  );
+
+  const personalize = useCallback(async () => {
+    const browserCoordinates = await getGrantedBrowserCoordinates();
+    const { data: userData } = await supabase.auth.getUser();
+    const user = userData.user;
+
+    if (!user) {
+      setActivityRooms(rankActivityFeedRooms(rooms, { ...emptySignals, viewerCoordinates: browserCoordinates }));
+      return;
+    }
+
+    const [notificationsResult, followsResult, connections, profileResult, seriesResult] = await Promise.all([
+      supabase
+        .from("notifications")
+        .select("room_id,actor_id,created_at")
+        .eq("user_id", user.id)
+        .is("dismissed_at", null)
+        .order("created_at", { ascending: false })
+        .limit(50),
+      supabase.from("follows").select("following_id").eq("follower_id", user.id),
+      getMyConnections(supabase).catch(() => []),
+      supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
+      supabase.rpc("get_my_followed_series_events"),
+    ]);
+    const profile = (profileResult.data ?? {}) as Record<string, unknown>;
+    const profileLatitude = asNumber(profile.latitude);
+    const profileLongitude = asNumber(profile.longitude);
+    const profileCoordinates =
+      profileLatitude != null &&
+      profileLongitude != null &&
+      profileLatitude >= -90 &&
+      profileLatitude <= 90 &&
+      profileLongitude >= -180 &&
+      profileLongitude <= 180
+        ? { latitude: profileLatitude, longitude: profileLongitude }
+        : null;
+    const seriesRoomIds = Array.isArray(seriesResult.data)
+      ? seriesResult.data.map((event) => String((event as Record<string, unknown>).id ?? "")).filter(Boolean)
+      : [];
+    const notificationRows = notificationsResult.data ?? [];
+    const signals: ActivityFeedSignals = {
+      currentUserId: user.id,
+      notificationRoomIds: [
+        ...notificationRows.map((notification) => notification.room_id).filter((id): id is string => Boolean(id)),
+        ...seriesRoomIds,
+      ],
+      notificationActorIds: notificationRows.map((notification) => notification.actor_id).filter((id): id is string => Boolean(id)),
+      connectedUserIds: new Set(connections.map((connection) => connection.person.profile_user_id).filter((id): id is string => Boolean(id))),
+      followedUserIds: new Set((followsResult.data ?? []).map((follow) => String(follow.following_id)).filter(Boolean)),
+      viewerCoordinates: profileCoordinates ?? browserCoordinates,
+      viewerLocation: asText(profile.location) ?? asText(profile.city) ?? asText(profile.region),
+    };
+
+    setActivityRooms(rankActivityFeedRooms(rooms, signals));
+  }, [rooms, supabase]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => { void personalize(); }, 0);
+    const { data: authListener } = supabase.auth.onAuthStateChange(() => { void personalize(); });
+    return () => {
+      window.clearTimeout(timeoutId);
+      authListener.subscription.unsubscribe();
+    };
+  }, [personalize, supabase]);
 
   return (
     <aside className="min-h-[535px] rounded-[10px] border border-white/[0.08] bg-[linear-gradient(180deg,rgba(17,17,27,0.94),rgba(11,11,19,0.96))] p-6 shadow-[0_18px_44px_rgba(0,0,0,0.24)]">
@@ -75,26 +187,41 @@ export default function ActivityFeed({
       <div className="mt-5">
         {activityRooms.length > 0 ? (
           <ul>
-            {activityRooms.map((room, index) => {
+            {activityRooms.map(({ room, reason }, index) => {
               const host = room.host_id != null ? profilesById.get(String(room.host_id)) : undefined;
+              const hostId = room.host_id == null ? null : String(room.host_id);
               const isLive = room.status === "live";
               const count = getActivity(room);
 
               return (
                 <li key={String(room.id)} className="flex min-h-[84px] items-center gap-4 border-b border-white/[0.06] py-3 last:border-b-0">
-                  <FeedIcon index={index} />
+                  {hostId ? (
+                    <Link href={`/user/${hostId}`} aria-label={`View ${getHostName(host)}'s profile`} className="shrink-0 rounded-full transition hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c35dff]">
+                      {asText(host?.avatar_url) ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={asText(host?.avatar_url) ?? ""} alt="" className="h-11 w-11 rounded-full border border-purple-200/20 object-cover" />
+                      ) : <FeedIcon index={index} />}
+                    </Link>
+                  ) : <FeedIcon index={index} />}
                   <div className="min-w-0 flex-1">
                     <p className="line-clamp-2 text-[15px] leading-6 text-white">
-                      <span className="font-semibold">{getHostName(host)}</span>{" "}
+                      {hostId ? (
+                        <Link href={`/user/${hostId}`} className="relative font-semibold hover:text-[#d7b2ff] hover:underline">{getHostName(host)}</Link>
+                      ) : <span className="font-semibold">{getHostName(host)}</span>}{" "}
                       {isLive ? "is streaming in" : "scheduled"}{" "}
-                      <span className="font-semibold">{getRoomTitle(room)}</span>
+                      <Link href={`/room/${room.id}`} className="font-semibold hover:text-[#d7b2ff] hover:underline">{getRoomTitle(room)}</Link>
                       {isLive && count > 0 ? ` with ${count} watching` : ""}
                     </p>
-                    <p className="mt-1 text-[13px] text-[#8f899b]">{getTimestamp(room)}</p>
+                    <Link href={`/room/${room.id}`} className="mt-1 flex items-center gap-2 text-[13px] text-[#8f899b] hover:text-white">
+                      <span>{getTimestamp(room)}</span>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.08em] ${reason === "discovery" ? "bg-pink-500/15 text-[#ff83b8]" : "bg-purple-500/15 text-[#c9a6ff]"}`}>{reasonLabels[reason]}</span>
+                    </Link>
                   </div>
                   {room.cover_image && (
-                    <div
-                      className="h-[62px] w-[73px] shrink-0 rounded-md bg-cover bg-center"
+                    <Link
+                      href={`/room/${room.id}`}
+                      aria-label={`Open ${getRoomTitle(room)}`}
+                      className="h-[62px] w-[73px] shrink-0 rounded-md bg-cover bg-center transition hover:scale-[1.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c35dff]"
                       style={{ backgroundImage: `linear-gradient(rgba(0,0,0,0.1),rgba(0,0,0,0.25)),url(${room.cover_image})` }}
                     />
                   )}
