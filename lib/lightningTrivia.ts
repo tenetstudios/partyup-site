@@ -158,6 +158,19 @@ export async function saveTriviaQuestion(
   return data as TriviaQuestion;
 }
 
+export async function deleteCustomTriviaQuestion(
+  supabase: SupabaseClient,
+  roomId: string,
+  questionId: string,
+) {
+  const { data, error } = await supabase.rpc("delete_custom_trivia_question", {
+    p_room_id: roomId,
+    p_question_id: questionId,
+  });
+  if (error) throw new Error(error.message);
+  if (data !== true) throw new Error("The custom question was not deleted.");
+}
+
 export async function getTriviaQuestionBank(
   supabase: SupabaseClient,
   input: { roomId: string; search?: string; category?: string; difficulty?: string; humour?: boolean | null },

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { createSupabaseClient } from "@/lib/supabase";
 import {
-  createTriviaRound, generateTriviaQuestionIds, getRoomTrivia, getTriviaQuestionBank,
+  createTriviaRound, deleteCustomTriviaQuestion, generateTriviaQuestionIds, getRoomTrivia, getTriviaQuestionBank,
   saveTriviaQuestion, triviaCategories, triviaDifficulties, triviaLabel,
   type TriviaQuestion, type TriviaRoundSummary,
 } from "@/lib/lightningTrivia";
@@ -47,6 +47,7 @@ export default function LightningTriviaManager({ roomId, roomEnded = false }: { 
   const [customDifficulty, setCustomDifficulty] = useState("medium");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
   const loadRoundData = useCallback(async () => {
     const [{ data: roundRows, error: roundsError }, currentRound, wildState] = await Promise.all([
@@ -85,7 +86,7 @@ export default function LightningTriviaManager({ roomId, roomEnded = false }: { 
   const selectedQuestions = selected.map((id) => chosenQuestions.find((item) => item.id === id)).filter((item): item is TriviaQuestion => Boolean(item));
 
   async function run(action: () => Promise<unknown>, reloadBank = false) {
-    setBusy(true); setError("");
+    setBusy(true); setError(""); setNotice("");
     try { await action(); await loadRoundData(); if (reloadBank) await loadBank(); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "Trivia operation failed."); }
     finally { setBusy(false); }
@@ -115,9 +116,23 @@ export default function LightningTriviaManager({ roomId, roomEnded = false }: { 
     await run(async () => {
       const ids = await generateTriviaQuestionIds(supabase, { roomId, category: categoryFilter, difficulty: difficultyFilter });
       const generatedQuestions = await getTriviaQuestionBank(supabase, { roomId, category: categoryFilter, difficulty: difficultyFilter });
-      setSelected(ids); setChosenQuestions(generatedQuestions.filter((item) => ids.includes(item.id)));
+      const byId = new Map(generatedQuestions.map((item) => [item.id, item]));
+      const picked = ids.map((id) => byId.get(id)).filter((item): item is TriviaQuestion => Boolean(item));
+      if (ids.length !== 10 || picked.length !== 10) throw new Error("The question bank did not return 10 usable questions. Try again or check the active bank in Admin.");
+      setSelected(ids); setChosenQuestions(picked);
       setSearch(""); setHumourFilter("");
+      setNotice("10 questions generated and added to the round order below.");
     });
+  }
+
+  async function removeCustomQuestion(question: TriviaQuestion) {
+    if (!window.confirm(`Permanently delete “${question.question_text}”? Existing rounds will keep their saved copy.`)) return;
+    await run(async () => {
+      await deleteCustomTriviaQuestion(supabase, roomId, question.id);
+      setSelected((current) => current.filter((id) => id !== question.id));
+      setChosenQuestions((current) => current.filter((item) => item.id !== question.id));
+      setNotice("Custom question permanently deleted.");
+    }, true);
   }
 
   async function createCustomQuestion() {
@@ -132,6 +147,7 @@ export default function LightningTriviaManager({ roomId, roomEnded = false }: { 
     <h2 className="mt-2 text-2xl font-black">Lightning Trivia</h2>
     <p className="mt-1 text-sm text-zinc-400">Choose ten from PartyUp&apos;s bank. Every launched round keeps an immutable snapshot.</p>
     {error && <p role="alert" className="mt-4 rounded-lg bg-red-950/50 p-3 text-sm font-bold text-red-200">{error}</p>}
+    {notice && <p role="status" aria-live="polite" className="mt-4 rounded-lg border border-emerald-300/25 bg-emerald-950/40 p-3 text-sm font-bold text-emerald-100">{notice}</p>}
 
     {liveRound ? <div className="mt-5 rounded-xl border border-yellow-300/25 bg-yellow-400/10 p-4">
       <p className="font-black">ROUND {liveRound.status.toUpperCase()}</p>
@@ -160,7 +176,7 @@ export default function LightningTriviaManager({ roomId, roomEnded = false }: { 
           <button type="button" disabled={selected.length < 2} onClick={() => setSelected((current) => shuffled(current))} className="rounded-lg border border-white/15 px-4 py-3 font-black disabled:opacity-40">Shuffle selected</button>
           <button type="button" disabled={!selected.length} onClick={() => { setSelected([]); setChosenQuestions([]); }} className="rounded-lg border border-white/15 px-4 py-3 font-black disabled:opacity-40">Clear</button>
         </div>
-        <div className="mt-4 max-h-[560px] space-y-2 overflow-y-auto pr-1">{questions.map((item) => { const isSelected = selected.includes(item.id); return <article key={item.id} className={`rounded-lg border p-3 ${isSelected ? "border-yellow-300/60 bg-yellow-400/10" : "border-white/10 bg-black/25"}`}><div className="flex gap-3"><input type="checkbox" aria-label={`Select ${item.question_text}`} checked={isSelected} disabled={!isSelected && selected.length >= 10} onChange={() => toggleSelected(item)} /><button type="button" onClick={() => setPreview(item)} className="min-w-0 flex-1 text-left"><span className="block font-black">{item.question_text}</span><span className="mt-1 block text-xs text-zinc-400">{triviaLabel(item.category)} · {triviaLabel(item.difficulty)}{item.humour ? " · 😄 Humour" : ""}{item.bank_scope === "custom" ? " · Your custom question" : " · PartyUp"}</span></button><button type="button" onClick={() => setPreview(item)} className="self-start rounded border border-white/15 px-3 py-1.5 text-xs font-black">Preview</button></div></article>; })}{questions.length === 0 && <p className="rounded-lg border border-dashed border-white/15 p-6 text-center text-sm text-zinc-400">No active questions match these filters.</p>}</div>
+        <div className="mt-4 max-h-[560px] space-y-2 overflow-y-auto pr-1">{questions.map((item) => { const isSelected = selected.includes(item.id); return <article key={item.id} className={`rounded-lg border p-3 ${isSelected ? "border-yellow-300/60 bg-yellow-400/10" : "border-white/10 bg-black/25"}`}><div className="flex gap-3"><input type="checkbox" aria-label={`Select ${item.question_text}`} checked={isSelected} disabled={!isSelected && selected.length >= 10} onChange={() => toggleSelected(item)} /><button type="button" onClick={() => setPreview(item)} className="min-w-0 flex-1 text-left"><span className="block font-black">{item.question_text}</span><span className="mt-1 block text-xs text-zinc-400">{triviaLabel(item.category)} · {triviaLabel(item.difficulty)}{item.humour ? " · 😄 Humour" : ""}{item.bank_scope === "custom" ? " · Your custom question" : " · PartyUp"}</span></button><button type="button" onClick={() => setPreview(item)} className="self-start rounded border border-white/15 px-3 py-1.5 text-xs font-black">Preview</button>{item.bank_scope === "custom" && <button type="button" disabled={busy} onClick={() => void removeCustomQuestion(item)} className="self-start rounded border border-red-300/25 px-3 py-1.5 text-xs font-black text-red-200 disabled:opacity-40">Delete</button>}</div></article>; })}{questions.length === 0 && <p className="rounded-lg border border-dashed border-white/15 p-6 text-center text-sm text-zinc-400">No active questions match these filters.</p>}</div>
       </div>
 
       {selectedQuestions.length > 0 && <div className="mt-5 rounded-xl border border-white/10 p-4"><h3 className="font-black">Round order</h3><ol className="mt-3 space-y-2">{selectedQuestions.map((item, index) => <li key={item.id} className="flex items-center gap-3 rounded-lg bg-black/30 p-3"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-yellow-400/15 text-sm font-black text-yellow-200">{index + 1}</span><span className="min-w-0 flex-1 truncate text-sm font-black">{item.question_text}</span><button type="button" disabled={index === 0} onClick={() => moveSelected(item.id, -1)} aria-label={`Move question ${index + 1} up`} className="rounded border border-white/15 px-2 py-1 disabled:opacity-25">↑</button><button type="button" disabled={index === selectedQuestions.length - 1} onClick={() => moveSelected(item.id, 1)} aria-label={`Move question ${index + 1} down`} className="rounded border border-white/15 px-2 py-1 disabled:opacity-25">↓</button><button type="button" onClick={() => toggleSelected(item)} className="rounded border border-red-300/25 px-2 py-1 text-xs font-black text-red-200">Remove</button></li>)}</ol></div>}

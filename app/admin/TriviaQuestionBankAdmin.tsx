@@ -19,6 +19,16 @@ type FormState = {
   isActive: boolean;
 };
 
+type ImportQuestion = {
+  question_text: string;
+  answers: string[];
+  correct_answer: "A" | "B" | "C" | "D";
+  category: string;
+  difficulty: string;
+  humour: boolean;
+  is_active: boolean;
+};
+
 const blankForm: FormState = {
   id: null, question: "", answers: blankAnswers, correctAnswer: "A",
   category: "general_knowledge", difficulty: "medium", humour: false, isActive: true,
@@ -38,6 +48,7 @@ export default function TriviaQuestionBankAdmin({ supabase }: { supabase: Supaba
   const [importFileName, setImportFileName] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [messageTone, setMessageTone] = useState<"success" | "error" | "info">("info");
   const importFileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -63,7 +74,10 @@ export default function TriviaQuestionBankAdmin({ supabase }: { supabase: Supaba
   async function run(action: () => Promise<void>) {
     setBusy(true); setMessage("");
     try { await action(); await load(); }
-    catch (reason) { setMessage(reason instanceof Error ? reason.message : "Question bank operation failed."); }
+    catch (reason) {
+      setMessageTone("error");
+      setMessage(reason instanceof Error ? reason.message : "Question bank operation failed.");
+    }
     finally { setBusy(false); }
   }
 
@@ -85,7 +99,7 @@ export default function TriviaQuestionBankAdmin({ supabase }: { supabase: Supaba
         p_is_active: form.isActive,
       });
       if (error) throw new Error(error.message);
-      setForm(blankForm); setMessage(form.id ? "Question updated." : "Question created.");
+      setForm(blankForm); setMessageTone("success"); setMessage(form.id ? "Question updated." : "Question created.");
     });
   }
 
@@ -93,6 +107,8 @@ export default function TriviaQuestionBankAdmin({ supabase }: { supabase: Supaba
     await run(async () => {
       const { error } = await supabase.rpc("admin_set_trivia_question_active", { p_question_id: item.id, p_is_active: !item.is_active });
       if (error) throw new Error(error.message);
+      setMessageTone("success");
+      setMessage(item.is_active ? "Question deactivated." : "Question reactivated.");
     });
   }
 
@@ -102,6 +118,50 @@ export default function TriviaQuestionBankAdmin({ supabase }: { supabase: Supaba
       const { error } = await supabase.rpc("admin_delete_trivia_question", { p_question_id: item.id });
       if (error) throw new Error(error.message);
       if (form.id === item.id) setForm(blankForm);
+      setMessageTone("success");
+      setMessage("Question permanently deleted.");
+    });
+  }
+
+  function normalizeImport(value: unknown): ImportQuestion[] {
+    const source = Array.isArray(value)
+      ? value
+      : value && typeof value === "object" && Array.isArray((value as { questions?: unknown }).questions)
+        ? (value as { questions: unknown[] }).questions
+        : null;
+    if (!source) throw new Error('Import JSON must be an array, or an object with a "questions" array.');
+    if (source.length < 1 || source.length > 100) throw new Error("Import files must contain between 1 and 100 questions.");
+
+    return source.map((raw, index) => {
+      if (!raw || typeof raw !== "object") throw new Error(`Question ${index + 1} must be an object.`);
+      const item = raw as Record<string, unknown>;
+      const question = String(item.question_text ?? item.question ?? "").trim();
+      const answers = Array.isArray(item.answers)
+        ? item.answers.map((answer) => String(answer).trim())
+        : [item.answer_a, item.answer_b, item.answer_c, item.answer_d].map((answer) => String(answer ?? "").trim());
+      const rawCorrect = item.correct_answer ?? item.correctAnswer;
+      const correct = typeof rawCorrect === "number" && Number.isInteger(rawCorrect) && rawCorrect >= 0 && rawCorrect <= 3
+        ? String.fromCharCode(65 + rawCorrect)
+        : String(rawCorrect ?? "").trim().toUpperCase();
+      const category = String(item.category ?? "general_knowledge").trim().toLowerCase().replaceAll("&", "and").replaceAll(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+      const difficulty = String(item.difficulty ?? "medium").trim().toLowerCase().replaceAll(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+
+      if (!question || question.length > 240) throw new Error(`Question ${index + 1} must contain 1 to 240 characters.`);
+      if (answers.length !== 4 || answers.some((answer) => !answer || answer.length > 100)) throw new Error(`Question ${index + 1} must have exactly four non-empty answers of 100 characters or fewer.`);
+      if (new Set(answers.map((answer) => answer.toLowerCase())).size !== 4) throw new Error(`Question ${index + 1} must have four different answers.`);
+      if (!["A", "B", "C", "D"].includes(correct)) throw new Error(`Question ${index + 1} must have correct_answer A, B, C, or D (0-3 is also accepted).`);
+      if (!triviaCategories.includes(category as (typeof triviaCategories)[number])) throw new Error(`Question ${index + 1} has an unsupported category: ${category || "blank"}.`);
+      if (!triviaDifficulties.includes(difficulty as (typeof triviaDifficulties)[number])) throw new Error(`Question ${index + 1} has an unsupported difficulty: ${difficulty || "blank"}.`);
+
+      return {
+        question_text: question,
+        answers,
+        correct_answer: correct as ImportQuestion["correct_answer"],
+        category,
+        difficulty,
+        humour: item.humour === true || String(item.humour ?? "").toLowerCase() === "true",
+        is_active: item.is_active !== false && String(item.is_active ?? "").toLowerCase() !== "false",
+      };
     });
   }
 
@@ -109,10 +169,13 @@ export default function TriviaQuestionBankAdmin({ supabase }: { supabase: Supaba
     await run(async () => {
       let parsed: unknown;
       try { parsed = JSON.parse(importJson); } catch { throw new Error("The import is not valid JSON."); }
-      if (!Array.isArray(parsed)) throw new Error("Import JSON must be an array of question objects.");
-      const { data, error } = await supabase.rpc("admin_import_trivia_questions", { p_questions: parsed });
+      const questionsToImport = normalizeImport(parsed);
+      const { data, error } = await supabase.rpc("admin_import_trivia_questions", { p_questions: questionsToImport });
       if (error) throw new Error(error.message);
-      setMessage(`${Array.isArray(data) ? data.length : parsed.length} questions imported.`);
+      const importedCount = Array.isArray(data) ? data.length : 0;
+      if (importedCount !== questionsToImport.length) throw new Error(`The server reported ${importedCount} of ${questionsToImport.length} questions imported. Refresh before trying again.`);
+      setMessageTone("success");
+      setMessage(`${importedCount} question${importedCount === 1 ? "" : "s"} imported successfully and available to hosts.`);
       setImportJson(""); setImportFileName(""); setImportOpen(false);
     });
   }
@@ -128,14 +191,15 @@ export default function TriviaQuestionBankAdmin({ supabase }: { supabase: Supaba
       if (file.size > 1_000_000) throw new Error("JSON import files must be 1 MB or smaller.");
 
       const parsed: unknown = JSON.parse(await file.text());
-      if (!Array.isArray(parsed)) throw new Error("Import JSON must be an array of question objects.");
-      if (parsed.length < 1 || parsed.length > 100) throw new Error("Import files must contain between 1 and 100 questions.");
+      const normalized = normalizeImport(parsed);
 
-      setImportJson(JSON.stringify(parsed, null, 2));
+      setImportJson(JSON.stringify(normalized, null, 2));
       setImportFileName(file.name);
-      setMessage(`${file.name} loaded with ${parsed.length} question${parsed.length === 1 ? "" : "s"}. Review them, then click Import questions.`);
+      setMessageTone("info");
+      setMessage(`${file.name} loaded with ${normalized.length} question${normalized.length === 1 ? "" : "s"}. Review them, then click Import questions.`);
     } catch (reason) {
       setImportFileName("");
+      setMessageTone("error");
       setMessage(reason instanceof Error ? reason.message : "The selected file could not be read.");
     }
   }
@@ -148,9 +212,9 @@ export default function TriviaQuestionBankAdmin({ supabase }: { supabase: Supaba
 
   return <section id="trivia-bank" className="mt-8 rounded-xl border border-yellow-300/20 bg-[#100a17] p-5 md:p-7">
     <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-black tracking-[0.2em] text-yellow-300">CENTRAL CONTENT</p><h2 className="mt-1 text-2xl font-black">PartyUp Trivia Question Bank</h2><p className="mt-1 text-sm text-[#aaa4b8]">Only site administrators can modify these canonical questions. Hosts receive active questions as read-only choices.</p></div><button type="button" onClick={() => setImportOpen((value) => !value)} className="rounded-md bg-fuchsia-600 px-4 py-3 text-sm font-black">{importOpen ? "Close import" : "Bulk JSON import"}</button></div>
-    {message && <p role="status" className="mt-4 rounded-md bg-white/5 p-3 text-sm font-bold">{message}</p>}
+    {message && <p role={messageTone === "error" ? "alert" : "status"} aria-live="polite" className={`mt-4 rounded-md border p-3 text-sm font-bold ${messageTone === "error" ? "border-red-300/25 bg-red-950/50 text-red-100" : messageTone === "success" ? "border-emerald-300/25 bg-emerald-950/40 text-emerald-100" : "border-white/10 bg-white/5"}`}>{message}</p>}
 
-    {importOpen && <div className="mt-5 rounded-xl border border-fuchsia-300/20 bg-fuchsia-950/15 p-4"><h3 className="font-black">Import up to 100 questions</h3><p className="mt-1 text-sm text-zinc-400">Upload a .json file or paste a JSON array using question_text, answers (four strings), correct_answer (A–D), difficulty, category, humour, and optional is_active.</p><input ref={importFileRef} type="file" accept=".json,application/json" onChange={(event) => void loadImportFile(event)} className="hidden" /><div className="mt-3 flex flex-wrap items-center gap-3"><button type="button" disabled={busy} onClick={() => importFileRef.current?.click()} className="rounded-lg border border-fuchsia-300/30 bg-fuchsia-500/10 px-5 py-3 font-black text-fuchsia-100 disabled:opacity-40">Upload .json file</button>{importFileName && <span className="text-sm font-bold text-zinc-300">Loaded: {importFileName}</span>}</div><textarea rows={12} value={importJson} onChange={(event) => { setImportJson(event.target.value); setImportFileName(""); }} className="mt-3 w-full rounded-lg bg-black p-4 font-mono text-sm" placeholder={'[{\n  "question_text": "Which artist... ?",\n  "answers": ["One", "Two", "Three", "Four"],\n  "correct_answer": "C",\n  "difficulty": "easy",\n  "category": "music",\n  "humour": false\n}]'} /><button type="button" disabled={busy || !importJson.trim()} onClick={() => void importQuestions()} className="mt-3 rounded-lg bg-emerald-500 px-5 py-3 font-black text-black disabled:opacity-40">Import questions</button></div>}
+    {importOpen && <div className="mt-5 rounded-xl border border-fuchsia-300/20 bg-fuchsia-950/15 p-4"><h3 className="font-black">Import up to 100 questions</h3><p className="mt-1 text-sm text-zinc-400">Upload a .json file or paste a JSON array using question_text, answers (four strings), correct_answer (A–D), difficulty, category, humour, and optional is_active.</p><input ref={importFileRef} type="file" accept=".json,application/json" onChange={(event) => void loadImportFile(event)} className="hidden" /><div className="mt-3 flex flex-wrap items-center gap-3"><button type="button" disabled={busy} onClick={() => importFileRef.current?.click()} className="rounded-lg border border-fuchsia-300/30 bg-fuchsia-500/10 px-5 py-3 font-black text-fuchsia-100 disabled:opacity-40">Upload .json file</button>{importFileName && <span className="text-sm font-bold text-zinc-300">Loaded: {importFileName}</span>}</div><textarea rows={12} value={importJson} onChange={(event) => { setImportJson(event.target.value); setImportFileName(""); }} className="mt-3 w-full rounded-lg bg-black p-4 font-mono text-sm" placeholder={'[{\n  "question_text": "Which artist... ?",\n  "answers": ["One", "Two", "Three", "Four"],\n  "correct_answer": "C",\n  "difficulty": "easy",\n  "category": "music",\n  "humour": false\n}]'} /><button type="button" disabled={busy || !importJson.trim()} onClick={() => void importQuestions()} className="mt-3 rounded-lg bg-emerald-500 px-5 py-3 font-black text-black disabled:opacity-40">{busy ? "Importing…" : "Import questions"}</button></div>}
 
     <div id="trivia-question-editor" className="mt-6 rounded-xl border border-white/10 bg-black/20 p-4">
       <div className="flex items-center justify-between gap-3"><h3 className="font-black">{form.id ? "Edit PartyUp question" : "Create PartyUp question"}</h3>{form.id && <button type="button" onClick={() => setForm(blankForm)} className="rounded border border-white/15 px-3 py-2 text-xs font-black">Cancel edit</button>}</div>
