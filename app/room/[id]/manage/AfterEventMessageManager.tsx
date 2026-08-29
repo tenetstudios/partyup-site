@@ -15,6 +15,7 @@ const recapMediaExtensions: Record<string, string> = {
   "image/gif": "gif",
   "video/mp4": "mp4",
   "video/webm": "webm",
+  "video/quicktime": "mov",
 };
 
 export default function AfterEventMessageManager({ roomId, roomEnded }: { roomId: string; roomEnded: boolean }) {
@@ -44,7 +45,7 @@ export default function AfterEventMessageManager({ roomId, roomEnded }: { roomId
     const extension = recapMediaExtensions[file.type];
     const mediaType = file.type.startsWith("image/") ? "image" : "video";
     if (!extension || (mediaType !== "image" && mediaType !== "video")) {
-      setStatus("Choose a JPG, PNG, WebP, GIF, MP4, or WebM file.");
+      setStatus("Choose a JPG, PNG, WebP, GIF, MP4, WebM, or MOV file.");
       return;
     }
 
@@ -182,7 +183,7 @@ export default function AfterEventMessageManager({ roomId, roomEnded }: { roomId
             <input
               ref={mediaInputRef}
               type="file"
-              accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm"
+              accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime"
               className="hidden"
               onChange={(event) => {
                 const file = event.target.files?.[0];

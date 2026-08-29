@@ -3,14 +3,14 @@ create table if not exists public.room_recap_media (
   media_path text not null,
   media_type text not null check (media_type in ('image', 'video')),
   mime_type text not null check (
-    mime_type in ('image/jpeg', 'image/png', 'image/webp', 'image/gif', 'video/mp4', 'video/webm')
+    mime_type in ('image/jpeg', 'image/png', 'image/webp', 'image/gif', 'video/mp4', 'video/webm', 'video/quicktime')
   ),
   file_size_bytes bigint not null check (file_size_bytes > 0 and file_size_bytes <= 20971520),
   updated_by uuid not null references auth.users(id) on delete restrict,
   updated_at timestamptz not null default now(),
   constraint room_recap_media_type_mime_check check (
     (media_type = 'image' and mime_type like 'image/%' and file_size_bytes <= 10485760)
-    or (media_type = 'video' and mime_type in ('video/mp4', 'video/webm'))
+    or (media_type = 'video' and mime_type in ('video/mp4', 'video/webm', 'video/quicktime'))
   )
 );
 
@@ -59,7 +59,7 @@ set search_path = public
 as $$
   select public.recap_media_path_room_id(p_name) is not null
     and public.is_room_host(public.recap_media_path_room_id(p_name))
-    and split_part(p_name, '/', 2) ~ '^recap-media\.(jpe?g|png|webp|gif|mp4|webm)$'
+    and split_part(p_name, '/', 2) ~ '^recap-media\.(jpe?g|png|webp|gif|mp4|webm|mov)$'
     and split_part(p_name, '/', 3) = '';
 $$;
 
@@ -92,7 +92,7 @@ values (
   'room-recap-media',
   false,
   20971520,
-  array['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'video/mp4', 'video/webm']
+  array['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'video/mp4', 'video/webm', 'video/quicktime']
 )
 on conflict (id) do update
 set
@@ -179,13 +179,17 @@ begin
       when 'image/webp' then 'webp'
       else 'gif'
     end;
-  elsif p_media_type = 'video' and p_mime_type in ('video/mp4', 'video/webm') then
-    v_extension := case p_mime_type when 'video/mp4' then 'mp4' else 'webm' end;
+  elsif p_media_type = 'video' and p_mime_type in ('video/mp4', 'video/webm', 'video/quicktime') then
+    v_extension := case p_mime_type
+      when 'video/mp4' then 'mp4'
+      when 'video/webm' then 'webm'
+      else 'mov'
+    end;
   else
-    raise exception 'Recap media must be a supported image, MP4, or WebM file';
+    raise exception 'Recap media must be a supported image, MP4, WebM, or MOV file';
   end if;
 
-  if p_media_path <> p_room_id::text || '/recap-media.' || v_extension then
+  if p_media_path <> (p_room_id::text || '/recap-media.' || v_extension) then
     raise exception 'Invalid recap media storage path';
   end if;
 
