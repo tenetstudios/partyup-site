@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   triviaCategories, triviaDifficulties, triviaLabel, type TriviaQuestion,
@@ -35,8 +35,10 @@ export default function TriviaQuestionBankAdmin({ supabase }: { supabase: Supaba
   const [preview, setPreview] = useState<TriviaQuestion | FormState | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [importJson, setImportJson] = useState("");
+  const [importFileName, setImportFileName] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const importFileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     const { data, error } = await supabase.rpc("get_admin_trivia_question_bank", {
@@ -111,8 +113,31 @@ export default function TriviaQuestionBankAdmin({ supabase }: { supabase: Supaba
       const { data, error } = await supabase.rpc("admin_import_trivia_questions", { p_questions: parsed });
       if (error) throw new Error(error.message);
       setMessage(`${Array.isArray(data) ? data.length : parsed.length} questions imported.`);
-      setImportJson(""); setImportOpen(false);
+      setImportJson(""); setImportFileName(""); setImportOpen(false);
     });
+  }
+
+  async function loadImportFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    setMessage("");
+    try {
+      if (!file.name.toLowerCase().endsWith(".json")) throw new Error("Choose a .json file.");
+      if (file.size > 1_000_000) throw new Error("JSON import files must be 1 MB or smaller.");
+
+      const parsed: unknown = JSON.parse(await file.text());
+      if (!Array.isArray(parsed)) throw new Error("Import JSON must be an array of question objects.");
+      if (parsed.length < 1 || parsed.length > 100) throw new Error("Import files must contain between 1 and 100 questions.");
+
+      setImportJson(JSON.stringify(parsed, null, 2));
+      setImportFileName(file.name);
+      setMessage(`${file.name} loaded with ${parsed.length} question${parsed.length === 1 ? "" : "s"}. Review them, then click Import questions.`);
+    } catch (reason) {
+      setImportFileName("");
+      setMessage(reason instanceof Error ? reason.message : "The selected file could not be read.");
+    }
   }
 
   const previewQuestion = preview && "question_text" in preview ? preview.question_text : preview?.question;
@@ -125,7 +150,7 @@ export default function TriviaQuestionBankAdmin({ supabase }: { supabase: Supaba
     <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-black tracking-[0.2em] text-yellow-300">CENTRAL CONTENT</p><h2 className="mt-1 text-2xl font-black">PartyUp Trivia Question Bank</h2><p className="mt-1 text-sm text-[#aaa4b8]">Only site administrators can modify these canonical questions. Hosts receive active questions as read-only choices.</p></div><button type="button" onClick={() => setImportOpen((value) => !value)} className="rounded-md bg-fuchsia-600 px-4 py-3 text-sm font-black">{importOpen ? "Close import" : "Bulk JSON import"}</button></div>
     {message && <p role="status" className="mt-4 rounded-md bg-white/5 p-3 text-sm font-bold">{message}</p>}
 
-    {importOpen && <div className="mt-5 rounded-xl border border-fuchsia-300/20 bg-fuchsia-950/15 p-4"><h3 className="font-black">Import up to 100 questions</h3><p className="mt-1 text-sm text-zinc-400">Paste a JSON array using question_text, answers (four strings), correct_answer (A–D), difficulty, category, humour, and optional is_active.</p><textarea rows={12} value={importJson} onChange={(event) => setImportJson(event.target.value)} className="mt-3 w-full rounded-lg bg-black p-4 font-mono text-sm" placeholder={'[{\n  "question_text": "Which artist... ?",\n  "answers": ["One", "Two", "Three", "Four"],\n  "correct_answer": "C",\n  "difficulty": "easy",\n  "category": "music",\n  "humour": false\n}]'} /><button type="button" disabled={busy || !importJson.trim()} onClick={() => void importQuestions()} className="mt-3 rounded-lg bg-emerald-500 px-5 py-3 font-black text-black disabled:opacity-40">Import questions</button></div>}
+    {importOpen && <div className="mt-5 rounded-xl border border-fuchsia-300/20 bg-fuchsia-950/15 p-4"><h3 className="font-black">Import up to 100 questions</h3><p className="mt-1 text-sm text-zinc-400">Upload a .json file or paste a JSON array using question_text, answers (four strings), correct_answer (A–D), difficulty, category, humour, and optional is_active.</p><input ref={importFileRef} type="file" accept=".json,application/json" onChange={(event) => void loadImportFile(event)} className="hidden" /><div className="mt-3 flex flex-wrap items-center gap-3"><button type="button" disabled={busy} onClick={() => importFileRef.current?.click()} className="rounded-lg border border-fuchsia-300/30 bg-fuchsia-500/10 px-5 py-3 font-black text-fuchsia-100 disabled:opacity-40">Upload .json file</button>{importFileName && <span className="text-sm font-bold text-zinc-300">Loaded: {importFileName}</span>}</div><textarea rows={12} value={importJson} onChange={(event) => { setImportJson(event.target.value); setImportFileName(""); }} className="mt-3 w-full rounded-lg bg-black p-4 font-mono text-sm" placeholder={'[{\n  "question_text": "Which artist... ?",\n  "answers": ["One", "Two", "Three", "Four"],\n  "correct_answer": "C",\n  "difficulty": "easy",\n  "category": "music",\n  "humour": false\n}]'} /><button type="button" disabled={busy || !importJson.trim()} onClick={() => void importQuestions()} className="mt-3 rounded-lg bg-emerald-500 px-5 py-3 font-black text-black disabled:opacity-40">Import questions</button></div>}
 
     <div id="trivia-question-editor" className="mt-6 rounded-xl border border-white/10 bg-black/20 p-4">
       <div className="flex items-center justify-between gap-3"><h3 className="font-black">{form.id ? "Edit PartyUp question" : "Create PartyUp question"}</h3>{form.id && <button type="button" onClick={() => setForm(blankForm)} className="rounded border border-white/15 px-3 py-2 text-xs font-black">Cancel edit</button>}</div>
