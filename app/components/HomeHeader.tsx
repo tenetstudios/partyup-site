@@ -104,7 +104,7 @@ export default function HomeHeader({ liveCount }: { liveCount?: number }) {
     <nav className="sticky top-0 z-20 border-b border-white/[0.08] bg-[#070610]/95 backdrop-blur">
       <div className="mx-auto flex h-[76px] w-full max-w-[1458px] items-center justify-between px-5 xl:px-0">
         <Link href="/" className="text-[29px] font-black leading-none tracking-[-0.02em]">
-          party<span className="text-[#8b3dff]">up</span>.io
+          Party<span className="text-[#8b3dff]">Up</span>
         </Link>
 
         <div className="hidden items-center gap-11 text-[15px] font-semibold text-[#c6c2cf] md:flex">
