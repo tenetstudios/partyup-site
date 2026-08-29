@@ -23,6 +23,9 @@ create table public.trivia_questions (
 
 create index trivia_questions_owner_status_idx
   on public.trivia_questions(created_by_identity_id, status, updated_at desc);
+create unique index trivia_questions_owner_active_text_uidx
+  on public.trivia_questions(created_by_identity_id, lower(btrim(question_text)))
+  where status = 'active';
 
 create table public.trivia_rounds (
   id uuid primary key default gen_random_uuid(),
@@ -168,22 +171,74 @@ begin
   if char_length(btrim(coalesce(p_question_text, ''))) not between 1 and 240 then
     raise exception 'Question must be 1 to 240 characters';
   end if;
-  if p_correct_answer not between 0 and 3 then raise exception 'Choose one correct answer'; end if;
+  if p_correct_answer is null or p_correct_answer not between 0 and 3 then raise exception 'Choose one correct answer'; end if;
   v_answers := public.validate_trivia_answers(p_answers);
   if p_question_id is null then
     insert into public.trivia_questions(created_by_identity_id, question_text, answers, correct_answer, category, difficulty)
     values (v_identity, btrim(p_question_text), v_answers, p_correct_answer,
-      nullif(left(btrim(coalesce(p_category, '')), 60), ''),
+      case when lower(btrim(coalesce(p_category, ''))) in ('', 'uncategorized') then null else left(btrim(p_category), 60) end,
       nullif(left(btrim(coalesce(p_difficulty, '')), 40), '')) returning * into v_row;
   else
     update public.trivia_questions set question_text = btrim(p_question_text), answers = v_answers,
-      correct_answer = p_correct_answer, category = nullif(left(btrim(coalesce(p_category, '')), 60), ''),
+      correct_answer = p_correct_answer,
+      category = case when lower(btrim(coalesce(p_category, ''))) in ('', 'uncategorized') then null else left(btrim(p_category), 60) end,
       difficulty = nullif(left(btrim(coalesce(p_difficulty, '')), 40), '')
     where id = p_question_id and (created_by_identity_id = v_identity or public.is_site_admin())
       and status = 'active' returning * into v_row;
     if not found then raise exception 'Question not found or not editable'; end if;
   end if;
   return v_row;
+end;
+$$;
+
+create or replace function public.import_trivia_questions(p_room_id uuid, p_questions jsonb)
+returns setof public.trivia_questions
+language plpgsql security definer set search_path = public as $$
+declare
+  v_identity uuid := public.current_partyup_identity_id();
+  v_item jsonb; v_question text; v_answers jsonb; v_correct smallint;
+  v_category text; v_difficulty text; v_row public.trivia_questions;
+  v_seen_questions text[] := array[]::text[];
+begin
+  if not public.is_room_host(p_room_id) and not public.is_site_admin() then
+    raise exception 'Host or administrator access required';
+  end if;
+  if v_identity is null then raise exception 'PartyUp identity required'; end if;
+  if p_questions is null or jsonb_typeof(p_questions) <> 'array' or jsonb_array_length(p_questions) not between 1 and 100 then
+    raise exception 'Import between 1 and 100 questions';
+  end if;
+
+  for v_item in select value from jsonb_array_elements(p_questions) item(value)
+  loop
+    if jsonb_typeof(v_item) <> 'object' then raise exception 'Every imported question must be an object'; end if;
+    v_question := btrim(coalesce(v_item->>'question_text', ''));
+    if char_length(v_question) not between 1 and 240 then raise exception 'Every question must be 1 to 240 characters'; end if;
+    if lower(v_question) = any(v_seen_questions) then raise exception 'Duplicate question in import: %', v_question; end if;
+    v_seen_questions := array_append(v_seen_questions, lower(v_question));
+    if exists (
+      select 1 from public.trivia_questions existing
+      where existing.status = 'active' and lower(btrim(existing.question_text)) = lower(v_question)
+        and (existing.created_by_identity_id = v_identity or public.is_site_admin())
+    ) then raise exception 'Question already exists: %', v_question; end if;
+
+    v_answers := public.validate_trivia_answers(v_item->'answers');
+    begin v_correct := (v_item->>'correct_answer')::smallint;
+    exception when invalid_text_representation then raise exception 'Every question needs one correct answer'; end;
+    if v_correct is null or v_correct not between 0 and 3 then raise exception 'Every question needs one correct answer'; end if;
+    v_category := btrim(coalesce(v_item->>'category', ''));
+    if lower(v_category) in ('', 'uncategorized') then v_category := null; end if;
+    if v_category is not null and char_length(v_category) > 60 then raise exception 'Category is too long'; end if;
+    v_difficulty := nullif(btrim(coalesce(v_item->>'difficulty', '')), '');
+    if v_difficulty is not null and char_length(v_difficulty) > 40 then raise exception 'Difficulty is too long'; end if;
+
+    insert into public.trivia_questions(
+      created_by_identity_id, question_text, answers, correct_answer, category, difficulty
+    ) values (
+      v_identity, v_question, v_answers, v_correct, v_category, v_difficulty
+    ) returning * into v_row;
+    return next v_row;
+  end loop;
+  return;
 end;
 $$;
 
@@ -606,12 +661,14 @@ using (exists (select 1 from public.event_rooms room where room.id = trivia_roun
 
 revoke all on function public.upsert_trivia_question(uuid,text,jsonb,smallint,text,text,uuid) from public, anon, authenticated;
 revoke all on function public.archive_trivia_question(uuid,uuid) from public, anon, authenticated;
+revoke all on function public.import_trivia_questions(uuid,jsonb) from public, anon, authenticated;
 revoke all on function public.get_trivia_question_bank(uuid,text) from public, anon, authenticated;
 revoke all on function public.create_lightning_trivia_round(uuid,uuid[],timestamptz,integer,integer,uuid,text,integer,integer,integer,integer) from public, anon, authenticated;
 revoke all on function public.cancel_lightning_trivia_round(uuid) from public, anon, authenticated;
 revoke all on function public.get_lightning_trivia_host_rounds(uuid) from public, anon, authenticated;
 grant execute on function public.upsert_trivia_question(uuid,text,jsonb,smallint,text,text,uuid) to authenticated;
 grant execute on function public.archive_trivia_question(uuid,uuid) to authenticated;
+grant execute on function public.import_trivia_questions(uuid,jsonb) to authenticated;
 grant execute on function public.get_trivia_question_bank(uuid,text) to authenticated;
 grant execute on function public.create_lightning_trivia_round(uuid,uuid[],timestamptz,integer,integer,uuid,text,integer,integer,integer,integer) to authenticated;
 grant execute on function public.cancel_lightning_trivia_round(uuid) to authenticated;

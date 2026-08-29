@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requestPushDispatch } from "./pushDispatch";
+import { normalizeTriviaCategory, type TriviaImportDraft } from "./triviaImport";
 
 export type TriviaQuestion = {
   id: string;
@@ -133,11 +134,30 @@ export async function saveTriviaQuestion(
     p_question_text: input.question,
     p_answers: input.answers,
     p_correct_answer: input.correctAnswer,
-    p_category: input.category?.trim() || null,
+    p_category: normalizeTriviaCategory(input.category) || null,
     p_difficulty: input.difficulty?.trim() || null,
   });
   if (error) throw new Error(error.message);
   return data as TriviaQuestion;
+}
+
+export async function importTriviaQuestions(
+  supabase: SupabaseClient,
+  roomId: string,
+  drafts: TriviaImportDraft[],
+) {
+  const { data, error } = await supabase.rpc("import_trivia_questions", {
+    p_room_id: roomId,
+    p_questions: drafts.map((draft) => ({
+      question_text: draft.question.trim(),
+      answers: draft.answers.map((answer) => answer.trim()),
+      correct_answer: draft.correctAnswer,
+      category: normalizeTriviaCategory(draft.category) || null,
+      difficulty: draft.difficulty.trim() || null,
+    })),
+  });
+  if (error) throw new Error(error.message);
+  return data as TriviaQuestion[];
 }
 
 export async function createTriviaRound(

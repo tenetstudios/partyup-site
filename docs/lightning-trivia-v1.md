@@ -13,6 +13,9 @@ Lightning Trivia is a verified `lightning_trivia` Room Mission. It uses the curr
 
 ## Integrity, access, and lifecycle
 
+- Hosts can paste up to 100 numbered ChatGPT-style questions into the bulk creation wizard. The parser accepts Markdown bold answers, HTML whitespace entities, and line-ending backslashes, then requires an editable validation review before one transactional import.
+- Active questions are unique per owning identity by normalized question text. Batch and existing-bank duplicates are rejected. Blank or `Uncategorized` categories normalize to database `NULL`.
+- Round setup can draw ten random active questions from any difficulty value currently present in the bank. The resulting order remains visible, reorderable, removable, and shufflable before launch.
 - A launch transaction requires exactly ten distinct active questions and copies text, four answers, correct answer, category, and difficulty into `trivia_round_questions`.
 - Bank edits and soft deletion (`archived`) cannot change or corrupt existing rounds.
 - Only the owning room host or a site administrator can use question-bank RPCs. Only the room host can launch or cancel a round.

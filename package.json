@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:trivia-import": "node --no-warnings --experimental-strip-types scripts/verify-trivia-import.mjs"
   },
   "dependencies": {
     "@livekit/components-react": "^2.9.21",

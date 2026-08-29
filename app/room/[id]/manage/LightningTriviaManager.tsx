@@ -4,8 +4,20 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createSupabaseClient } from "@/lib/supabase";
 import { createTriviaRound, getRoomTrivia, saveTriviaQuestion, type TriviaQuestion, type TriviaRoundSummary } from "@/lib/lightningTrivia";
 import { getWildRoomState, type WildRoomState } from "@/lib/wild";
+import TriviaImportWizard from "./TriviaImportWizard";
 
 const emptyAnswers = ["", "", "", ""];
+
+function shuffled<T>(values: T[]) {
+  const result = [...values];
+  for (let index = result.length - 1; index > 0; index -= 1) {
+    const randomValue = new Uint32Array(1);
+    window.crypto.getRandomValues(randomValue);
+    const swapIndex = randomValue[0] % (index + 1);
+    [result[index], result[swapIndex]] = [result[swapIndex], result[index]];
+  }
+  return result;
+}
 
 export default function LightningTriviaManager({ roomId, roomEnded = false }: { roomId: string; roomEnded?: boolean }) {
   const [supabase] = useState(() => createSupabaseClient());
@@ -25,6 +37,7 @@ export default function LightningTriviaManager({ roomId, roomEnded = false }: { 
   const [minimum, setMinimum] = useState(5);
   const [rewards, setRewards] = useState<[number, number, number]>([50, 20, 10]);
   const [search, setSearch] = useState("");
+  const [difficultyFilter, setDifficultyFilter] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -56,6 +69,15 @@ export default function LightningTriviaManager({ roomId, roomEnded = false }: { 
   const liveRound = rounds.find((item) => ["scheduled", "active", "scoring"].includes(item.status));
   const lastEndedRound = rounds.find((item) => item.status === "ended");
   const activeWild = wild?.game?.status === "active" ? wild.game : null;
+  const difficultyOptions = useMemo(() => {
+    const values = new Map<string, string>();
+    questions.forEach((item) => {
+      const value = item.difficulty?.trim();
+      if (value && !values.has(value.toLowerCase())) values.set(value.toLowerCase(), value);
+    });
+    return [...values.values()].sort((left, right) => left.localeCompare(right));
+  }, [questions]);
+  const selectedQuestions = selected.map((id) => questions.find((item) => item.id === id)).filter((item): item is TriviaQuestion => Boolean(item));
 
   function resetForm() {
     setEditingId(null); setQuestion(""); setAnswers(emptyAnswers); setCorrectAnswer(0); setCategory(""); setDifficulty("");
@@ -79,6 +101,32 @@ export default function LightningTriviaManager({ roomId, roomEnded = false }: { 
       const { error: archiveError } = await supabase.rpc("archive_trivia_question", { p_room_id: roomId, p_question_id: item.id });
       if (archiveError) throw new Error(archiveError.message);
       setSelected((current) => current.filter((id) => id !== item.id));
+    });
+  }
+
+  function selectRandomTen() {
+    const pool = questions.filter((item) => !difficultyFilter || item.difficulty?.trim().toLowerCase() === difficultyFilter.toLowerCase());
+    if (pool.length < 10) {
+      setError(`Only ${pool.length} active question${pool.length === 1 ? " is" : "s are"} available${difficultyFilter ? ` at ${difficultyFilter} difficulty` : ""}. Add at least ${10 - pool.length} more.`);
+      return;
+    }
+    setSelected(shuffled(pool).slice(0, 10).map((item) => item.id));
+    setError("");
+  }
+
+  function shuffleSelected() {
+    if (selected.length < 2) return;
+    setSelected((current) => shuffled(current));
+  }
+
+  function moveSelected(questionId: string, direction: -1 | 1) {
+    setSelected((current) => {
+      const from = current.indexOf(questionId);
+      const to = from + direction;
+      if (from < 0 || to < 0 || to >= current.length) return current;
+      const next = [...current];
+      [next[from], next[to]] = [next[to], next[from]];
+      return next;
     });
   }
 
@@ -109,6 +157,7 @@ export default function LightningTriviaManager({ roomId, roomEnded = false }: { 
             <label className="text-sm font-bold">Minimum/faction<input type="number" min={1} max={10} value={minimum} onChange={(event) => setMinimum(Number(event.target.value))} className="mt-1 w-full rounded-lg bg-black p-3" /></label>
             {["1st reward", "2nd reward", "3rd reward"].map((label, index) => <label key={label} className="text-sm font-bold">{label}<input type="number" min={0} max={100} value={rewards[index]} onChange={(event) => setRewards((current) => current.map((value, itemIndex) => itemIndex === index ? Number(event.target.value) : value) as [number, number, number])} className="mt-1 w-full rounded-lg bg-black p-3" /></label>)}
           </div>
+          {selectedQuestions.length > 0 && <ol className="mt-4 space-y-2">{selectedQuestions.map((item, index) => <li key={item.id} className="flex items-center gap-3 rounded-lg border border-white/10 bg-black/30 p-3"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-yellow-400/15 text-sm font-black text-yellow-200">{index + 1}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-black">{item.question_text}</span>{item.difficulty && <span className="text-xs text-zinc-500">{item.difficulty}</span>}</span><button type="button" disabled={index === 0} onClick={() => moveSelected(item.id, -1)} aria-label={`Move question ${index + 1} up`} className="rounded border border-white/15 px-2 py-1 disabled:opacity-25">↑</button><button type="button" disabled={index === selectedQuestions.length - 1} onClick={() => moveSelected(item.id, 1)} aria-label={`Move question ${index + 1} down`} className="rounded border border-white/15 px-2 py-1 disabled:opacity-25">↓</button><button type="button" onClick={() => setSelected((current) => current.filter((id) => id !== item.id))} className="rounded border border-red-300/25 px-2 py-1 text-xs font-black text-red-200">Remove</button></li>)}</ol>}
           <button type="button" disabled={busy || roomEnded || selected.length !== 10} onClick={() => void run(() => createTriviaRound(supabase, {
             roomId, questionIds: selected, countdownSeconds: countdown, secondsPerQuestion: seconds,
             wildGameId: territory ? activeWild?.id : null, territoryKey: territory || null,
@@ -122,6 +171,7 @@ export default function LightningTriviaManager({ roomId, roomEnded = false }: { 
       <div className="mt-7 border-t border-white/10 pt-6">
         <h3 className="text-lg font-black">Lightning Trivia Questions</h3>
         <p className="mt-1 text-sm text-zinc-400">Questions should be readable in a few seconds. Keep answers short.</p>
+        <TriviaImportWizard disabled={busy || roomEnded} existingQuestions={questions} onImported={load} roomId={roomId} supabase={supabase} />
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           <label className="text-sm font-bold md:col-span-2">Question<input maxLength={240} value={question} onChange={(event) => setQuestion(event.target.value)} className="mt-1 w-full rounded-lg bg-black p-3" /></label>
           {answers.map((answer, index) => <label key={index} className="text-sm font-bold">Answer {String.fromCharCode(65 + index)}<input maxLength={100} value={answer} onChange={(event) => setAnswers((current) => current.map((value, answerIndex) => answerIndex === index ? event.target.value : value))} className="mt-1 w-full rounded-lg bg-black p-3" /></label>)}
@@ -135,9 +185,19 @@ export default function LightningTriviaManager({ roomId, roomEnded = false }: { 
       </div>
 
       <div className="mt-7 border-t border-white/10 pt-6">
+        <div className="mb-4 rounded-xl border border-yellow-300/20 bg-yellow-400/5 p-4">
+          <p className="font-black">Random question draw</p>
+          <p className="mt-1 text-sm text-zinc-400">Draw ten distinct active questions, then inspect or reorder them before launch.</p>
+          <div className="mt-3 flex flex-wrap items-end gap-2">
+            <label className="min-w-48 text-sm font-bold">Difficulty<select value={difficultyFilter} onChange={(event) => setDifficultyFilter(event.target.value)} className="mt-1 w-full rounded-lg bg-black p-3"><option value="">Any difficulty</option>{difficultyOptions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
+            <button type="button" disabled={questions.length < 10} onClick={selectRandomTen} className="min-h-11 rounded-lg bg-yellow-400 px-4 font-black text-black disabled:opacity-40">Random 10</button>
+            <button type="button" disabled={selected.length < 2} onClick={shuffleSelected} className="min-h-11 rounded-lg border border-white/15 px-4 font-black disabled:opacity-40">Shuffle selected</button>
+            <span className="pb-3 text-sm font-bold text-zinc-400">{selected.length}/10 selected</span>
+          </div>
+        </div>
         <input aria-label="Search questions" placeholder="Search questions or categories" value={search} onChange={(event) => setSearch(event.target.value)} className="w-full rounded-lg bg-black p-3" />
         <div className="mt-3 space-y-2">{visibleQuestions.map((item) => <article key={item.id} className={`rounded-lg border p-3 ${selected.includes(item.id) ? "border-yellow-300/50 bg-yellow-400/10" : "border-white/10 bg-black/25"}`}>
-          <label className="flex cursor-pointer gap-3"><input type="checkbox" checked={selected.includes(item.id)} disabled={!selected.includes(item.id) && selected.length >= 10} onChange={(event) => setSelected((current) => event.target.checked ? [...current, item.id] : current.filter((id) => id !== item.id))} /><span className="min-w-0 flex-1"><span className="block font-black">{item.question_text}</span><span className="mt-1 block text-xs text-zinc-400">{item.category || "Uncategorized"} · Correct: {item.answers[item.correct_answer]}</span></span></label>
+          <label className="flex cursor-pointer gap-3"><input type="checkbox" checked={selected.includes(item.id)} disabled={!selected.includes(item.id) && selected.length >= 10} onChange={(event) => setSelected((current) => event.target.checked ? [...current, item.id] : current.filter((id) => id !== item.id))} /><span className="min-w-0 flex-1"><span className="block font-black">{item.question_text}</span><span className="mt-1 block text-xs text-zinc-400">{item.category || "Uncategorized"}{item.difficulty ? ` · ${item.difficulty}` : ""} · Correct: {item.answers[item.correct_answer]}</span></span></label>
           <div className="mt-3 flex gap-2"><button type="button" onClick={() => beginEdit(item)} className="rounded border border-white/15 px-3 py-1.5 text-xs font-black">Edit</button><button type="button" onClick={() => void archive(item)} className="rounded border border-red-300/25 px-3 py-1.5 text-xs font-black text-red-200">Delete</button></div>
         </article>)}</div>
       </div>
