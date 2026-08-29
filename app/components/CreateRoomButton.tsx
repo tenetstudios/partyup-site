@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -119,11 +119,19 @@ export default function CreateRoomButton({
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [series, setSeries] = useState<EventSeriesSummary[]>([]);
   const [seriesId, setSeriesId] = useState("");
+  const titleInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open) return;
     getMyEventSeries(createSupabaseClient()).then(setSeries).catch(() => setSeries([]));
   }, [open]);
+
+  useEffect(() => {
+    if (!open || currentStep !== 0) return;
+
+    const frame = window.requestAnimationFrame(() => titleInputRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [currentStep, open]);
 
   const calendarDays = getCalendarDays(calendarMonth);
   const todayValue = toDateValue(new Date());
@@ -334,18 +342,27 @@ export default function CreateRoomButton({
                   className="flex h-full transition-transform duration-300 ease-out"
                   style={{ transform: `translateX(-${currentStep * 100}%)` }}
                 >
-                  <section className="flex h-full w-full shrink-0 flex-col gap-5 p-5">
+                  <section
+                    aria-hidden={currentStep !== 0}
+                    className={`flex h-full w-full shrink-0 flex-col gap-5 p-5 ${currentStep === 0 ? "pointer-events-auto" : "pointer-events-none"}`}
+                  >
                     <div>
                       <h3 className="text-xl font-black">Room basics</h3>
                       <p className="mt-1 text-sm font-bold text-zinc-500">Name the room and set the format.</p>
                     </div>
 
-                    <label className="block">
+                    <label htmlFor="create-room-title" className="block">
                       <span className="mb-1 block text-sm font-black">Room name</span>
                       <input
+                        ref={titleInputRef}
+                        id="create-room-title"
+                        name="room-title"
+                        type="text"
                         value={title}
-                        onChange={(event) => setTitle(event.target.value)}
+                        onInput={(event) => setTitle(event.currentTarget.value)}
                         placeholder="Late night party room"
+                        autoComplete="off"
+                        maxLength={120}
                         className="w-full rounded-md bg-black px-3 py-3 text-white outline-none placeholder:text-zinc-500"
                       />
                     </label>
@@ -382,7 +399,10 @@ export default function CreateRoomButton({
                     </div>
                   </section>
 
-                  <section className="flex h-full w-full shrink-0 flex-col gap-4 p-5">
+                  <section
+                    aria-hidden={currentStep !== 1}
+                    className={`flex h-full w-full shrink-0 flex-col gap-4 p-5 ${currentStep === 1 ? "pointer-events-auto" : "pointer-events-none"}`}
+                  >
                     <div>
                       <h3 className="text-xl font-black">When is it happening?</h3>
                       <p className="mt-1 text-sm font-bold text-zinc-500">
@@ -560,7 +580,10 @@ export default function CreateRoomButton({
                     </div>
                   </section>
 
-                  <section className="flex h-full w-full shrink-0 flex-col gap-5 overflow-y-auto overscroll-contain p-5 pb-8">
+                  <section
+                    aria-hidden={currentStep !== 2}
+                    className={`flex h-full w-full shrink-0 flex-col gap-5 overflow-y-auto overscroll-contain p-5 pb-8 ${currentStep === 2 ? "pointer-events-auto" : "pointer-events-none"}`}
+                  >
                     <div>
                       <h3 className="text-xl font-black">Room details</h3>
                       <p className="mt-1 text-sm font-bold text-zinc-500">
@@ -624,7 +647,10 @@ export default function CreateRoomButton({
                     </label>
                   </section>
 
-                  <section className="flex h-full w-full shrink-0 flex-col gap-3 p-4">
+                  <section
+                    aria-hidden={currentStep !== 3}
+                    className={`flex h-full w-full shrink-0 flex-col gap-3 p-4 ${currentStep === 3 ? "pointer-events-auto" : "pointer-events-none"}`}
+                  >
                     <div>
                       <h3 className="text-xl font-black">Review</h3>
                       <p className="text-sm font-bold text-zinc-500">
