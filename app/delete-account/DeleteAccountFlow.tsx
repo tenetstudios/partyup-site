@@ -111,14 +111,15 @@ export default function DeleteAccountFlow() {
     return (
       <div className="space-y-4">
         <p>
-          You can read these instructions without signing in. To identify the PartyUp account you
-          want deleted, sign in with the same Google account you use for PartyUp.
+          You can read these instructions without signing in. Browser deletion currently supports
+          Google sign-in. Apple and guest accounts can be deleted from Account Settings in the
+          PartyUp iOS app.
         </p>
         <button type="button" onClick={signIn} className={`${partyUpTheme.primaryButton} px-5 text-sm`}>
           Sign in to continue
         </button>
         <p className="text-sm text-[#aaa4b8]">
-          Cannot sign in? Use the <Link href="/contact" className="font-black text-[#c35dff] hover:text-white">Contact page</Link> to request help.
+          Cannot use the app or sign in? Use the <Link href="/contact" className="font-black text-[#c35dff] hover:text-white">Contact page</Link> to request help.
         </p>
       </div>
     );

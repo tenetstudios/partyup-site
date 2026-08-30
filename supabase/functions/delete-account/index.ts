@@ -89,7 +89,9 @@ Deno.serve(async (request) => {
   if (userError || !user) return jsonResponse({ error: "Authentication required." }, 401);
 
   const lastSignInAt = Date.parse(user.last_sign_in_at || "");
-  if (!Number.isFinite(lastSignInAt) || Date.now() - lastSignInAt > recentSignInWindowMs) {
+  // Anonymous accounts cannot reauthenticate as the same temporary identity. The
+  // authenticated bearer token plus the explicit confirmation remains required.
+  if (!user.is_anonymous && (!Number.isFinite(lastSignInAt) || Date.now() - lastSignInAt > recentSignInWindowMs)) {
     return jsonResponse({
       error: "Please verify your identity again before deleting your account.",
       code: "reauthentication_required",
@@ -120,6 +122,9 @@ Deno.serve(async (request) => {
       imagePaths.push(...await listFilesAtPrefix(adminClient, "event-images", prefix));
     }
     await removePaths(adminClient, "event-images", imagePaths);
+
+    const profileImagePaths = await listFilesAtPrefix(adminClient, "profile-images", user.id);
+    await removePaths(adminClient, "profile-images", profileImagePaths);
 
     const { error: deleteUserError } = await adminClient.auth.admin.deleteUser(user.id, false);
     if (deleteUserError) throw deleteUserError;
