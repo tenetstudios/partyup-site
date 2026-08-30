@@ -38,7 +38,7 @@ Lightning Trivia is a verified `lightning_trivia` Room Mission. It uses the curr
 1. Apply migrations, run the web and Expo clients against the same Supabase project, and enter the same active room on one browser and one device.
 2. Start Into the Wild, enroll both players, and confirm their faction assignments.
 3. In Room Settings → Engagement → Lightning Trivia, create at least ten valid questions. Edit one and delete one to verify the archive confirmation; create a replacement.
-4. Select ten questions, target a territory, keep five seconds / ten-second countdown / five-player minimum / 50-20-10 rewards, then launch.
+4. Select ten questions, target a territory, keep ten seconds / 45-second countdown / five-player minimum / 50-20-10 rewards, then launch.
 5. Confirm both room banners show the same countdown. Join both before zero. Verify no join is available from a third client after zero.
 6. Compare question number and countdown on web and native throughout the round. Tap once and attempt another choice; the first choice must remain locked.
 7. Exercise correct, wrong, and timeout paths. Background and reopen the native app during a later question; it must resume rather than restart.
