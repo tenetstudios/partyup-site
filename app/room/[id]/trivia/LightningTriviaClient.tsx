@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { createGuestSession, readStoredGuestSession } from "@/lib/matchmaking";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createGuestSession, ensurePartyUpIdentity } from "@/lib/matchmaking";
 import { getRoomTrivia, getTriviaPlayerState, getTriviaTimeline, joinTriviaRound, submitTriviaAnswer, type TriviaPlayerState } from "@/lib/lightningTrivia";
 import { createSupabaseClient } from "@/lib/supabase";
 
@@ -17,23 +17,35 @@ export default function LightningTriviaClient({ roomId }: { roomId: string }) {
   const [feedback, setFeedback] = useState<Record<number, { correct: boolean; score: number }>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [guestToken, setGuestToken] = useState<string | null>(null);
+  const participantCredentialRef = useRef<Promise<string | null> | null>(null);
+
+  const getParticipantCredential = useCallback(async () => {
+    if (!participantCredentialRef.current) {
+      participantCredentialRef.current = (async () => {
+        const { data: authData } = await supabase.auth.getUser();
+        if (authData.user) {
+          await ensurePartyUpIdentity(supabase);
+          return null;
+        }
+        return (await createGuestSession(supabase)).guestToken;
+      })().catch((reason) => {
+        participantCredentialRef.current = null;
+        throw reason;
+      });
+    }
+    return participantCredentialRef.current;
+  }, [supabase]);
 
   const load = useCallback(async () => {
     const summary = await getRoomTrivia(supabase, roomId);
     if (!summary) { setError("No Lightning Trivia round is available."); return; }
-    const { data: authData } = await supabase.auth.getUser();
-    let token = guestToken ?? readStoredGuestSession()?.guestToken ?? null;
-    if (!authData.user && !token) {
-      token = (await createGuestSession(supabase)).guestToken;
-      setGuestToken(token);
-    }
+    const token = await getParticipantCredential();
     const next = await getTriviaPlayerState(supabase, summary.id, token);
     setState(next);
     setSelected(Object.fromEntries(next.answers.map((answer) => [answer.question_order, answer.selected_answer])));
     setFeedback(Object.fromEntries(next.answers.map((answer) => [answer.question_order, { correct: answer.is_correct, score: answer.score_awarded }])));
     setError("");
-  }, [guestToken, roomId, supabase]);
+  }, [getParticipantCredential, roomId, supabase]);
 
   useEffect(() => {
     queueMicrotask(() => { setNow(Date.now()); void load().catch((reason) => setError(reason instanceof Error ? reason.message : "Could not open trivia.")); });
@@ -52,7 +64,7 @@ export default function LightningTriviaClient({ roomId }: { roomId: string }) {
   async function join() {
     if (!state || busy) return;
     setBusy(true); setError("");
-    try { await joinTriviaRound(supabase, state.round.id, guestToken); await load(); }
+    try { await joinTriviaRound(supabase, state.round.id, await getParticipantCredential()); await load(); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "Could not join."); }
     finally { setBusy(false); }
   }
@@ -61,7 +73,7 @@ export default function LightningTriviaClient({ roomId }: { roomId: string }) {
     if (!state || !question || lockedAnswer !== undefined || timeline?.phase !== "question") return;
     setSelected((current) => ({ ...current, [question.question_order]: index }));
     try {
-      const result = await submitTriviaAnswer(supabase, state.round.id, question.question_order, index, guestToken);
+      const result = await submitTriviaAnswer(supabase, state.round.id, question.question_order, index, await getParticipantCredential());
       setFeedback((current) => ({ ...current, [question.question_order]: { correct: result.correct, score: result.score_awarded } }));
     } catch (reason) {
       setError(reason instanceof Error && !reason.message.toLowerCase().includes("time is up") ? reason.message : "");
