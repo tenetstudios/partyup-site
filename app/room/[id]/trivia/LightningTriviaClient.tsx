@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createGuestSession, ensurePartyUpIdentity } from "@/lib/matchmaking";
+import { createGuestSession, ensurePartyUpIdentity, readStoredGuestSession } from "@/lib/matchmaking";
 import { getRoomTrivia, getTriviaPlayerState, getTriviaTimeline, joinTriviaRound, submitTriviaAnswer, type TriviaPlayerState } from "@/lib/lightningTrivia";
 import { createSupabaseClient } from "@/lib/supabase";
 
@@ -22,6 +22,9 @@ export default function LightningTriviaClient({ roomId }: { roomId: string }) {
   const getParticipantCredential = useCallback(async () => {
     if (!participantCredentialRef.current) {
       participantCredentialRef.current = (async () => {
+        if (readStoredGuestSession()) {
+          return (await createGuestSession(supabase)).guestToken;
+        }
         const { data: authData } = await supabase.auth.getUser();
         if (authData.user) {
           await ensurePartyUpIdentity(supabase);
