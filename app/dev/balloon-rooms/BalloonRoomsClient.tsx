@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MAX_FRAME_DELTA_SECONDS, MAX_WALL_SEGMENTS, ROOM_MAX_HEALTH, SIMULATION_STEP_SECONDS } from "@/lib/balloonRooms/constants";
+import { MAX_FRAME_DELTA_SECONDS, MAX_WALL_SEGMENTS, ROOM_MAX_HEALTH, SIMULATION_STEP_SECONDS, WALL_REMOVE_HOLD_MS } from "@/lib/balloonRooms/constants";
 import { createWallSegment, findClosestGridEdge } from "@/lib/balloonRooms/grid";
 import { drawBalloonRoom, type RoomVisualEffect, type WallPreview } from "@/lib/balloonRooms/rendering";
 import {
@@ -13,19 +13,18 @@ import {
   updateRoomSimulation,
   type DevBalloonSpawner,
 } from "@/lib/balloonRooms/simulation";
-import type { BalloonRoom } from "@/lib/balloonRooms/types";
+import type { BalloonRoom, WallSegment } from "@/lib/balloonRooms/types";
 import {
   getUnsupportedHorizontalWalls,
   hasRequiredRoutes,
   placeWall,
   removeWall,
   validateWallPlacement,
-  validateWallRemoval,
 } from "@/lib/balloonRooms/walls";
 import styles from "./BalloonRooms.module.css";
 
 type RoomKey = "yours" | "opponent";
-type BuildMode = "pop" | "wall" | "remove";
+type BuildMode = "pop" | "wall";
 type RoomCollection = Record<RoomKey, BalloonRoom>;
 type SpawnerCollection = Record<RoomKey, DevBalloonSpawner>;
 type CanvasCollection = Record<RoomKey, HTMLCanvasElement | null>;
@@ -80,6 +79,8 @@ export default function BalloonRoomsClient() {
   const effectsRef = useRef<RoomVisualEffect[]>([]);
   const previewRef = useRef<WallPreview>(null);
   const feedbackTimerRef = useRef<number | null>(null);
+  const wallHoldTimerRef = useRef<number | null>(null);
+  const wallPressRef = useRef<{ pointerId: number; wall: WallSegment; triggered: boolean } | null>(null);
   const [buildMode, setBuildMode] = useState<BuildMode>("pop");
   const [debugPaths, setDebugPaths] = useState(false);
   const [feedback, setFeedback] = useState<{ message: string; valid: boolean } | null>(null);
@@ -97,6 +98,7 @@ export default function BalloonRoomsClient() {
 
   useEffect(() => () => {
     if (feedbackTimerRef.current !== null) window.clearTimeout(feedbackTimerRef.current);
+    if (wallHoldTimerRef.current !== null) window.clearTimeout(wallHoldTimerRef.current);
   }, []);
 
   useEffect(() => {
@@ -175,14 +177,49 @@ export default function BalloonRoomsClient() {
     }
     const room = roomsRef.current.yours;
     const wall = createWallSegment(room.id, edge.orientation, edge.gridX, edge.gridY);
-    const result = buildMode === "wall" ? placeWall(room, wall) : removeWall(room, wall.id);
-    previewRef.current = null;
-    showFeedback(result.message, result.valid);
-    if (result.valid) refreshSummary();
+    if (wallHoldTimerRef.current !== null) window.clearTimeout(wallHoldTimerRef.current);
+    canvas.setPointerCapture(event.pointerId);
+    wallPressRef.current = { pointerId: event.pointerId, wall, triggered: false };
+    const existingWall = room.walls.some((candidate) => candidate.id === wall.id);
+    previewRef.current = { wall, valid: existingWall || validateWallPlacement(room, wall).valid };
+    wallHoldTimerRef.current = window.setTimeout(() => {
+      const press = wallPressRef.current;
+      if (!press || press.pointerId !== event.pointerId) return;
+      press.triggered = true;
+      const result = removeWall(roomsRef.current.yours, press.wall.id);
+      previewRef.current = null;
+      showFeedback(result.valid ? "Wall removed" : result.code === "not_found" ? "Hold an existing wall" : result.message, result.valid);
+      if (result.valid) refreshSummary();
+    }, WALL_REMOVE_HOLD_MS);
   }, [buildMode, popBalloon, refreshSummary, showFeedback]);
 
+  const finishWallPress = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
+    const press = wallPressRef.current;
+    if (!press || press.pointerId !== event.pointerId) return;
+    if (wallHoldTimerRef.current !== null) window.clearTimeout(wallHoldTimerRef.current);
+    wallHoldTimerRef.current = null;
+    if (!press.triggered) {
+      const room = roomsRef.current.yours;
+      const result = placeWall(room, press.wall);
+      showFeedback(result.message, result.valid);
+      if (result.valid) refreshSummary();
+    }
+    previewRef.current = null;
+    wallPressRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  }, [refreshSummary, showFeedback]);
+
+  const cancelWallPress = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
+    const press = wallPressRef.current;
+    if (!press || press.pointerId !== event.pointerId) return;
+    if (wallHoldTimerRef.current !== null) window.clearTimeout(wallHoldTimerRef.current);
+    wallHoldTimerRef.current = null;
+    wallPressRef.current = null;
+    previewRef.current = null;
+  }, []);
+
   const handlePointerMove = useCallback((key: RoomKey, event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (key !== "yours" || buildMode === "pop" || event.pointerType === "touch") return;
+    if (key !== "yours" || buildMode === "pop" || event.pointerType === "touch" || wallPressRef.current) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     const edge = findClosestGridEdge((event.clientX - bounds.left) / bounds.width, (event.clientY - bounds.top) / bounds.height, bounds.width, bounds.height);
     if (!edge) {
@@ -191,17 +228,23 @@ export default function BalloonRoomsClient() {
     }
     const room = roomsRef.current.yours;
     const wall = createWallSegment(room.id, edge.orientation, edge.gridX, edge.gridY);
-    const validation = buildMode === "wall" ? validateWallPlacement(room, wall) : validateWallRemoval(room, wall.id);
+    const validation = validateWallPlacement(room, wall);
     previewRef.current = { wall, valid: validation.valid };
   }, [buildMode]);
 
   const selectMode = useCallback((mode: BuildMode) => {
+    if (wallHoldTimerRef.current !== null) window.clearTimeout(wallHoldTimerRef.current);
+    wallHoldTimerRef.current = null;
+    wallPressRef.current = null;
     previewRef.current = null;
     setBuildMode(mode);
     setFeedback(null);
   }, []);
 
   const restart = useCallback(() => {
+    if (wallHoldTimerRef.current !== null) window.clearTimeout(wallHoldTimerRef.current);
+    wallHoldTimerRef.current = null;
+    wallPressRef.current = null;
     roomsRef.current = createRooms();
     spawnersRef.current = createSpawners();
     effectsRef.current = [];
@@ -224,7 +267,7 @@ export default function BalloonRoomsClient() {
           </div>
         </header>
 
-        <p className="mb-3 px-1 text-xs font-bold text-zinc-400">Choose POP for balloons, or WALL / REMOVE for your grid edges.</p>
+        <p className="mb-3 px-1 text-xs font-bold text-zinc-400">Choose POP for balloons. In WALL mode, tap to build or hold a wall for one second to remove it.</p>
         <div className={styles.roomsGrid}>
           {roomKeys.map((key) => {
             const roomSummary = summary[key];
@@ -237,8 +280,11 @@ export default function BalloonRoomsClient() {
                     ref={(canvas) => setCanvas(key, canvas)}
                     className={styles.canvas}
                     onPointerDown={(event) => handlePointerDown(key, event)}
+                    onPointerUp={(event) => { if (key === "yours" && buildMode === "wall") finishWallPress(event); }}
+                    onPointerCancel={(event) => { if (key === "yours") cancelWallPress(event); }}
                     onPointerMove={(event) => handlePointerMove(key, event)}
-                    onPointerLeave={() => { if (key === "yours") previewRef.current = null; }}
+                    onPointerLeave={() => { if (key === "yours" && !wallPressRef.current) previewRef.current = null; }}
+                    onContextMenu={(event) => event.preventDefault()}
                     aria-label={`${label} balloon playfield.`}
                   />
                 </div>
@@ -252,8 +298,8 @@ export default function BalloonRoomsClient() {
 
                 {key === "yours" ? (
                   <div className={`${styles.controls} mt-2 p-2`}>
-                    <div className="grid grid-cols-3 gap-1">
-                      {(["pop", "wall", "remove"] as BuildMode[]).map((mode) => <button key={mode} type="button" aria-pressed={buildMode === mode} onClick={() => selectMode(mode)} className={`min-h-11 rounded-md border px-1 text-[10px] font-black ${buildMode === mode ? "border-purple-300 bg-purple-500/35 text-white" : "border-white/10 bg-black/20 text-zinc-400"}`}>{mode.toUpperCase()}</button>)}
+                    <div className="grid grid-cols-2 gap-1">
+                      {(["pop", "wall"] as BuildMode[]).map((mode) => <button key={mode} type="button" aria-pressed={buildMode === mode} onClick={() => selectMode(mode)} className={`min-h-11 rounded-md border px-1 text-[10px] font-black ${buildMode === mode ? "border-purple-300 bg-purple-500/35 text-white" : "border-white/10 bg-black/20 text-zinc-400"}`}>{mode.toUpperCase()}</button>)}
                     </div>
                     <p className={`mt-2 min-h-4 text-center text-[10px] font-black ${feedback?.valid ? "text-emerald-300" : "text-red-300"}`}>{feedback?.message ?? `${MAX_WALL_SEGMENTS - roomSummary.wallCount} pieces available`}</p>
                   </div>
