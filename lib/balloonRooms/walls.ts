@@ -92,6 +92,7 @@ export function removeWall(room: BalloonRoom, wallId: string): WallValidationRes
   const validation = validateWallRemoval(room, wallId);
   if (!validation.valid) return validation;
   room.walls = room.walls.filter((wall) => wall.id !== wallId);
+  room.nailStrips = room.nailStrips.filter((nail) => nail.wallSegmentId !== wallId);
   room.wallRevision += 1;
   return validation;
 }

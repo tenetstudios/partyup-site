@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { MAX_WALL_SEGMENTS } from "../lib/balloonRooms/constants.ts";
-import { createWallSegment, getLaneCell, SPAWN_LANES } from "../lib/balloonRooms/grid.ts";
+import { MAX_NAIL_STRIPS, MAX_WALL_SEGMENTS, NAIL_DAMAGE, NAIL_MAX_DURABILITY } from "../lib/balloonRooms/constants.ts";
+import { createWallSegment, getCellCenter, getLaneCell, SPAWN_LANES } from "../lib/balloonRooms/grid.ts";
+import { placeNailStrip, removeNailStrip } from "../lib/balloonRooms/nails.ts";
 import { findPathToCeiling } from "../lib/balloonRooms/pathfinding.ts";
 import {
   createBalloonRoom,
@@ -10,6 +11,7 @@ import {
   findBalloonAtPoint,
   recalculateBalloonPath,
   updateDevBalloonSpawner,
+  updateBalloonPosition,
   updateRoomSimulation,
 } from "../lib/balloonRooms/simulation.ts";
 import {
@@ -162,4 +164,126 @@ for (const roomId of ["crowded-left", "crowded-right"]) {
   assert.equal(crowdedRoom.balloons.length, 50);
 }
 
-console.log("Balloon Rooms Phase 2 passed: grid walls, support grammar, four lanes, BFS routing, live reroute, removal safety, Phase 1 popping, and 50 balloons per room.");
+function createArmedContactRoom(id, durability = NAIL_MAX_DURABILITY) {
+  const room = createBalloonRoom(id);
+  const armedWall = wall(room, "vertical", 3, 8);
+  assert.equal(placeWall(room, armedWall).valid, true);
+  assert.equal(placeNailStrip(room, armedWall.id).valid, true);
+  room.nailStrips[0].durability = durability;
+  return room;
+}
+
+// Phase 3 placement requires an existing, unarmed wall and obeys the centralized four-strip limit.
+const nailPlacementRoom = createBalloonRoom("nail-placement");
+assert.equal(placeNailStrip(nailPlacementRoom, "missing-wall").code, "wall_required");
+for (let row = 0; row < MAX_NAIL_STRIPS + 1; row += 1) {
+  assert.equal(placeWall(nailPlacementRoom, wall(nailPlacementRoom, "vertical", 1, row)).valid, true);
+}
+for (const armedWall of nailPlacementRoom.walls.slice(0, MAX_NAIL_STRIPS)) {
+  assert.equal(placeNailStrip(nailPlacementRoom, armedWall.id).valid, true);
+}
+assert.equal(nailPlacementRoom.nailStrips.length, MAX_NAIL_STRIPS);
+assert.equal(placeNailStrip(nailPlacementRoom, nailPlacementRoom.walls[MAX_NAIL_STRIPS].id).code, "limit_reached");
+assert.equal(placeNailStrip(nailPlacementRoom, nailPlacementRoom.walls[0].id).code, "duplicate");
+
+// A completed logical move into either cell bordering an armed wall is one contact, independent of frames.
+const damageRoom = createArmedContactRoom("nail-damage");
+const nailTarget = createBasicBalloon(damageRoom.id, "nail-target", 2, "left");
+damageRoom.balloons.push(nailTarget);
+const firstContactEvents = updateRoomSimulation(damageRoom, 1).filter((event) => event.type === "nail_contact");
+assert.equal(firstContactEvents.length, 1);
+assert.equal(nailTarget.health, 3 - NAIL_DAMAGE);
+assert.equal(damageRoom.nailStrips[0].durability, NAIL_MAX_DURABILITY - 1);
+updateRoomSimulation(damageRoom, 0.25);
+assert.equal(nailTarget.health, 2, "render/fixed-step frames beside the strip must not duplicate contact");
+assert.equal(damageRoom.nailStrips[0].durability, 9);
+
+// The same Nail Strip primitive arms horizontal walls and uses the same contact rule.
+const horizontalNailRoom = createBalloonRoom("horizontal-nails");
+assert.equal(placeWall(horizontalNailRoom, wall(horizontalNailRoom, "vertical", 3, 8)).valid, true);
+const horizontalArmedWall = wall(horizontalNailRoom, "horizontal", 2, 9);
+assert.equal(placeWall(horizontalNailRoom, horizontalArmedWall).valid, true);
+assert.equal(placeNailStrip(horizontalNailRoom, horizontalArmedWall.id).valid, true);
+const horizontalTarget = createBasicBalloon(horizontalNailRoom.id, "horizontal-target", 2, "left");
+horizontalNailRoom.balloons.push(horizontalTarget);
+const horizontalStart = getCellCenter({ column: 1, row: 9 });
+Object.assign(horizontalTarget, {
+  x: horizontalStart.x,
+  y: horizontalStart.y,
+  currentCell: { column: 1, row: 9 },
+  targetCell: { column: 2, row: 9 },
+  path: [{ column: 1, row: 9 }, { column: 2, row: 9 }],
+  pathRevision: horizontalNailRoom.wallRevision,
+});
+assert.equal(updateBalloonPosition(horizontalNailRoom, horizontalTarget, 2).filter((event) => event.type === "nail_contact").length, 1);
+assert.equal(horizontalTarget.health, 2);
+assert.equal(horizontalNailRoom.nailStrips[0].durability, 9);
+
+// A legal wall route can make one BFS-driven balloon leave and encounter the same strip from its other side.
+const repeatRoom = createBalloonRoom("repeat-contact");
+const repeatStructure = [
+  wall(repeatRoom, "vertical", 3, 4),
+  wall(repeatRoom, "horizontal", 2, 5),
+  wall(repeatRoom, "vertical", 1, 3),
+  wall(repeatRoom, "horizontal", 1, 4),
+  wall(repeatRoom, "horizontal", 0, 4),
+  wall(repeatRoom, "horizontal", 3, 4),
+];
+for (const structureWall of repeatStructure) assert.equal(placeWall(repeatRoom, structureWall).valid, true);
+assert.equal(placeNailStrip(repeatRoom, repeatStructure[1].id).valid, true);
+const repeatTarget = createBasicBalloon(repeatRoom.id, "repeat-target", 2, "left");
+repeatRoom.balloons.push(repeatTarget);
+recalculateBalloonPath(repeatRoom, repeatTarget);
+const routedPath = repeatTarget.path.map((cell) => `${cell.column}:${cell.row}`);
+assert.ok(routedPath.indexOf("2:5") < routedPath.indexOf("2:4"));
+const repeatEvents = updateBalloonPosition(repeatRoom, repeatTarget, 8).filter((event) => event.type === "nail_contact");
+assert.equal(repeatEvents.length, 2);
+assert.equal(repeatTarget.health, 1);
+assert.equal(repeatRoom.nailStrips[0].durability, 8);
+assert.deepEqual(damageBalloon(repeatRoom, repeatTarget.id), { balloonId: repeatTarget.id, remainingHealth: 0, popped: true });
+
+// Nail kills use the same damage/removal lifecycle and can never escape afterward.
+const nailPopRoom = createArmedContactRoom("nail-pop");
+const nailPopBalloon = createBasicBalloon(nailPopRoom.id, "nail-pop-target", 2, "right");
+nailPopBalloon.health = 1;
+nailPopRoom.balloons.push(nailPopBalloon);
+const popEvents = updateRoomSimulation(nailPopRoom, 1);
+assert.ok(popEvents.some((event) => event.type === "nail_contact" && event.popped));
+assert.equal(nailPopRoom.balloons.length, 0);
+const healthAfterNailPop = nailPopRoom.health;
+updateRoomSimulation(nailPopRoom, 20);
+assert.equal(nailPopRoom.health, healthAfterNailPop);
+
+// The last durability point deals damage, then leaves a broken, non-damaging strip on a functional wall.
+const breakRoom = createArmedContactRoom("nail-break", 1);
+const breaker = createBasicBalloon(breakRoom.id, "breaker", 2, "left");
+breakRoom.balloons.push(breaker);
+updateRoomSimulation(breakRoom, 1);
+assert.equal(breaker.health, 2);
+assert.equal(breakRoom.nailStrips[0].durability, 0);
+assert.equal(breakRoom.nailStrips[0].status, "broken");
+const afterBreak = createBasicBalloon(breakRoom.id, "after-break", 2, "right");
+breakRoom.balloons.push(afterBreak);
+updateRoomSimulation(breakRoom, 1);
+assert.equal(afterBreak.health, 3);
+assert.equal(breakRoom.walls.length, 1);
+
+// Removing either active or broken nails preserves the wall and returning them restores full durability.
+const armedWallId = breakRoom.walls[0].id;
+assert.equal(removeNailStrip(breakRoom, armedWallId).valid, true);
+assert.equal(breakRoom.walls.length, 1);
+assert.equal(breakRoom.nailStrips.length, 0);
+assert.equal(placeNailStrip(breakRoom, armedWallId).valid, true);
+assert.equal(breakRoom.nailStrips[0].durability, NAIL_MAX_DURABILITY);
+assert.equal(breakRoom.nailStrips[0].status, "active");
+
+// Nails are absent from BFS inputs: adding and removing one cannot alter an otherwise identical route.
+const pathBeforeNails = findPathToCeiling(getLaneCell(2), breakRoom.walls, "left");
+removeNailStrip(breakRoom, armedWallId);
+const pathWithoutNails = findPathToCeiling(getLaneCell(2), breakRoom.walls, "left");
+placeNailStrip(breakRoom, armedWallId);
+const pathAfterNails = findPathToCeiling(getLaneCell(2), breakRoom.walls, "left");
+assert.deepEqual(pathBeforeNails, pathWithoutNails);
+assert.deepEqual(pathWithoutNails, pathAfterNails);
+
+console.log("Balloon Rooms Phase 3 passed: Phase 1 popping, Phase 2 wall/path rules, typed nail placement, deterministic contact, durability, breakage, removal, repeat contact, path independence, and 50 balloons per room.");

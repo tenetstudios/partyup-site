@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MAX_FRAME_DELTA_SECONDS, MAX_WALL_SEGMENTS, ROOM_MAX_HEALTH, SIMULATION_STEP_SECONDS, WALL_REMOVE_HOLD_MS } from "@/lib/balloonRooms/constants";
+import { MAX_FRAME_DELTA_SECONDS, MAX_NAIL_STRIPS, MAX_WALL_SEGMENTS, ROOM_MAX_HEALTH, SIMULATION_STEP_SECONDS } from "@/lib/balloonRooms/constants";
 import { createWallSegment, findClosestGridEdge } from "@/lib/balloonRooms/grid";
+import { placeNailStrip, removeNailStrip, validateNailPlacement } from "@/lib/balloonRooms/nails";
 import { drawBalloonRoom, type RoomVisualEffect, type WallPreview } from "@/lib/balloonRooms/rendering";
 import {
   createBalloonRoom,
@@ -13,7 +14,7 @@ import {
   updateRoomSimulation,
   type DevBalloonSpawner,
 } from "@/lib/balloonRooms/simulation";
-import type { BalloonRoom, WallSegment } from "@/lib/balloonRooms/types";
+import type { BalloonRoom } from "@/lib/balloonRooms/types";
 import {
   getUnsupportedHorizontalWalls,
   hasRequiredRoutes,
@@ -24,7 +25,7 @@ import {
 import styles from "./BalloonRooms.module.css";
 
 type RoomKey = "yours" | "opponent";
-type BuildMode = "pop" | "wall";
+type BuildMode = "wall" | "nails" | "remove";
 type RoomCollection = Record<RoomKey, BalloonRoom>;
 type SpawnerCollection = Record<RoomKey, DevBalloonSpawner>;
 type CanvasCollection = Record<RoomKey, HTMLCanvasElement | null>;
@@ -37,6 +38,8 @@ type RoomSummary = Record<RoomKey, {
   horizontalCount: number;
   supportedHorizontalCount: number;
   routesValid: boolean;
+  nailCount: number;
+  brokenNailCount: number;
 }>;
 
 const roomKeys: RoomKey[] = ["yours", "opponent"];
@@ -47,6 +50,7 @@ function createRooms(): RoomCollection {
   placeWall(opponent, createWallSegment(opponent.id, "vertical", 3, 5));
   placeWall(opponent, createWallSegment(opponent.id, "horizontal", 2, 5));
   placeWall(opponent, createWallSegment(opponent.id, "horizontal", 3, 5));
+  placeNailStrip(opponent, opponent.walls[1].id);
   return { yours, opponent };
 }
 
@@ -68,6 +72,8 @@ function summarize(rooms: RoomCollection): RoomSummary {
       horizontalCount,
       supportedHorizontalCount: horizontalCount - unsupportedCount,
       routesValid: hasRequiredRoutes(room, room.walls) && unsupportedCount === 0,
+      nailCount: room.nailStrips.length,
+      brokenNailCount: room.nailStrips.filter((nail) => nail.status === "broken").length,
     }];
   })) as RoomSummary;
 }
@@ -79,14 +85,13 @@ export default function BalloonRoomsClient() {
   const effectsRef = useRef<RoomVisualEffect[]>([]);
   const previewRef = useRef<WallPreview>(null);
   const feedbackTimerRef = useRef<number | null>(null);
-  const wallHoldTimerRef = useRef<number | null>(null);
-  const wallPressRef = useRef<{ pointerId: number; wall: WallSegment; triggered: boolean } | null>(null);
-  const [buildMode, setBuildMode] = useState<BuildMode>("pop");
+  const [buildMode, setBuildMode] = useState<BuildMode>("wall");
   const [debugPaths, setDebugPaths] = useState(false);
   const [feedback, setFeedback] = useState<{ message: string; valid: boolean } | null>(null);
+  const [lastNailContact, setLastNailContact] = useState("No nail contacts yet");
   const [summary, setSummary] = useState<RoomSummary>({
-    yours: { health: ROOM_MAX_HEALTH, count: 0, running: true, wallCount: 0, verticalCount: 0, horizontalCount: 0, supportedHorizontalCount: 0, routesValid: true },
-    opponent: { health: ROOM_MAX_HEALTH, count: 0, running: true, wallCount: 3, verticalCount: 1, horizontalCount: 2, supportedHorizontalCount: 2, routesValid: true },
+    yours: { health: ROOM_MAX_HEALTH, count: 0, running: true, wallCount: 0, verticalCount: 0, horizontalCount: 0, supportedHorizontalCount: 0, routesValid: true, nailCount: 0, brokenNailCount: 0 },
+    opponent: { health: ROOM_MAX_HEALTH, count: 0, running: true, wallCount: 3, verticalCount: 1, horizontalCount: 2, supportedHorizontalCount: 2, routesValid: true, nailCount: 1, brokenNailCount: 0 },
   });
 
   const refreshSummary = useCallback(() => setSummary(summarize(roomsRef.current)), []);
@@ -98,7 +103,6 @@ export default function BalloonRoomsClient() {
 
   useEffect(() => () => {
     if (feedbackTimerRef.current !== null) window.clearTimeout(feedbackTimerRef.current);
-    if (wallHoldTimerRef.current !== null) window.clearTimeout(wallHoldTimerRef.current);
   }, []);
 
   useEffect(() => {
@@ -119,6 +123,10 @@ export default function BalloonRoomsClient() {
           for (const event of events) {
             if (event.type === "balloon_escaped") {
               effectsRef.current.push({ roomKey: key, x: event.balloon.x, y: 0.02, kind: "escape", startedAt: now });
+            } else if (event.type === "nail_contact") {
+              const balloon = room.balloons.find((candidate) => candidate.id === event.balloonId);
+              if (balloon) effectsRef.current.push({ roomKey: key, x: balloon.x, y: balloon.y, kind: event.popped ? "pop" : "nail", startedAt: now });
+              setLastNailContact(`${event.balloonId} → ${event.nailStripId} · HP ${event.balloonHealthBefore}→${event.balloonHealthAfter} · nails ${event.durabilityBefore}→${event.durabilityAfter}`);
             }
           }
         }
@@ -160,14 +168,17 @@ export default function BalloonRoomsClient() {
     const canvas = event.currentTarget;
     const bounds = canvas.getBoundingClientRect();
     if (bounds.width <= 0 || bounds.height <= 0) return;
-    if (key === "opponent" || buildMode === "pop") {
+    const x = (event.clientX - bounds.left) / bounds.width;
+    const y = (event.clientY - bounds.top) / bounds.height;
+    if (findBalloonAtPoint(roomsRef.current[key], x, y, 22 / Math.min(bounds.width, bounds.height))) {
       popBalloon(key, canvas, event.clientX, event.clientY);
       return;
     }
+    if (key === "opponent") return;
 
     const edge = findClosestGridEdge(
-      (event.clientX - bounds.left) / bounds.width,
-      (event.clientY - bounds.top) / bounds.height,
+      x,
+      y,
       bounds.width,
       bounds.height,
     );
@@ -177,49 +188,24 @@ export default function BalloonRoomsClient() {
     }
     const room = roomsRef.current.yours;
     const wall = createWallSegment(room.id, edge.orientation, edge.gridX, edge.gridY);
-    if (wallHoldTimerRef.current !== null) window.clearTimeout(wallHoldTimerRef.current);
-    canvas.setPointerCapture(event.pointerId);
-    wallPressRef.current = { pointerId: event.pointerId, wall, triggered: false };
     const existingWall = room.walls.some((candidate) => candidate.id === wall.id);
-    previewRef.current = { wall, valid: existingWall || validateWallPlacement(room, wall).valid };
-    wallHoldTimerRef.current = window.setTimeout(() => {
-      const press = wallPressRef.current;
-      if (!press || press.pointerId !== event.pointerId) return;
-      press.triggered = true;
-      const result = removeWall(roomsRef.current.yours, press.wall.id);
-      previewRef.current = null;
-      showFeedback(result.valid ? "Wall removed" : result.code === "not_found" ? "Hold an existing wall" : result.message, result.valid);
-      if (result.valid) refreshSummary();
-    }, WALL_REMOVE_HOLD_MS);
+    let result: { valid: boolean; message: string };
+    if (buildMode === "wall") {
+      result = placeWall(room, wall);
+    } else if (buildMode === "nails") {
+      result = placeNailStrip(room, wall.id);
+    } else if (existingWall && room.nailStrips.some((nail) => nail.wallSegmentId === wall.id)) {
+      result = removeNailStrip(room, wall.id);
+    } else {
+      result = removeWall(room, wall.id);
+    }
+    showFeedback(result.message, result.valid);
+    if (result.valid) refreshSummary();
+    previewRef.current = null;
   }, [buildMode, popBalloon, refreshSummary, showFeedback]);
 
-  const finishWallPress = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
-    const press = wallPressRef.current;
-    if (!press || press.pointerId !== event.pointerId) return;
-    if (wallHoldTimerRef.current !== null) window.clearTimeout(wallHoldTimerRef.current);
-    wallHoldTimerRef.current = null;
-    if (!press.triggered) {
-      const room = roomsRef.current.yours;
-      const result = placeWall(room, press.wall);
-      showFeedback(result.message, result.valid);
-      if (result.valid) refreshSummary();
-    }
-    previewRef.current = null;
-    wallPressRef.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-  }, [refreshSummary, showFeedback]);
-
-  const cancelWallPress = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
-    const press = wallPressRef.current;
-    if (!press || press.pointerId !== event.pointerId) return;
-    if (wallHoldTimerRef.current !== null) window.clearTimeout(wallHoldTimerRef.current);
-    wallHoldTimerRef.current = null;
-    wallPressRef.current = null;
-    previewRef.current = null;
-  }, []);
-
   const handlePointerMove = useCallback((key: RoomKey, event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (key !== "yours" || buildMode === "pop" || event.pointerType === "touch" || wallPressRef.current) return;
+    if (key !== "yours" || event.pointerType === "touch") return;
     const bounds = event.currentTarget.getBoundingClientRect();
     const edge = findClosestGridEdge((event.clientX - bounds.left) / bounds.width, (event.clientY - bounds.top) / bounds.height, bounds.width, bounds.height);
     if (!edge) {
@@ -228,28 +214,28 @@ export default function BalloonRoomsClient() {
     }
     const room = roomsRef.current.yours;
     const wall = createWallSegment(room.id, edge.orientation, edge.gridX, edge.gridY);
-    const validation = validateWallPlacement(room, wall);
-    previewRef.current = { wall, valid: validation.valid };
+    const existingWall = room.walls.some((candidate) => candidate.id === wall.id);
+    const valid = buildMode === "wall"
+      ? validateWallPlacement(room, wall).valid
+      : buildMode === "nails"
+        ? validateNailPlacement(room, wall.id).valid
+        : existingWall;
+    previewRef.current = { wall, valid };
   }, [buildMode]);
 
   const selectMode = useCallback((mode: BuildMode) => {
-    if (wallHoldTimerRef.current !== null) window.clearTimeout(wallHoldTimerRef.current);
-    wallHoldTimerRef.current = null;
-    wallPressRef.current = null;
     previewRef.current = null;
     setBuildMode(mode);
     setFeedback(null);
   }, []);
 
   const restart = useCallback(() => {
-    if (wallHoldTimerRef.current !== null) window.clearTimeout(wallHoldTimerRef.current);
-    wallHoldTimerRef.current = null;
-    wallPressRef.current = null;
     roomsRef.current = createRooms();
     spawnersRef.current = createSpawners();
     effectsRef.current = [];
     previewRef.current = null;
     setFeedback(null);
+    setLastNailContact("No nail contacts yet");
     refreshSummary();
   }, [refreshSummary]);
 
@@ -258,7 +244,7 @@ export default function BalloonRoomsClient() {
       <div className="mx-auto max-w-3xl px-2 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-4">
         <header className="mb-3 flex items-end justify-between gap-2 px-1">
           <div className="min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-[0.25em] text-pink-300">Phase 2 · Local test</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.25em] text-pink-300">Phase 3 · Local test</p>
             <h1 className="mt-1 text-2xl font-black tracking-tight sm:text-3xl">BALLOON ROOMS</h1>
           </div>
           <div className="flex gap-1">
@@ -267,7 +253,7 @@ export default function BalloonRoomsClient() {
           </div>
         </header>
 
-        <p className="mb-3 px-1 text-xs font-bold text-zinc-400">Choose POP for balloons. In WALL mode, tap to build or briefly hold a wall to remove it.</p>
+        <p className="mb-3 px-1 text-xs font-bold text-zinc-400">Tap balloons anytime to deal 1 damage. Build walls, arm them with nails, or remove nails and walls.</p>
         <div className={styles.roomsGrid}>
           {roomKeys.map((key) => {
             const roomSummary = summary[key];
@@ -280,17 +266,15 @@ export default function BalloonRoomsClient() {
                     ref={(canvas) => setCanvas(key, canvas)}
                     className={styles.canvas}
                     onPointerDown={(event) => handlePointerDown(key, event)}
-                    onPointerUp={(event) => { if (key === "yours" && buildMode === "wall") finishWallPress(event); }}
-                    onPointerCancel={(event) => { if (key === "yours") cancelWallPress(event); }}
                     onPointerMove={(event) => handlePointerMove(key, event)}
-                    onPointerLeave={() => { if (key === "yours" && !wallPressRef.current) previewRef.current = null; }}
+                    onPointerLeave={() => { if (key === "yours") previewRef.current = null; }}
                     onContextMenu={(event) => event.preventDefault()}
                     aria-label={`${label} balloon playfield.`}
                   />
                 </div>
                 <div className={`${styles.statusPanel} p-3`}>
                   {roomSummary.running ? <>
-                    <div className="flex items-center justify-between gap-1"><p className="text-[10px] font-black tracking-[0.14em] text-zinc-400">ROOM HP</p><p className="text-[9px] font-bold text-purple-300">WALLS {roomSummary.wallCount}/{MAX_WALL_SEGMENTS}</p></div>
+                    <div className="flex items-center justify-between gap-1"><p className="text-[10px] font-black tracking-[0.14em] text-zinc-400">ROOM HP</p><div className="text-right text-[9px] font-bold"><p className="text-purple-300">WALLS {roomSummary.wallCount}/{MAX_WALL_SEGMENTS}</p><p className="text-emerald-300">NAILS {roomSummary.nailCount}/{MAX_NAIL_STRIPS}{roomSummary.brokenNailCount > 0 ? ` · ${roomSummary.brokenNailCount} BROKEN` : ""}</p></div></div>
                     <div className="mt-1 flex items-baseline justify-between gap-2"><p className="text-3xl font-black tabular-nums">{roomSummary.health}<span className="text-sm text-zinc-500"> / {ROOM_MAX_HEALTH}</span></p><p className="text-[9px] font-bold text-zinc-500">{roomSummary.count} ACTIVE</p></div>
                     <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-black/50"><div className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-[width]" style={{ width: `${(roomSummary.health / ROOM_MAX_HEALTH) * 100}%` }} /></div>
                   </> : <div className="grid min-h-14 place-items-center text-center"><p className="text-lg font-black text-red-300">ROOM BROKEN</p></div>}
@@ -298,10 +282,10 @@ export default function BalloonRoomsClient() {
 
                 {key === "yours" ? (
                   <div className={`${styles.controls} mt-2 p-2`}>
-                    <div className="grid grid-cols-2 gap-1">
-                      {(["pop", "wall"] as BuildMode[]).map((mode) => <button key={mode} type="button" aria-pressed={buildMode === mode} onClick={() => selectMode(mode)} className={`min-h-11 rounded-md border px-1 text-[10px] font-black ${buildMode === mode ? "border-purple-300 bg-purple-500/35 text-white" : "border-white/10 bg-black/20 text-zinc-400"}`}>{mode.toUpperCase()}</button>)}
+                    <div className="grid grid-cols-3 gap-1">
+                      {(["wall", "nails", "remove"] as BuildMode[]).map((mode) => <button key={mode} type="button" aria-pressed={buildMode === mode} onClick={() => selectMode(mode)} className={`min-h-11 rounded-md border px-1 text-[10px] font-black ${buildMode === mode ? "border-purple-300 bg-purple-500/35 text-white" : "border-white/10 bg-black/20 text-zinc-400"}`}>{mode.toUpperCase()}</button>)}
                     </div>
-                    <p className={`mt-2 min-h-4 text-center text-[10px] font-black ${feedback?.valid ? "text-emerald-300" : "text-red-300"}`}>{feedback?.message ?? `${MAX_WALL_SEGMENTS - roomSummary.wallCount} pieces available`}</p>
+                    <p className={`mt-2 min-h-4 text-center text-[10px] font-black ${feedback ? (feedback.valid ? "text-emerald-300" : "text-red-300") : "text-zinc-500"}`}>{feedback?.message ?? `${MAX_WALL_SEGMENTS - roomSummary.wallCount} walls · ${MAX_NAIL_STRIPS - roomSummary.nailCount} nails available`}</p>
                   </div>
                 ) : (
                   <div className={`${styles.controls} mt-2 grid place-items-center px-2 text-center`}><span className="text-[9px] font-black uppercase tracking-[0.12em] text-zinc-600">Local test structure</span></div>
@@ -312,7 +296,7 @@ export default function BalloonRoomsClient() {
         </div>
 
         <aside className="mt-3 rounded-lg border border-white/10 bg-black/25 px-3 py-2 font-mono text-[10px] text-zinc-500" aria-label="Development simulation status">
-          DEV · grid 6×10 · yours V{summary.yours.verticalCount}/H{summary.yours.horizontalCount} ({summary.yours.supportedHorizontalCount} supported), routes {summary.yours.routesValid ? "valid" : "invalid"} · opponent V{summary.opponent.verticalCount}/H{summary.opponent.horizontalCount} ({summary.opponent.supportedHorizontalCount} supported), routes {summary.opponent.routesValid ? "valid" : "invalid"}
+          DEV · grid 6×10 · yours V{summary.yours.verticalCount}/H{summary.yours.horizontalCount} ({summary.yours.supportedHorizontalCount} supported), routes {summary.yours.routesValid ? "valid" : "invalid"} · opponent V{summary.opponent.verticalCount}/H{summary.opponent.horizontalCount} ({summary.opponent.supportedHorizontalCount} supported), routes {summary.opponent.routesValid ? "valid" : "invalid"}<br />LAST CONTACT · {lastNailContact}
         </aside>
       </div>
     </main>
