@@ -259,25 +259,21 @@ const healthAfterNailPop = nailPopRoom.health;
 updateRoomSimulation(nailPopRoom, 20);
 assert.equal(nailPopRoom.health, healthAfterNailPop);
 
-// The last durability point deals damage, then leaves a broken, non-damaging strip on a functional wall.
+// The last durability point deals damage, then automatically removes the strip while preserving its wall.
 const breakRoom = createArmedContactRoom("nail-break", 1);
 const breaker = createBasicBalloon(breakRoom.id, "breaker", 2, "left");
 breakRoom.balloons.push(breaker);
 updateRoomSimulation(breakRoom, 1);
 assert.equal(breaker.health, 2);
-assert.equal(breakRoom.nailStrips[0].durability, 0);
-assert.equal(breakRoom.nailStrips[0].status, "broken");
+assert.equal(breakRoom.nailStrips.length, 0);
 const afterBreak = createBasicBalloon(breakRoom.id, "after-break", 2, "right");
 breakRoom.balloons.push(afterBreak);
 updateRoomSimulation(breakRoom, 1);
 assert.equal(afterBreak.health, 3);
 assert.equal(breakRoom.walls.length, 1);
 
-// Removing either active or broken nails preserves the wall and returning them restores full durability.
+// Exhaustion returns inventory immediately, and repositioned nails still return at full durability.
 const armedWallId = breakRoom.walls[0].id;
-assert.equal(removeNailStrip(breakRoom, armedWallId).valid, true);
-assert.equal(breakRoom.walls.length, 1);
-assert.equal(breakRoom.nailStrips.length, 0);
 assert.equal(placeNailStrip(breakRoom, armedWallId).valid, true);
 assert.equal(breakRoom.nailStrips[0].durability, NAIL_MAX_DURABILITY);
 assert.equal(breakRoom.nailStrips[0].status, "active");
@@ -291,4 +287,4 @@ const pathAfterNails = findPathToCeiling(getLaneCell(2), breakRoom.walls, "left"
 assert.deepEqual(pathBeforeNails, pathWithoutNails);
 assert.deepEqual(pathWithoutNails, pathAfterNails);
 
-console.log("Balloon Rooms Phase 3 passed: Phase 1 popping, Phase 2 wall/path rules, typed nail placement, deterministic contact, durability, breakage, removal, repeat contact, path independence, and 50 balloons per room.");
+console.log("Balloon Rooms Phase 3 passed: popping, wall/path rules, deterministic nail contact, automatic nail exhaustion, removal, repeat contact, and path independence.");
