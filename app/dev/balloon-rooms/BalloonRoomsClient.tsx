@@ -1,27 +1,30 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MAX_FRAME_DELTA_SECONDS, MAX_NAIL_STRIPS, MAX_WALL_SEGMENTS, ROOM_MAX_HEALTH, SIMULATION_STEP_SECONDS } from "@/lib/balloonRooms/constants";
-import { createWallSegment, findClosestGridEdge } from "@/lib/balloonRooms/grid";
-import { placeNailStrip, removeNailStrip, validateNailPlacement } from "@/lib/balloonRooms/nails";
-import { drawBalloonRoom, type RoomVisualEffect, type WallPreview } from "@/lib/balloonRooms/rendering";
 import {
+  MAX_FRAME_DELTA_SECONDS,
+  MAX_NAIL_STRIPS,
+  MAX_WALL_SEGMENTS,
+  ROOM_MAX_HEALTH,
+  SIMULATION_STEP_SECONDS,
+  applyGameAction,
   createBalloonRoom,
   createDevBalloonSpawner,
-  damageBalloon,
+  createWallSegment,
   findBalloonAtPoint,
-  updateDevBalloonSpawner,
-  updateRoomSimulation,
-  type DevBalloonSpawner,
-} from "@/lib/balloonRooms/simulation";
-import type { BalloonRoom } from "@/lib/balloonRooms/types";
-import {
+  findClosestGridEdge,
   getUnsupportedHorizontalWalls,
   hasRequiredRoutes,
+  placeNailStrip,
   placeWall,
-  removeWall,
+  updateDevBalloonSpawner,
+  updateRoomSimulation,
   validateWallPlacement,
-} from "@/lib/balloonRooms/walls";
+  validateNailPlacement,
+  type BalloonRoom,
+  type DevBalloonSpawner,
+} from "@partyup/balloon-core";
+import { drawBalloonRoom, type RoomVisualEffect, type WallPreview } from "@/lib/balloonRooms/rendering";
 import styles from "./BalloonRooms.module.css";
 
 type RoomKey = "yours" | "opponent";
@@ -158,9 +161,9 @@ export default function BalloonRoomsClient() {
     const y = (clientY - bounds.top) / bounds.height;
     const balloon = findBalloonAtPoint(roomsRef.current[key], x, y, 22 / Math.min(bounds.width, bounds.height));
     if (!balloon) return;
-    const result = damageBalloon(roomsRef.current[key], balloon.id);
-    if (!result) return;
-    effectsRef.current.push({ roomKey: key, x: balloon.x, y: balloon.y, kind: result.popped ? "pop" : "tap", startedAt: performance.now() });
+    const result = applyGameAction(roomsRef.current[key], { type: "POP_BALLOON", balloonId: balloon.id });
+    if (!result.applied || !result.damage) return;
+    effectsRef.current.push({ roomKey: key, x: balloon.x, y: balloon.y, kind: result.damage.popped ? "pop" : "tap", startedAt: performance.now() });
     refreshSummary();
   }, [refreshSummary]);
 
@@ -188,19 +191,16 @@ export default function BalloonRoomsClient() {
     }
     const room = roomsRef.current.yours;
     const wall = createWallSegment(room.id, edge.orientation, edge.gridX, edge.gridY);
-    const existingWall = room.walls.some((candidate) => candidate.id === wall.id);
-    let result: { valid: boolean; message: string };
+    let result: { applied: boolean; message: string };
     if (buildMode === "wall") {
-      result = placeWall(room, wall);
+      result = applyGameAction(room, { type: "PLACE_WALL", wall });
     } else if (buildMode === "nails") {
-      result = placeNailStrip(room, wall.id);
-    } else if (existingWall && room.nailStrips.some((nail) => nail.wallSegmentId === wall.id)) {
-      result = removeNailStrip(room, wall.id);
+      result = applyGameAction(room, { type: "PLACE_NAILS", wallSegmentId: wall.id });
     } else {
-      result = removeWall(room, wall.id);
+      result = applyGameAction(room, { type: "REMOVE_WALL", wallSegmentId: wall.id });
     }
-    showFeedback(result.message, result.valid);
-    if (result.valid) refreshSummary();
+    showFeedback(result.message, result.applied);
+    if (result.applied) refreshSummary();
     previewRef.current = null;
   }, [buildMode, popBalloon, refreshSummary, showFeedback]);
 

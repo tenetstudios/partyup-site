@@ -1,6 +1,14 @@
-import { GRID_COLUMNS, GRID_ROWS } from "./constants.ts";
-import { getCellCenter, getLaneCell, SPAWN_LANES } from "./grid.ts";
-import type { Balloon, BalloonRoom, NailStrip, WallSegment } from "./types.ts";
+import {
+  GRID_COLUMNS,
+  GRID_ROWS,
+  SPAWN_LANES,
+  getCellCenter,
+  getLaneCell,
+  type Balloon,
+  type BalloonRoom,
+  type NailStrip,
+  type WallSegment,
+} from "@partyup/balloon-core";
 
 export type RoomVisualEffect = {
   roomKey: string;

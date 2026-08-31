@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@livekit/components-react": "^2.9.21",
+    "@partyup/balloon-core": "git+https://github.com/tenetstudios/partyup-balloon-core.git#c00b37ec09e420c56653de28db8430b209fd147c",
     "@supabase/supabase-js": "^2.106.2",
     "livekit-client": "^2.19.0",
     "next": "16.2.6",

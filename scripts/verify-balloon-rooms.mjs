@@ -1,26 +1,31 @@
 import assert from "node:assert/strict";
-import { MAX_NAIL_STRIPS, MAX_WALL_SEGMENTS, NAIL_DAMAGE, NAIL_MAX_DURABILITY } from "../lib/balloonRooms/constants.ts";
-import { createWallSegment, getCellCenter, getLaneCell, SPAWN_LANES } from "../lib/balloonRooms/grid.ts";
-import { placeNailStrip, removeNailStrip } from "../lib/balloonRooms/nails.ts";
-import { findPathToCeiling } from "../lib/balloonRooms/pathfinding.ts";
 import {
+  MAX_NAIL_STRIPS,
+  MAX_WALL_SEGMENTS,
+  NAIL_DAMAGE,
+  NAIL_MAX_DURABILITY,
+  SPAWN_LANES,
   createBalloonRoom,
   createBasicBalloon,
   createDevBalloonSpawner,
+  createWallSegment,
   damageBalloon,
   findBalloonAtPoint,
+  findPathToCeiling,
+  getCellCenter,
+  getLaneCell,
+  getUnsupportedHorizontalWalls,
+  hasRequiredRoutes,
+  placeNailStrip,
+  placeWall,
   recalculateBalloonPath,
+  removeNailStrip,
+  removeWall,
   updateDevBalloonSpawner,
   updateBalloonPosition,
   updateRoomSimulation,
-} from "../lib/balloonRooms/simulation.ts";
-import {
-  getUnsupportedHorizontalWalls,
-  hasRequiredRoutes,
-  placeWall,
-  removeWall,
   validateWallPlacement,
-} from "../lib/balloonRooms/walls.ts";
+} from "@partyup/balloon-core";
 
 function wall(room, orientation, gridX, gridY) {
   return createWallSegment(room.id, orientation, gridX, gridY);
