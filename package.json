@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:balloon-rooms": "node --no-warnings --experimental-strip-types scripts/verify-balloon-rooms.mjs",
     "test:trivia-import": "node --no-warnings --experimental-strip-types scripts/verify-trivia-import.mjs"
   },
   "dependencies": {
