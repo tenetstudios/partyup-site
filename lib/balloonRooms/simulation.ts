@@ -3,10 +3,12 @@ import {
   DEV_SPAWN_MAX_SECONDS,
   DEV_SPAWN_MIN_SECONDS,
   MANUAL_TAP_DAMAGE,
+  NAIL_DAMAGE,
   ROOM_MAX_HEALTH,
 } from "./constants.ts";
 import { getCellCenter, getLaneCell, isTraversalBlocked, SPAWN_LANES } from "./grid.ts";
 import { findPathToCeiling } from "./pathfinding.ts";
+import { getNailsTouchingCell } from "./nails.ts";
 import type {
   Balloon,
   BalloonDamageResult,
@@ -29,6 +31,7 @@ export function createBalloonRoom(id: string): BalloonRoom {
     maxHealth: ROOM_MAX_HEALTH,
     balloons: [],
     walls: [],
+    nailStrips: [],
     wallRevision: 0,
     width: 1,
     height: 1,
@@ -60,6 +63,7 @@ export function createBasicBalloon(
     targetCell: null,
     path: [],
     pathRevision: -1,
+    contactingNailIds: [],
   };
 }
 
@@ -71,14 +75,15 @@ export function recalculateBalloonPath(room: BalloonRoom, balloon: Balloon): boo
   return path !== null;
 }
 
-export function updateBalloonPosition(room: BalloonRoom, balloon: Balloon, deltaSeconds: number): void {
-  if (balloon.status !== "active" || deltaSeconds <= 0) return;
+export function updateBalloonPosition(room: BalloonRoom, balloon: Balloon, deltaSeconds: number): BalloonSimulationEvent[] {
+  if (balloon.status !== "active" || deltaSeconds <= 0) return [];
+  const events: BalloonSimulationEvent[] = [];
   let remainingSeconds = deltaSeconds;
 
   while (remainingSeconds > 0) {
     if (balloon.currentCell.row === 0 && !balloon.targetCell) {
       balloon.y -= balloon.speed * remainingSeconds;
-      return;
+      return events;
     }
 
     if (balloon.pathRevision !== room.wallRevision && balloon.targetCell) {
@@ -89,7 +94,7 @@ export function updateBalloonPosition(room: BalloonRoom, balloon: Balloon, delta
       }
     }
 
-    if (!balloon.targetCell && !recalculateBalloonPath(room, balloon)) return;
+    if (!balloon.targetCell && !recalculateBalloonPath(room, balloon)) return events;
     const targetCell = balloon.targetCell;
     if (!targetCell) continue;
     const target = getCellCenter(targetCell);
@@ -106,7 +111,7 @@ export function updateBalloonPosition(room: BalloonRoom, balloon: Balloon, delta
     if (travelDistance < distance) {
       balloon.x += ((target.x - balloon.x) / distance) * travelDistance;
       balloon.y += ((target.y - balloon.y) / distance) * travelDistance;
-      return;
+      return events;
     }
 
     balloon.x = target.x;
@@ -114,8 +119,33 @@ export function updateBalloonPosition(room: BalloonRoom, balloon: Balloon, delta
     balloon.currentCell = { ...targetCell };
     balloon.targetCell = null;
     balloon.path = [];
+    const touchingNails = getNailsTouchingCell(room, balloon.currentCell);
+    const previousContacts = new Set(balloon.contactingNailIds);
+    balloon.contactingNailIds = touchingNails.map((nail) => nail.id);
+    for (const nail of touchingNails) {
+      if (previousContacts.has(nail.id) || nail.status !== "active") continue;
+      const balloonHealthBefore = balloon.health;
+      const durabilityBefore = nail.durability;
+      const result = damageBalloon(room, balloon.id, NAIL_DAMAGE);
+      if (!result) continue;
+      nail.durability = Math.max(0, nail.durability - 1);
+      if (nail.durability === 0) nail.status = "broken";
+      events.push({
+        type: "nail_contact",
+        balloonId: balloon.id,
+        nailStripId: nail.id,
+        wallSegmentId: nail.wallSegmentId,
+        balloonHealthBefore,
+        balloonHealthAfter: result.remainingHealth,
+        durabilityBefore,
+        durabilityAfter: nail.durability,
+        popped: result.popped,
+      });
+      if (result.popped) return events;
+    }
     remainingSeconds -= distance / balloon.speed;
   }
+  return events;
 }
 
 export function updateRoomSimulation(
@@ -125,8 +155,8 @@ export function updateRoomSimulation(
   if (room.health <= 0 || deltaSeconds <= 0) return [];
 
   const events: BalloonSimulationEvent[] = [];
-  for (const balloon of room.balloons) {
-    updateBalloonPosition(room, balloon, deltaSeconds);
+  for (const balloon of [...room.balloons]) {
+    events.push(...updateBalloonPosition(room, balloon, deltaSeconds));
     if (balloon.status === "active" && balloon.y - balloon.radius <= 0) {
       balloon.status = "escaped";
       const damage = Math.min(room.health, balloon.roomDamage);

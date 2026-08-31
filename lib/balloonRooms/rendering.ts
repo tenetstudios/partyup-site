@@ -1,12 +1,12 @@
 import { GRID_COLUMNS, GRID_ROWS } from "./constants.ts";
 import { getCellCenter, getLaneCell, SPAWN_LANES } from "./grid.ts";
-import type { Balloon, BalloonRoom, WallSegment } from "./types.ts";
+import type { Balloon, BalloonRoom, NailStrip, WallSegment } from "./types.ts";
 
 export type RoomVisualEffect = {
   roomKey: string;
   x: number;
   y: number;
-  kind: "tap" | "pop" | "escape";
+  kind: "tap" | "pop" | "escape" | "nail";
   startedAt: number;
 };
 
@@ -37,6 +37,10 @@ export function drawBalloonRoom(
   drawLanes(context, bounds.width, bounds.height);
   if (options.debugPaths) drawPaths(context, room, bounds.width, bounds.height);
   for (const wall of room.walls) drawWall(context, wall, bounds.width, bounds.height, "rgba(195, 93, 255, 0.96)", 5);
+  for (const nail of room.nailStrips) {
+    const wall = room.walls.find((candidate) => candidate.id === nail.wallSegmentId);
+    if (wall) drawNailStrip(context, wall, nail, bounds.width, bounds.height);
+  }
   if (options.preview) {
     drawWall(context, options.preview.wall, bounds.width, bounds.height, options.preview.valid ? "rgba(216, 180, 254, 0.72)" : "rgba(248, 113, 113, 0.82)", 7);
   }
@@ -125,6 +129,63 @@ function drawWall(context: CanvasRenderingContext2D, wall: WallSegment, width: n
   context.restore();
 }
 
+function drawNailStrip(
+  context: CanvasRenderingContext2D,
+  wall: WallSegment,
+  nail: NailStrip,
+  width: number,
+  height: number,
+): void {
+  const ratio = nail.durability / nail.maxDurability;
+  const color = nail.status === "broken"
+    ? "rgba(113, 113, 122, 0.72)"
+    : ratio <= 0.2
+      ? "rgba(248, 113, 113, 0.96)"
+      : ratio <= 0.6
+        ? "rgba(251, 191, 36, 0.96)"
+        : "rgba(167, 243, 208, 0.98)";
+  const startX = (wall.gridX / GRID_COLUMNS) * width;
+  const startY = (wall.gridY / GRID_ROWS) * height;
+  const length = wall.orientation === "vertical" ? height / GRID_ROWS : width / GRID_COLUMNS;
+  const spikeCount = 4;
+  const spikeSize = Math.max(3, Math.min(6, length / 7));
+
+  context.save();
+  context.strokeStyle = color;
+  context.fillStyle = color;
+  context.lineWidth = 1.5;
+  context.shadowColor = color;
+  context.shadowBlur = nail.status === "broken" ? 0 : 5 * ratio;
+  if (nail.status === "broken") context.setLineDash([2, 3]);
+  for (let index = 0; index < spikeCount; index += 1) {
+    const progress = (index + 0.5) / spikeCount;
+    const x = wall.orientation === "vertical" ? startX : startX + length * progress;
+    const y = wall.orientation === "vertical" ? startY + length * progress : startY;
+    context.beginPath();
+    if (wall.orientation === "vertical") {
+      context.moveTo(x, y - spikeSize * 0.7);
+      context.lineTo(x + (index % 2 ? -spikeSize : spikeSize), y);
+      context.lineTo(x, y + spikeSize * 0.7);
+    } else {
+      context.moveTo(x - spikeSize * 0.7, y);
+      context.lineTo(x, y + (index % 2 ? -spikeSize : spikeSize));
+      context.lineTo(x + spikeSize * 0.7, y);
+    }
+    context.closePath();
+    context.fill();
+  }
+  context.setLineDash([]);
+  context.shadowBlur = 0;
+  context.font = "900 8px monospace";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillStyle = nail.status === "broken" ? "rgba(161, 161, 170, 0.9)" : "rgba(255,255,255,0.95)";
+  const labelX = wall.orientation === "vertical" ? startX + 12 : startX + length / 2;
+  const labelY = wall.orientation === "vertical" ? startY + length / 2 : startY - 10;
+  context.fillText(`${nail.durability}/${nail.maxDurability}`, labelX, labelY);
+  context.restore();
+}
+
 function drawEffects(context: CanvasRenderingContext2D, roomKey: string, effects: RoomVisualEffect[], now: number, width: number, height: number): void {
   for (const effect of effects) {
     if (effect.roomKey !== roomKey) continue;
@@ -140,7 +201,11 @@ function drawEffects(context: CanvasRenderingContext2D, roomKey: string, effects
       context.textAlign = "center";
       context.fillText("-1 ROOM HP", width / 2, 30 + progress * 10);
     } else {
-      context.strokeStyle = effect.kind === "pop" ? `rgba(244, 114, 182, ${1 - progress})` : `rgba(255, 255, 255, ${1 - progress})`;
+      context.strokeStyle = effect.kind === "pop"
+        ? `rgba(244, 114, 182, ${1 - progress})`
+        : effect.kind === "nail"
+          ? `rgba(167, 243, 208, ${1 - progress})`
+          : `rgba(255, 255, 255, ${1 - progress})`;
       context.lineWidth = 2;
       context.beginPath();
       context.arc(x, y, 10 + progress * (effect.kind === "pop" ? 30 : 12), 0, Math.PI * 2);
