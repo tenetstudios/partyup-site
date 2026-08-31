@@ -1,6 +1,6 @@
 .gameShell {
   min-height: 100dvh;
-  overflow: hidden;
+  overflow-x: hidden;
   background:
     radial-gradient(circle at 50% -10%, rgba(139, 61, 255, 0.28), transparent 38%),
     #07000f;
@@ -60,8 +60,8 @@
   background: rgba(23, 16, 32, 0.94);
 }
 
-.futureControls {
-  min-height: 3rem;
+.controls {
+  min-height: 5.25rem;
   border: 1px dashed rgba(221, 194, 255, 0.12);
   border-radius: 0.65rem;
   background: rgba(255, 255, 255, 0.015);
