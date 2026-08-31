@@ -3,7 +3,7 @@ export const GRID_COLUMNS = 6;
 export const GRID_ROWS = 10;
 export const MAX_WALL_SEGMENTS = 10;
 export const MAX_HORIZONTAL_SUPPORT_DISTANCE = 2;
-export const WALL_REMOVE_HOLD_MS = 900;
+export const WALL_REMOVE_HOLD_MS = 650;
 
 export const ENTRY_LANE_COLUMNS = {
   1: 0,

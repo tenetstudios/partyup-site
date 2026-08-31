@@ -267,7 +267,7 @@ export default function BalloonRoomsClient() {
           </div>
         </header>
 
-        <p className="mb-3 px-1 text-xs font-bold text-zinc-400">Choose POP for balloons. In WALL mode, tap to build or hold a wall for one second to remove it.</p>
+        <p className="mb-3 px-1 text-xs font-bold text-zinc-400">Choose POP for balloons. In WALL mode, tap to build or briefly hold a wall to remove it.</p>
         <div className={styles.roomsGrid}>
           {roomKeys.map((key) => {
             const roomSummary = summary[key];
