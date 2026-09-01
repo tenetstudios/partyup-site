@@ -2,11 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  BASIC_BALLOON_COST,
+  BASIC_BALLOON_INCOME_GAIN,
+  INCOME_TICK_INTERVAL_MS,
+  NAIL_STRIP_COST,
   MAX_FRAME_DELTA_SECONDS,
   MAX_NAIL_STRIPS,
   MAX_WALL_SEGMENTS,
   ROOM_MAX_HEALTH,
   SIMULATION_STEP_SECONDS,
+  VERTICAL_WALL_COST,
   applyGameAction,
   createBalloonRoom,
   createSendBalloonAction,
@@ -15,8 +20,6 @@ import {
   findClosestGridEdge,
   getUnsupportedHorizontalWalls,
   hasRequiredRoutes,
-  placeNailStrip,
-  placeWall,
   updateRoomSimulation,
   validateWallPlacement,
   validateNailPlacement,
@@ -41,6 +44,9 @@ type RoomSummary = Record<RoomKey, {
   routesValid: boolean;
   nailCount: number;
   brokenNailCount: number;
+  coins: number;
+  income: number;
+  nextIncomeInMs: number;
 }>;
 
 const roomKeys: RoomKey[] = ["yours", "opponent"];
@@ -48,14 +54,14 @@ const roomKeys: RoomKey[] = ["yours", "opponent"];
 function createRooms(): RoomCollection {
   const yours = createBalloonRoom("your-room");
   const opponent = createBalloonRoom("opponent-room");
-  placeWall(opponent, createWallSegment(opponent.id, "vertical", 3, 5));
-  placeWall(opponent, createWallSegment(opponent.id, "horizontal", 2, 5));
-  placeWall(opponent, createWallSegment(opponent.id, "horizontal", 3, 5));
-  placeNailStrip(opponent, opponent.walls[1].id);
+  applyGameAction(opponent, { type: "PLACE_WALL", wall: createWallSegment(opponent.id, "vertical", 3, 5) });
+  applyGameAction(opponent, { type: "PLACE_WALL", wall: createWallSegment(opponent.id, "horizontal", 2, 5) });
+  applyGameAction(opponent, { type: "PLACE_WALL", wall: createWallSegment(opponent.id, "horizontal", 3, 5) });
+  applyGameAction(opponent, { type: "PLACE_NAILS", wallSegmentId: opponent.walls[1].id });
   return { yours, opponent };
 }
 
-function summarize(rooms: RoomCollection): RoomSummary {
+function summarize(rooms: RoomCollection, simulationTimeMs: number): RoomSummary {
   return Object.fromEntries(roomKeys.map((key) => {
     const room = rooms[key];
     const unsupportedCount = getUnsupportedHorizontalWalls(room.walls).length;
@@ -71,12 +77,16 @@ function summarize(rooms: RoomCollection): RoomSummary {
       routesValid: hasRequiredRoutes(room, room.walls) && unsupportedCount === 0,
       nailCount: room.nailStrips.length,
       brokenNailCount: room.nailStrips.filter((nail) => nail.status === "broken").length,
+      coins: room.economy.coins,
+      income: room.economy.income,
+      nextIncomeInMs: Math.max(0, room.economy.nextIncomeTickAt - simulationTimeMs),
     }];
   })) as RoomSummary;
 }
 
 export default function BalloonRoomsClient() {
   const roomsRef = useRef<RoomCollection>(createRooms());
+  const simulationTimeMsRef = useRef(0);
   const sendSequenceRef = useRef(0);
   const canvasesRef = useRef<CanvasCollection>({ yours: null, opponent: null });
   const effectsRef = useRef<RoomVisualEffect[]>([]);
@@ -88,12 +98,9 @@ export default function BalloonRoomsClient() {
   const [feedback, setFeedback] = useState<{ message: string; valid: boolean } | null>(null);
   const [lastNailContact, setLastNailContact] = useState("No nail contacts yet");
   const [lastSend, setLastSend] = useState("No balloons sent yet");
-  const [summary, setSummary] = useState<RoomSummary>({
-    yours: { health: ROOM_MAX_HEALTH, count: 0, running: true, wallCount: 0, verticalCount: 0, horizontalCount: 0, supportedHorizontalCount: 0, routesValid: true, nailCount: 0, brokenNailCount: 0 },
-    opponent: { health: ROOM_MAX_HEALTH, count: 0, running: true, wallCount: 3, verticalCount: 1, horizontalCount: 2, supportedHorizontalCount: 2, routesValid: true, nailCount: 1, brokenNailCount: 0 },
-  });
+  const [summary, setSummary] = useState<RoomSummary>(() => summarize(createRooms(), 0));
 
-  const refreshSummary = useCallback(() => setSummary(summarize(roomsRef.current)), []);
+  const refreshSummary = useCallback(() => setSummary(summarize(roomsRef.current, simulationTimeMsRef.current)), []);
   const showFeedback = useCallback((message: string, valid: boolean) => {
     if (feedbackTimerRef.current !== null) window.clearTimeout(feedbackTimerRef.current);
     setFeedback({ message, valid });
@@ -108,14 +115,18 @@ export default function BalloonRoomsClient() {
     let animationFrame = 0;
     let previousTime = performance.now();
     let accumulator = 0;
+    let previousHudTime = previousTime;
 
     const frame = (now: number) => {
       accumulator += Math.min(MAX_FRAME_DELTA_SECONDS, Math.max(0, (now - previousTime) / 1000));
       previousTime = now;
       let summaryChanged = false;
       while (accumulator >= SIMULATION_STEP_SECONDS) {
+        simulationTimeMsRef.current += SIMULATION_STEP_SECONDS * 1000;
         for (const key of roomKeys) {
           const room = roomsRef.current[key];
+          const incomeResult = applyGameAction(room, { type: "APPLY_INCOME_TICK", simulationTimeMs: simulationTimeMsRef.current });
+          if (incomeResult.applied && incomeResult.incomeTicksApplied) summaryChanged = true;
           const events = updateRoomSimulation(room, SIMULATION_STEP_SECONDS);
           if (events.length > 0) summaryChanged = true;
           for (const event of events) {
@@ -131,7 +142,10 @@ export default function BalloonRoomsClient() {
         accumulator -= SIMULATION_STEP_SECONDS;
       }
 
-      if (summaryChanged) refreshSummary();
+      if (summaryChanged || now - previousHudTime >= 250) {
+        previousHudTime = now;
+        refreshSummary();
+      }
       effectsRef.current = effectsRef.current.filter((effect) => now - effect.startedAt < 500);
       for (const key of roomKeys) {
         const canvas = canvasesRef.current[key];
@@ -211,9 +225,9 @@ export default function BalloonRoomsClient() {
     const wall = createWallSegment(room.id, edge.orientation, edge.gridX, edge.gridY);
     const existingWall = room.walls.some((candidate) => candidate.id === wall.id);
     const valid = buildMode === "wall"
-      ? validateWallPlacement(room, wall).valid
+      ? validateWallPlacement(room, wall).valid && room.economy.coins >= VERTICAL_WALL_COST
       : buildMode === "nails"
-        ? validateNailPlacement(room, wall.id).valid
+        ? validateNailPlacement(room, wall.id).valid && room.economy.coins >= NAIL_STRIP_COST
         : existingWall;
     previewRef.current = { wall, valid };
   }, [buildMode]);
@@ -235,7 +249,7 @@ export default function BalloonRoomsClient() {
       senderSequence: sendSequenceRef.current,
       sentAt: Date.now(),
     });
-    const result = applyGameAction(opponent, action);
+    const result = applyGameAction(roomsRef.current.yours, action, opponent);
     if (!result.applied) {
       sendSequenceRef.current -= 1;
       setLastSend(`Rejected Lane ${selectedAttackLane}: ${result.message}`);
@@ -247,6 +261,7 @@ export default function BalloonRoomsClient() {
 
   const restart = useCallback(() => {
     roomsRef.current = createRooms();
+    simulationTimeMsRef.current = 0;
     sendSequenceRef.current = 0;
     effectsRef.current = [];
     previewRef.current = null;
@@ -261,7 +276,7 @@ export default function BalloonRoomsClient() {
       <div className="mx-auto max-w-3xl px-2 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-4">
         <header className="mb-3 flex items-end justify-between gap-2 px-1">
           <div className="min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-[0.25em] text-pink-300">Phase 4 · Local test</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.25em] text-pink-300">Phase 5 · Shared economy</p>
             <h1 className="mt-1 text-2xl font-black tracking-tight sm:text-3xl">BALLOON ROOMS</h1>
           </div>
           <div className="flex gap-1">
@@ -278,6 +293,10 @@ export default function BalloonRoomsClient() {
             return (
               <section key={key} className={styles.room} aria-label={label}>
                 <h2 className="mb-2 truncate text-center text-[11px] font-black tracking-[0.12em] text-purple-100 sm:text-sm">{label}</h2>
+                <div className={styles.economyPanel} aria-label={`${label} economy`}>
+                  <div><p className="text-[8px] font-black tracking-[0.14em] text-zinc-500">COINS</p><p className="text-lg font-black tabular-nums text-amber-200">{roomSummary.coins}</p></div>
+                  <div className="text-right"><p className="text-[8px] font-black tracking-[0.14em] text-zinc-500">INCOME</p><p className="text-[10px] font-black tabular-nums text-emerald-300">+{roomSummary.income} / {INCOME_TICK_INTERVAL_MS / 1000}s</p><p className="text-[8px] font-bold tabular-nums text-zinc-500">NEXT 00:{String(Math.ceil(roomSummary.nextIncomeInMs / 1000)).padStart(2, "0")}</p></div>
+                </div>
                 <div className={styles.playfield}>
                   <canvas
                     ref={(canvas) => setCanvas(key, canvas)}
@@ -300,7 +319,11 @@ export default function BalloonRoomsClient() {
                 {key === "yours" ? (
                   <div className={`${styles.controls} mt-2 p-2`}>
                     <div className="grid grid-cols-3 gap-1">
-                      {(["wall", "nails", "remove"] as BuildMode[]).map((mode) => <button key={mode} type="button" aria-pressed={buildMode === mode} onClick={() => selectMode(mode)} className={`min-h-11 rounded-md border px-1 text-[10px] font-black ${buildMode === mode ? "border-purple-300 bg-purple-500/35 text-white" : "border-white/10 bg-black/20 text-zinc-400"}`}>{mode.toUpperCase()}</button>)}
+                      {(["wall", "nails", "remove"] as BuildMode[]).map((mode) => {
+                        const cost = mode === "wall" ? VERTICAL_WALL_COST : mode === "nails" ? NAIL_STRIP_COST : null;
+                        const unavailable = cost !== null && roomSummary.coins < cost;
+                        return <button key={mode} type="button" aria-pressed={buildMode === mode} disabled={unavailable} onClick={() => selectMode(mode)} className={`min-h-11 rounded-md border px-1 text-[10px] font-black disabled:cursor-not-allowed disabled:opacity-40 ${buildMode === mode ? "border-purple-300 bg-purple-500/35 text-white" : "border-white/10 bg-black/20 text-zinc-400"}`}>{mode.toUpperCase()}{cost !== null ? ` ${cost}` : ""}</button>;
+                      })}
                     </div>
                     <p className={`mt-2 min-h-4 text-center text-[10px] font-black ${feedback ? (feedback.valid ? "text-emerald-300" : "text-red-300") : "text-zinc-500"}`}>{feedback?.message ?? `${MAX_WALL_SEGMENTS - roomSummary.wallCount} walls · ${MAX_NAIL_STRIPS - roomSummary.nailCount} nails available`}</p>
                   </div>
@@ -312,8 +335,8 @@ export default function BalloonRoomsClient() {
                         <button key={lane} type="button" aria-label={`Select attack Lane ${lane}`} aria-pressed={selectedAttackLane === lane} onClick={() => setSelectedAttackLane(lane)} className={`min-h-11 rounded-md border text-xs font-black ${selectedAttackLane === lane ? "border-pink-300 bg-pink-500/40 text-white" : "border-white/10 bg-black/20 text-zinc-400"}`}>L{lane}</button>
                       ))}
                     </div>
-                    <button type="button" onClick={sendBalloon} disabled={!roomSummary.running} className="mt-2 min-h-12 w-full rounded-md border border-pink-300/70 bg-gradient-to-r from-purple-600 to-pink-600 text-xs font-black tracking-[0.12em] text-white disabled:cursor-not-allowed disabled:opacity-40">SEND BASIC BALLOON</button>
-                    <p className="mt-2 min-h-4 truncate text-center text-[9px] font-bold text-zinc-500">Selected Lane {selectedAttackLane} · no cost or cooldown</p>
+                    <button type="button" onClick={sendBalloon} disabled={!roomSummary.running || summary.yours.coins < BASIC_BALLOON_COST} className="mt-2 min-h-12 w-full rounded-md border border-pink-300/70 bg-gradient-to-r from-purple-600 to-pink-600 text-xs font-black tracking-[0.12em] text-white disabled:cursor-not-allowed disabled:opacity-40">SEND BASIC · {BASIC_BALLOON_COST}</button>
+                    <p className="mt-2 min-h-4 truncate text-center text-[9px] font-bold text-emerald-300">Lane {selectedAttackLane} · +{BASIC_BALLOON_INCOME_GAIN} Income</p>
                   </div>
                 )}
               </section>

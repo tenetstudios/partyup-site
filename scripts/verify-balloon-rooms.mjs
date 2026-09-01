@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import {
+  BASIC_BALLOON_COST,
+  BASIC_BALLOON_INCOME_GAIN,
+  INCOME_TICK_INTERVAL_MS,
   MAX_NAIL_STRIPS,
   MAX_WALL_SEGMENTS,
   NAIL_DAMAGE,
@@ -46,12 +49,17 @@ function sendAction(room, lane, senderSequence) {
 
 // Phase 4 client contract: each action creates one balloon in the chosen lane and selection can change.
 const sendRoom = createBalloonRoom("web-send");
-assert.equal(applyGameAction(sendRoom, sendAction(sendRoom, 3, 1)).applied, true);
+const senderRoom = createBalloonRoom("web-sender");
+assert.equal(applyGameAction(senderRoom, sendAction(sendRoom, 3, 1), sendRoom).applied, true);
 assert.equal(sendRoom.balloons.length, 1);
 assert.equal(sendRoom.balloons[0].spawnLane, 3);
-assert.equal(applyGameAction(sendRoom, sendAction(sendRoom, 3, 2)).applied, true);
-assert.equal(applyGameAction(sendRoom, sendAction(sendRoom, 1, 3)).applied, true);
+assert.equal(applyGameAction(senderRoom, sendAction(sendRoom, 3, 2), sendRoom).applied, true);
+assert.equal(applyGameAction(senderRoom, sendAction(sendRoom, 1, 3), sendRoom).applied, true);
 assert.deepEqual(sendRoom.balloons.map((balloon) => balloon.spawnLane), [3, 3, 1]);
+assert.equal(senderRoom.economy.coins, 500 - 3 * BASIC_BALLOON_COST);
+assert.equal(senderRoom.economy.income, 100 + 3 * BASIC_BALLOON_INCOME_GAIN);
+applyGameAction(senderRoom, { type: "APPLY_INCOME_TICK", simulationTimeMs: INCOME_TICK_INTERVAL_MS });
+assert.equal(senderRoom.economy.coins, 425 + 115);
 
 // Phase 1 regression: one tap is one damage event, three taps pop, and popped balloons never escape.
 const popRoom = createBalloonRoom("pop");
@@ -309,4 +317,4 @@ const pathAfterNails = findPathToCeiling(getLaneCell(2), breakRoom.walls, "left"
 assert.deepEqual(pathBeforeNails, pathWithoutNails);
 assert.deepEqual(pathWithoutNails, pathAfterNails);
 
-console.log("Balloon Rooms Phase 4 passed: chosen-lane sends, popping, wall/path rules, deterministic nail contact, automatic nail exhaustion, removal, repeat contact, and path independence.");
+console.log("Balloon Rooms Phase 5 passed: shared economy, chosen-lane sends, popping, wall/path rules, deterministic nail contact, automatic nail exhaustion, no-refund removal, repeat contact, and path independence.");
