@@ -176,6 +176,7 @@ export default function BalloonRoomsClient() {
           const launchResult = applyGameAction(room, { type: "APPLY_LAUNCH_QUEUE", simulationTimeMs: simulationTimeMsRef.current }, targetRoom);
           if (launchResult.applied && launchResult.launchedBalloon) summaryChanged = true;
           const events = updateRoomSimulation(room, SIMULATION_STEP_SECONDS);
+          if (key === "opponent") room.health = ROOM_MAX_HEALTH;
           if (events.length > 0) summaryChanged = true;
           for (const event of events) {
             if (event.type === "balloon_escaped") {
@@ -416,7 +417,7 @@ export default function BalloonRoomsClient() {
                 <div className={`${styles.statusPanel} p-3`}>
                   {roomSummary.running ? <>
                     <div className="flex items-center justify-between gap-1"><p className="text-[10px] font-black tracking-[0.14em] text-zinc-400">ROOM HP</p><div className="text-right text-[9px] font-bold"><p className="text-purple-300">WALLS {roomSummary.wallCount}/{MAX_WALL_SEGMENTS}</p><p className="text-emerald-300">NAILS {roomSummary.nailCount}/{MAX_NAIL_STRIPS}{roomSummary.brokenNailCount > 0 ? ` · ${roomSummary.brokenNailCount} BROKEN` : ""}</p></div></div>
-                    <div className="mt-1 flex items-baseline justify-between gap-2"><p className="text-3xl font-black tabular-nums">{roomSummary.health}<span className="text-sm text-zinc-500"> / {ROOM_MAX_HEALTH}</span></p><p className="text-[9px] font-bold text-zinc-500">{roomSummary.count} ACTIVE</p></div>
+                    <div className="mt-1 flex items-baseline justify-between gap-2"><p className="text-3xl font-black tabular-nums">{key === "opponent" ? "∞" : roomSummary.health}<span className="text-sm text-zinc-500">{key === "opponent" ? " DEV INVULNERABLE" : ` / ${ROOM_MAX_HEALTH}`}</span></p><p className="text-[9px] font-bold text-zinc-500">{roomSummary.count} ACTIVE</p></div>
                     <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-black/50"><div className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-[width]" style={{ width: `${(roomSummary.health / ROOM_MAX_HEALTH) * 100}%` }} /></div>
                   </> : <div className="grid min-h-14 place-items-center text-center"><p className="text-lg font-black text-red-300">ROOM BROKEN</p></div>}
                 </div>
