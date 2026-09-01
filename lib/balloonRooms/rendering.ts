@@ -228,34 +228,38 @@ function drawBalloon(context: CanvasRenderingContext2D, balloon: Balloon, width:
   const y = balloon.y * height;
   const radius = Math.max(10, balloon.radius * width);
   const gradient = context.createRadialGradient(x - radius * 0.35, y - radius * 0.4, radius * 0.1, x, y, radius);
-  gradient.addColorStop(0, "#f9a8d4");
-  gradient.addColorStop(0.35, "#ec2994");
-  gradient.addColorStop(1, "#8b3dff");
+  const colors = balloon.balloonType === "speed"
+    ? ["#cffafe", "#22d3ee", "#2563eb"]
+    : balloon.balloonType === "heavy"
+      ? ["#fde68a", "#f97316", "#7c2d12"]
+      : ["#f9a8d4", "#ec2994", "#8b3dff"];
+  gradient.addColorStop(0, colors[0]);
+  gradient.addColorStop(0.35, colors[1]);
+  gradient.addColorStop(1, colors[2]);
   context.save();
-  context.shadowColor = "rgba(236, 41, 148, 0.42)";
+  context.shadowColor = balloon.balloonType === "speed" ? "rgba(34, 211, 238, 0.55)" : balloon.balloonType === "heavy" ? "rgba(249, 115, 22, 0.52)" : "rgba(236, 41, 148, 0.42)";
   context.shadowBlur = 12;
   context.fillStyle = gradient;
   context.beginPath();
-  context.ellipse(x, y, radius * 0.82, radius, 0, 0, Math.PI * 2);
+  context.ellipse(x, y, radius * (balloon.balloonType === "speed" ? 0.66 : 0.82), radius, 0, 0, Math.PI * 2);
   context.fill();
   context.shadowBlur = 0;
   context.fillStyle = "rgba(255,255,255,0.72)";
   context.beginPath();
   context.ellipse(x - radius * 0.25, y - radius * 0.35, radius * 0.12, radius * 0.22, -0.35, 0, Math.PI * 2);
   context.fill();
-  context.fillStyle = "#8b3dff";
+  context.fillStyle = colors[2];
   context.beginPath();
   context.moveTo(x, y + radius * 0.88);
   context.lineTo(x - radius * 0.16, y + radius * 1.16);
   context.lineTo(x + radius * 0.16, y + radius * 1.16);
   context.closePath();
   context.fill();
-  for (let index = 0; index < balloon.maxHealth; index += 1) {
-    context.beginPath();
-    context.arc(x + (index - 1) * 5, y + radius * 0.32, 1.7, 0, Math.PI * 2);
-    context.fillStyle = index < balloon.health ? "rgba(255,255,255,0.95)" : "rgba(0,0,0,0.25)";
-    context.fill();
-  }
+  context.font = `900 ${Math.max(7, radius * 0.48)}px sans-serif`;
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillStyle = "rgba(255,255,255,0.96)";
+  context.fillText(`${balloon.health}`, x, y + radius * 0.27);
   if (showDebug) {
     context.font = "700 8px monospace";
     context.textAlign = "center";

@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  BASIC_BALLOON_COST,
-  BASIC_BALLOON_INCOME_GAIN,
+  BALLOON_TYPES,
   INCOME_TICK_INTERVAL_MS,
   NAIL_STRIP_COST,
   MAX_FRAME_DELTA_SECONDS,
@@ -11,21 +10,27 @@ import {
   MAX_NAIL_STRIPS,
   MAX_WALL_SEGMENTS,
   ROOM_MAX_HEALTH,
+  WAVE_ROUNDS,
   SIMULATION_STEP_SECONDS,
   VERTICAL_WALL_COST,
   applyGameAction,
   createBalloonRoom,
   createSendBalloonAction,
+  createWaveState,
   createWallSegment,
   findBalloonAtPoint,
   findClosestGridEdge,
   getUnsupportedHorizontalWalls,
+  getCurrentWaveRound,
   hasRequiredRoutes,
   updateRoomSimulation,
+  updateWaveState,
   validateWallPlacement,
   validateNailPlacement,
   type BalloonRoom,
+  type BalloonType,
   type SpawnLane,
+  type WaveState,
 } from "@partyup/balloon-core";
 import { drawBalloonRoom, type RoomVisualEffect, type WallPreview } from "@/lib/balloonRooms/rendering";
 import styles from "./BalloonRooms.module.css";
@@ -48,8 +53,17 @@ type RoomSummary = Record<RoomKey, {
   coins: number;
   income: number;
   nextIncomeInMs: number;
-  queueLanes: SpawnLane[];
+  queue: { balloonType: BalloonType; lane: SpawnLane }[];
+  unlockedBalloonTypes: Record<BalloonType, boolean>;
 }>;
+
+type WaveSummary = {
+  status: WaveState["status"];
+  roundId: number | null;
+  spawnedCount: number;
+  totalCount: number;
+  nextRoundInSeconds: number;
+};
 
 const roomKeys: RoomKey[] = ["yours", "opponent"];
 
@@ -82,14 +96,27 @@ function summarize(rooms: RoomCollection, simulationTimeMs: number): RoomSummary
       coins: room.economy.coins,
       income: room.economy.income,
       nextIncomeInMs: Math.max(0, room.economy.nextIncomeTickAt - simulationTimeMs),
-      queueLanes: room.attack.queue.map((queued) => queued.lane),
+      queue: room.attack.queue.map((queued) => ({ balloonType: queued.balloonType, lane: queued.lane })),
+      unlockedBalloonTypes: { ...room.unlockedBalloonTypes },
     }];
   })) as RoomSummary;
+}
+
+function summarizeWave(state: WaveState, simulationTimeMs: number): WaveSummary {
+  const round = getCurrentWaveRound(state);
+  return {
+    status: state.status,
+    roundId: round?.id ?? null,
+    spawnedCount: state.spawnedCount,
+    totalCount: round?.composition.reduce((sum, entry) => sum + entry.count, 0) ?? 0,
+    nextRoundInSeconds: state.transitionEndsAt === null ? 0 : Math.max(0, Math.ceil((state.transitionEndsAt - simulationTimeMs) / 1000)),
+  };
 }
 
 export default function BalloonRoomsClient() {
   const roomsRef = useRef<RoomCollection>(createRooms());
   const simulationTimeMsRef = useRef(0);
+  const waveStateRef = useRef<WaveState>(createWaveState(601));
   const sendSequenceRef = useRef(0);
   const canvasesRef = useRef<CanvasCollection>({ yours: null, opponent: null });
   const effectsRef = useRef<RoomVisualEffect[]>([]);
@@ -97,13 +124,19 @@ export default function BalloonRoomsClient() {
   const feedbackTimerRef = useRef<number | null>(null);
   const [buildMode, setBuildMode] = useState<BuildMode>("wall");
   const [selectedAttackLane, setSelectedAttackLane] = useState<SpawnLane>(1);
+  const [selectedBalloonType, setSelectedBalloonType] = useState<BalloonType>("basic");
   const [debugPaths, setDebugPaths] = useState(false);
   const [feedback, setFeedback] = useState<{ message: string; valid: boolean } | null>(null);
   const [lastNailContact, setLastNailContact] = useState("No nail contacts yet");
   const [lastSend, setLastSend] = useState("No balloons sent yet");
   const [summary, setSummary] = useState<RoomSummary>(() => summarize(createRooms(), 0));
+  const [waveSummary, setWaveSummary] = useState<WaveSummary>(() => summarizeWave(createWaveState(601), 0));
+  const [waveNotice, setWaveNotice] = useState<string | null>(null);
 
-  const refreshSummary = useCallback(() => setSummary(summarize(roomsRef.current, simulationTimeMsRef.current)), []);
+  const refreshSummary = useCallback(() => {
+    setSummary(summarize(roomsRef.current, simulationTimeMsRef.current));
+    setWaveSummary(summarizeWave(waveStateRef.current, simulationTimeMsRef.current));
+  }, []);
   const showFeedback = useCallback((message: string, valid: boolean) => {
     if (feedbackTimerRef.current !== null) window.clearTimeout(feedbackTimerRef.current);
     setFeedback({ message, valid });
@@ -145,6 +178,15 @@ export default function BalloonRoomsClient() {
             }
           }
         }
+        const waveResult = updateWaveState(
+          waveStateRef.current,
+          roomKeys.map((key) => roomsRef.current[key]),
+          simulationTimeMsRef.current,
+        );
+        if (waveResult.spawnedBalloons.length > 0 || waveResult.completedRoundId !== null || waveResult.startedRoundId !== null) summaryChanged = true;
+        if (waveResult.unlockedBalloonType) setWaveNotice(`${waveResult.unlockedBalloonType.toUpperCase()} BALLOON UNLOCKED`);
+        else if (waveResult.completedRoundId !== null) setWaveNotice(waveResult.allWavesComplete ? "ALL WAVES COMPLETE" : `ROUND ${waveResult.completedRoundId} COMPLETE`);
+        else if (waveResult.startedRoundId !== null) setWaveNotice(null);
         accumulator -= SIMULATION_STEP_SECONDS;
       }
 
@@ -254,6 +296,7 @@ export default function BalloonRoomsClient() {
       lane: selectedAttackLane,
       senderSequence: sendSequenceRef.current,
       sentAt: Date.now(),
+      balloonType: selectedBalloonType,
     });
     const result = applyGameAction(roomsRef.current.yours, action, opponent);
     if (!result.applied) {
@@ -261,28 +304,34 @@ export default function BalloonRoomsClient() {
       setLastSend(`Rejected Lane ${selectedAttackLane}: ${result.message}`);
       return;
     }
-    setLastSend(`${action.balloonId} → Lane ${selectedAttackLane}`);
+    setLastSend(`${selectedBalloonType.toUpperCase()} ${action.balloonId} → Lane ${selectedAttackLane}`);
     refreshSummary();
-  }, [refreshSummary, selectedAttackLane]);
+  }, [refreshSummary, selectedAttackLane, selectedBalloonType]);
 
   const restart = useCallback(() => {
     roomsRef.current = createRooms();
     simulationTimeMsRef.current = 0;
+    waveStateRef.current = createWaveState(601);
     sendSequenceRef.current = 0;
     effectsRef.current = [];
     previewRef.current = null;
     setFeedback(null);
     setLastNailContact("No nail contacts yet");
     setLastSend("No balloons sent yet");
+    setSelectedBalloonType("basic");
+    setWaveNotice(null);
     refreshSummary();
   }, [refreshSummary]);
+
+  const selectedBalloonConfig = BALLOON_TYPES[selectedBalloonType];
+  const currentRound = waveSummary.roundId ? WAVE_ROUNDS[waveSummary.roundId - 1] : null;
 
   return (
     <main className={`${styles.gameShell} text-white`}>
       <div className="mx-auto max-w-3xl px-2 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-4">
         <header className="mb-3 flex items-end justify-between gap-2 px-1">
           <div className="min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-[0.25em] text-pink-300">Phase 5.1 · Launch queue</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.25em] text-pink-300">Phase 6 · Waves</p>
             <h1 className="mt-1 text-2xl font-black tracking-tight sm:text-3xl">BALLOON ROOMS</h1>
           </div>
           <div className="flex gap-1">
@@ -291,7 +340,19 @@ export default function BalloonRoomsClient() {
           </div>
         </header>
 
-        <p className="mb-3 px-1 text-xs font-bold text-zinc-400">Defend your room, choose an opponent lane, and send Basic Balloons. Tap balloons anytime to deal 1 damage.</p>
+        <div className="mb-3 rounded-lg border border-purple-300/20 bg-purple-950/35 px-3 py-2 text-center">
+          <p className="text-sm font-black text-white">{waveSummary.status === "complete" ? "ALL WAVES COMPLETE" : waveSummary.status === "transition" ? `ROUND ${waveSummary.roundId} COMPLETE` : `ROUND ${waveSummary.roundId}`}</p>
+          <p className="mt-1 text-[10px] font-bold text-purple-200">
+            {waveSummary.status === "transition"
+              ? `NEXT ROUND IN ${waveSummary.nextRoundInSeconds}s`
+              : currentRound
+                ? currentRound.composition.map((entry) => `${entry.count} ${entry.balloonType}`).join(" · ")
+                : "PvP remains active"}
+            {waveSummary.status === "active" ? ` · ${waveSummary.spawnedCount}/${waveSummary.totalCount} deployed` : ""}
+          </p>
+          {waveNotice ? <p className="mt-1 text-[10px] font-black tracking-[0.12em] text-emerald-300">{waveNotice}</p> : null}
+        </div>
+        <p className="mb-3 px-1 text-xs font-bold text-zinc-400">Defend against waves while building and sending player attacks. Tap any balloon to deal 1 damage.</p>
         <div className={styles.roomsGrid}>
           {roomKeys.map((key) => {
             const roomSummary = summary[key];
@@ -335,18 +396,25 @@ export default function BalloonRoomsClient() {
                   </div>
                 ) : (
                   <div className={`${styles.controls} mt-2 p-2`}>
-                    <p className="mb-2 text-center text-[9px] font-black uppercase tracking-[0.14em] text-pink-200">Choose attack lane</p>
+                    <p className="mb-2 text-center text-[9px] font-black uppercase tracking-[0.14em] text-pink-200">Choose balloon</p>
+                    <div className="grid grid-cols-3 gap-1">
+                      {(["basic", "speed", "heavy"] as BalloonType[]).map((balloonType) => {
+                        const unlocked = summary.yours.unlockedBalloonTypes[balloonType];
+                        return <button key={balloonType} type="button" disabled={!unlocked} aria-pressed={selectedBalloonType === balloonType} onClick={() => setSelectedBalloonType(balloonType)} className={`min-h-10 rounded-md border px-1 text-[9px] font-black disabled:cursor-not-allowed disabled:opacity-45 ${selectedBalloonType === balloonType ? "border-amber-200 bg-amber-300/20 text-white" : "border-white/10 bg-black/20 text-zinc-400"}`}>{balloonType.toUpperCase()}{unlocked ? ` ${BALLOON_TYPES[balloonType].cost}` : " 🔒"}</button>;
+                      })}
+                    </div>
+                    <p className="my-2 text-center text-[9px] font-black uppercase tracking-[0.14em] text-pink-200">Choose attack lane</p>
                     <div className="grid grid-cols-4 gap-1">
                       {([1, 2, 3, 4] as SpawnLane[]).map((lane) => (
                         <button key={lane} type="button" aria-label={`Select attack Lane ${lane}`} aria-pressed={selectedAttackLane === lane} onClick={() => setSelectedAttackLane(lane)} className={`min-h-11 rounded-md border text-xs font-black ${selectedAttackLane === lane ? "border-pink-300 bg-pink-500/40 text-white" : "border-white/10 bg-black/20 text-zinc-400"}`}>L{lane}</button>
                       ))}
                     </div>
-                    <button type="button" onClick={sendBalloon} disabled={!roomSummary.running || summary.yours.coins < BASIC_BALLOON_COST || summary.yours.queueLanes.length >= MAX_LAUNCH_QUEUE_SIZE} className="mt-2 min-h-12 w-full rounded-md border border-pink-300/70 bg-gradient-to-r from-purple-600 to-pink-600 text-xs font-black tracking-[0.12em] text-white disabled:cursor-not-allowed disabled:opacity-40">SEND BASIC · {BASIC_BALLOON_COST}</button>
-                    <p className={`mt-2 min-h-4 truncate text-center text-[9px] font-bold ${summary.yours.queueLanes.length >= MAX_LAUNCH_QUEUE_SIZE || summary.yours.coins < BASIC_BALLOON_COST ? "text-red-300" : "text-emerald-300"}`}>{summary.yours.queueLanes.length >= MAX_LAUNCH_QUEUE_SIZE ? "QUEUE FULL" : summary.yours.coins < BASIC_BALLOON_COST ? `NEED ${BASIC_BALLOON_COST}` : `Lane ${selectedAttackLane} · +${BASIC_BALLOON_INCOME_GAIN} Income`}</p>
-                    <div className={styles.queuePanel} aria-label={`Launch queue ${summary.yours.queueLanes.length} of ${MAX_LAUNCH_QUEUE_SIZE}`}>
-                      <p className="text-[8px] font-black tracking-[0.12em] text-zinc-500">QUEUE {summary.yours.queueLanes.length}/{MAX_LAUNCH_QUEUE_SIZE}</p>
+                    <button type="button" onClick={sendBalloon} disabled={!roomSummary.running || summary.yours.coins < selectedBalloonConfig.cost || summary.yours.queue.length >= MAX_LAUNCH_QUEUE_SIZE || !summary.yours.unlockedBalloonTypes[selectedBalloonType]} className="mt-2 min-h-12 w-full rounded-md border border-pink-300/70 bg-gradient-to-r from-purple-600 to-pink-600 text-xs font-black tracking-[0.12em] text-white disabled:cursor-not-allowed disabled:opacity-40">SEND {selectedBalloonType.toUpperCase()} · {selectedBalloonConfig.cost}</button>
+                    <p className={`mt-2 min-h-4 truncate text-center text-[9px] font-bold ${summary.yours.queue.length >= MAX_LAUNCH_QUEUE_SIZE || summary.yours.coins < selectedBalloonConfig.cost ? "text-red-300" : "text-emerald-300"}`}>{summary.yours.queue.length >= MAX_LAUNCH_QUEUE_SIZE ? "QUEUE FULL" : summary.yours.coins < selectedBalloonConfig.cost ? `NEED ${selectedBalloonConfig.cost}` : `Lane ${selectedAttackLane} · +${selectedBalloonConfig.incomeGain} Income`}</p>
+                    <div className={styles.queuePanel} aria-label={`Launch queue ${summary.yours.queue.length} of ${MAX_LAUNCH_QUEUE_SIZE}`}>
+                      <p className="text-[8px] font-black tracking-[0.12em] text-zinc-500">QUEUE {summary.yours.queue.length}/{MAX_LAUNCH_QUEUE_SIZE}</p>
                       <div className="mt-1 flex min-h-6 items-center gap-1 overflow-hidden">
-                        {summary.yours.queueLanes.length > 0 ? summary.yours.queueLanes.map((lane, index) => <span key={`${index}-${lane}`} className="flex items-center gap-1"><span className="grid size-5 place-items-center rounded-full border border-pink-300/30 bg-pink-500/15 text-[9px] font-black text-pink-100">{lane}</span>{index < summary.yours.queueLanes.length - 1 ? <span className="text-[8px] text-zinc-600">→</span> : null}</span>) : <span className="text-[8px] font-bold text-zinc-600">EMPTY</span>}
+                        {summary.yours.queue.length > 0 ? summary.yours.queue.map((queued, index) => <span key={`${index}-${queued.balloonType}-${queued.lane}`} className="flex items-center gap-1"><span className="grid min-w-7 place-items-center rounded-full border border-pink-300/30 bg-pink-500/15 px-1 py-1 text-[8px] font-black text-pink-100">{queued.balloonType[0].toUpperCase()}{queued.lane}</span>{index < summary.yours.queue.length - 1 ? <span className="text-[8px] text-zinc-600">→</span> : null}</span>) : <span className="text-[8px] font-bold text-zinc-600">EMPTY</span>}
                       </div>
                     </div>
                   </div>

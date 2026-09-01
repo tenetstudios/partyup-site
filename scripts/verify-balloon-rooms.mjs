@@ -1,19 +1,24 @@
 import assert from "node:assert/strict";
 import {
+  BALLOON_TYPES,
   BASIC_BALLOON_COST,
   BASIC_BALLOON_INCOME_GAIN,
   BASIC_BALLOON_LAUNCH_INTERVAL_MS,
   INCOME_TICK_INTERVAL_MS,
+  HEAVY_BALLOON_HP,
   MAX_NAIL_STRIPS,
   MAX_WALL_SEGMENTS,
   NAIL_DAMAGE,
   NAIL_MAX_DURABILITY,
+  SPEED_BALLOON_HP,
   SPAWN_LANES,
   applyGameAction,
   createBalloonRoom,
   createBasicBalloon,
+  createBalloon,
   createDevBalloonSpawner,
   createSendBalloonAction,
+  createWaveState,
   createWallSegment,
   damageBalloon,
   findBalloonAtPoint,
@@ -30,6 +35,7 @@ import {
   updateDevBalloonSpawner,
   updateBalloonPosition,
   updateRoomSimulation,
+  updateWaveState,
   validateWallPlacement,
 } from "@partyup/balloon-core";
 
@@ -66,6 +72,31 @@ assert.equal(senderRoom.economy.coins, 300 - 3 * BASIC_BALLOON_COST);
 assert.equal(senderRoom.economy.income, 30 + 3 * BASIC_BALLOON_INCOME_GAIN);
 applyGameAction(senderRoom, { type: "APPLY_INCOME_TICK", simulationTimeMs: INCOME_TICK_INTERVAL_MS });
 assert.equal(senderRoom.economy.coins, 264);
+
+// Phase 6 client contract: shared types, deterministic equal waves, and mixed FIFO offense.
+assert.equal(BALLOON_TYPES.speed.maxHealth, SPEED_BALLOON_HP);
+assert.equal(BALLOON_TYPES.heavy.maxHealth, HEAVY_BALLOON_HP);
+const waveRooms = [createBalloonRoom("web-wave-a"), createBalloonRoom("web-wave-b")];
+const waveState = createWaveState(601);
+const waveEconomy = waveRooms.map((waveRoom) => ({ ...waveRoom.economy }));
+for (let sequence = 0; sequence < 20; sequence += 1) {
+  const update = updateWaveState(waveState, waveRooms, sequence * 700);
+  assert.equal(update.spawnedBalloons.length, 2);
+  assert.equal(update.spawnedBalloons[0].spawnLane, update.spawnedBalloons[1].spawnLane);
+  assert.equal(update.spawnedBalloons[0].source, "wave");
+}
+assert.deepEqual(waveRooms.map((waveRoom) => waveRoom.economy), waveEconomy);
+const mixedSender = createBalloonRoom("web-mixed-sender");
+const mixedTarget = createBalloonRoom("web-mixed-target");
+mixedSender.unlockedBalloonTypes.speed = true;
+mixedSender.unlockedBalloonTypes.heavy = true;
+for (const [index, balloonType] of ["basic", "speed", "heavy"].entries()) {
+  const action = createSendBalloonAction({ matchId: "web-mixed", senderId: "web-player", targetRoomId: mixedTarget.id, lane: [1, 4, 2][index], senderSequence: index + 1, sentAt: index * 100, balloonType });
+  assert.equal(applyGameAction(mixedSender, action, mixedTarget).applied, true);
+}
+assert.deepEqual(mixedSender.attack.queue.map((queued) => queued.balloonType), ["basic", "speed", "heavy"]);
+assert.equal(createBalloon("web", "speed", "speed", 1).health, 2);
+assert.equal(createBalloon("web", "heavy", "heavy", 1).roomDamage, 3);
 
 // Phase 1 regression: one tap is one damage event, three taps pop, and popped balloons never escape.
 const popRoom = createBalloonRoom("pop");
@@ -323,4 +354,4 @@ const pathAfterNails = findPathToCeiling(getLaneCell(2), breakRoom.walls, "left"
 assert.deepEqual(pathBeforeNails, pathWithoutNails);
 assert.deepEqual(pathWithoutNails, pathAfterNails);
 
-console.log("Balloon Rooms Phase 5.1 passed: slower shared economy, FIFO launch queue pacing, chosen lanes, popping, wall/path rules, deterministic nail contact, automatic nail exhaustion, no-refund removal, repeat contact, and path independence.");
+console.log("Balloon Rooms Phase 6 passed: deterministic equal waves, Speed/Heavy configs, mixed FIFO offense, unlock-ready state, shared economy, popping, walls, routes, and nails.");
