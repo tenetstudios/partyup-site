@@ -60,6 +60,7 @@ type RoomSummary = Record<RoomKey, {
 type WaveSummary = {
   status: WaveState["status"];
   roundId: number | null;
+  nextRoundId: number | null;
   spawnedCount: number;
   totalCount: number;
   nextRoundInSeconds: number;
@@ -104,9 +105,15 @@ function summarize(rooms: RoomCollection, simulationTimeMs: number): RoomSummary
 
 function summarizeWave(state: WaveState, simulationTimeMs: number): WaveSummary {
   const round = getCurrentWaveRound(state);
+  const nextRoundIndex = state.status !== "transition"
+    ? state.roundIndex
+    : state.transitionFromRoundId === null
+      ? state.roundIndex
+      : state.roundIndex + 1;
   return {
     status: state.status,
     roundId: round?.id ?? null,
+    nextRoundId: WAVE_ROUNDS[nextRoundIndex]?.id ?? null,
     spawnedCount: state.spawnedCount,
     totalCount: round?.composition.reduce((sum, entry) => sum + entry.count, 0) ?? 0,
     nextRoundInSeconds: state.transitionEndsAt === null ? 0 : Math.max(0, Math.ceil((state.transitionEndsAt - simulationTimeMs) / 1000)),
@@ -122,6 +129,7 @@ export default function BalloonRoomsClient() {
   const effectsRef = useRef<RoomVisualEffect[]>([]);
   const previewRef = useRef<WallPreview>(null);
   const feedbackTimerRef = useRef<number | null>(null);
+  const buildHoldRef = useRef<{ pointerId: number; clientX: number; clientY: number; timeoutId: number } | null>(null);
   const [buildMode, setBuildMode] = useState<BuildMode>("wall");
   const [selectedAttackLane, setSelectedAttackLane] = useState<SpawnLane>(1);
   const [selectedBalloonType, setSelectedBalloonType] = useState<BalloonType>("basic");
@@ -145,6 +153,7 @@ export default function BalloonRoomsClient() {
 
   useEffect(() => () => {
     if (feedbackTimerRef.current !== null) window.clearTimeout(feedbackTimerRef.current);
+    if (buildHoldRef.current !== null) window.clearTimeout(buildHoldRef.current.timeoutId);
   }, []);
 
   useEffect(() => {
@@ -224,7 +233,39 @@ export default function BalloonRoomsClient() {
     refreshSummary();
   }, [refreshSummary]);
 
+  const cancelBuildHold = useCallback((pointerId?: number) => {
+    const hold = buildHoldRef.current;
+    if (!hold || (pointerId !== undefined && hold.pointerId !== pointerId)) return;
+    window.clearTimeout(hold.timeoutId);
+    buildHoldRef.current = null;
+  }, []);
+
+  const performBuildAction = useCallback((canvas: HTMLCanvasElement, clientX: number, clientY: number) => {
+    const bounds = canvas.getBoundingClientRect();
+    const edge = findClosestGridEdge(
+      (clientX - bounds.left) / bounds.width,
+      (clientY - bounds.top) / bounds.height,
+      bounds.width,
+      bounds.height,
+    );
+    if (!edge) {
+      showFeedback("Hold directly on a grid edge", false);
+      return;
+    }
+    const room = roomsRef.current.yours;
+    const wall = createWallSegment(room.id, edge.orientation, edge.gridX, edge.gridY);
+    const result = buildMode === "wall"
+      ? applyGameAction(room, { type: "PLACE_WALL", wall })
+      : buildMode === "nails"
+        ? applyGameAction(room, { type: "PLACE_NAILS", wallSegmentId: wall.id })
+        : applyGameAction(room, { type: "REMOVE_WALL", wallSegmentId: wall.id });
+    showFeedback(result.message, result.applied);
+    if (result.applied) refreshSummary();
+    previewRef.current = null;
+  }, [buildMode, refreshSummary, showFeedback]);
+
   const handlePointerDown = useCallback((key: RoomKey, event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (event.button !== 0) return;
     const canvas = event.currentTarget;
     const bounds = canvas.getBoundingClientRect();
     if (bounds.width <= 0 || bounds.height <= 0) return;
@@ -235,34 +276,27 @@ export default function BalloonRoomsClient() {
       return;
     }
     if (key === "opponent") return;
-
-    const edge = findClosestGridEdge(
-      x,
-      y,
-      bounds.width,
-      bounds.height,
-    );
-    if (!edge) {
-      showFeedback("Tap a grid edge", false);
-      return;
-    }
-    const room = roomsRef.current.yours;
-    const wall = createWallSegment(room.id, edge.orientation, edge.gridX, edge.gridY);
-    let result: { applied: boolean; message: string };
-    if (buildMode === "wall") {
-      result = applyGameAction(room, { type: "PLACE_WALL", wall });
-    } else if (buildMode === "nails") {
-      result = applyGameAction(room, { type: "PLACE_NAILS", wallSegmentId: wall.id });
-    } else {
-      result = applyGameAction(room, { type: "REMOVE_WALL", wallSegmentId: wall.id });
-    }
-    showFeedback(result.message, result.applied);
-    if (result.applied) refreshSummary();
-    previewRef.current = null;
-  }, [buildMode, popBalloon, refreshSummary, showFeedback]);
+    cancelBuildHold();
+    canvas.setPointerCapture(event.pointerId);
+    const pointerId = event.pointerId;
+    const clientX = event.clientX;
+    const clientY = event.clientY;
+    const timeoutId = window.setTimeout(() => {
+      if (buildHoldRef.current?.pointerId !== pointerId) return;
+      buildHoldRef.current = null;
+      performBuildAction(canvas, clientX, clientY);
+    }, 1000);
+    buildHoldRef.current = { pointerId, clientX, clientY, timeoutId };
+    showFeedback("Hold steady for 1 second to build", true);
+  }, [cancelBuildHold, performBuildAction, popBalloon, showFeedback]);
 
   const handlePointerMove = useCallback((key: RoomKey, event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (key !== "yours" || event.pointerType === "touch") return;
+    if (key !== "yours") return;
+    const hold = buildHoldRef.current;
+    if (hold?.pointerId === event.pointerId && Math.hypot(event.clientX - hold.clientX, event.clientY - hold.clientY) > 12) {
+      cancelBuildHold(event.pointerId);
+      showFeedback("Hold cancelled — keep the pointer steady", false);
+    }
     const bounds = event.currentTarget.getBoundingClientRect();
     const edge = findClosestGridEdge((event.clientX - bounds.left) / bounds.width, (event.clientY - bounds.top) / bounds.height, bounds.width, bounds.height);
     if (!edge) {
@@ -278,7 +312,7 @@ export default function BalloonRoomsClient() {
         ? validateNailPlacement(room, wall.id).valid && room.economy.coins >= NAIL_STRIP_COST
         : existingWall;
     previewRef.current = { wall, valid };
-  }, [buildMode]);
+  }, [buildMode, cancelBuildHold, showFeedback]);
 
   const selectMode = useCallback((mode: BuildMode) => {
     previewRef.current = null;
@@ -309,6 +343,7 @@ export default function BalloonRoomsClient() {
   }, [refreshSummary, selectedAttackLane, selectedBalloonType]);
 
   const restart = useCallback(() => {
+    cancelBuildHold();
     roomsRef.current = createRooms();
     simulationTimeMsRef.current = 0;
     waveStateRef.current = createWaveState(601);
@@ -321,7 +356,7 @@ export default function BalloonRoomsClient() {
     setSelectedBalloonType("basic");
     setWaveNotice(null);
     refreshSummary();
-  }, [refreshSummary]);
+  }, [cancelBuildHold, refreshSummary]);
 
   const selectedBalloonConfig = BALLOON_TYPES[selectedBalloonType];
   const currentRound = waveSummary.roundId ? WAVE_ROUNDS[waveSummary.roundId - 1] : null;
@@ -341,10 +376,10 @@ export default function BalloonRoomsClient() {
         </header>
 
         <div className="mb-3 rounded-lg border border-purple-300/20 bg-purple-950/35 px-3 py-2 text-center">
-          <p className="text-sm font-black text-white">{waveSummary.status === "complete" ? "ALL WAVES COMPLETE" : waveSummary.status === "transition" ? `ROUND ${waveSummary.roundId} COMPLETE` : `ROUND ${waveSummary.roundId}`}</p>
+          <p className="text-sm font-black text-white">{waveSummary.status === "complete" ? "ALL WAVES COMPLETE" : waveSummary.status === "transition" ? `ROUND ${waveSummary.nextRoundId} STARTS IN ${waveSummary.nextRoundInSeconds}` : `ROUND ${waveSummary.roundId}`}</p>
           <p className="mt-1 text-[10px] font-bold text-purple-200">
             {waveSummary.status === "transition"
-              ? `NEXT ROUND IN ${waveSummary.nextRoundInSeconds}s`
+              ? "BUILD WINDOW · HOLD 1s ON A GRID EDGE"
               : currentRound
                 ? currentRound.composition.map((entry) => `${entry.count} ${entry.balloonType}`).join(" · ")
                 : "PvP remains active"}
@@ -370,7 +405,10 @@ export default function BalloonRoomsClient() {
                     className={styles.canvas}
                     onPointerDown={(event) => handlePointerDown(key, event)}
                     onPointerMove={(event) => handlePointerMove(key, event)}
-                    onPointerLeave={() => { if (key === "yours") previewRef.current = null; }}
+                    onPointerUp={(event) => cancelBuildHold(event.pointerId)}
+                    onPointerCancel={(event) => cancelBuildHold(event.pointerId)}
+                    onLostPointerCapture={(event) => cancelBuildHold(event.pointerId)}
+                    onPointerLeave={(event) => { if (key === "yours") { cancelBuildHold(event.pointerId); previewRef.current = null; } }}
                     onContextMenu={(event) => event.preventDefault()}
                     aria-label={`${label} balloon playfield.`}
                   />
@@ -392,7 +430,7 @@ export default function BalloonRoomsClient() {
                         return <button key={mode} type="button" aria-pressed={buildMode === mode} disabled={unavailable} onClick={() => selectMode(mode)} className={`min-h-11 rounded-md border px-1 text-[10px] font-black disabled:cursor-not-allowed disabled:opacity-40 ${buildMode === mode ? "border-purple-300 bg-purple-500/35 text-white" : "border-white/10 bg-black/20 text-zinc-400"}`}>{mode.toUpperCase()}{cost !== null ? ` ${cost}` : ""}</button>;
                       })}
                     </div>
-                    <p className={`mt-2 min-h-4 text-center text-[10px] font-black ${feedback ? (feedback.valid ? "text-emerald-300" : "text-red-300") : "text-zinc-500"}`}>{feedback?.message ?? `${MAX_WALL_SEGMENTS - roomSummary.wallCount} walls · ${MAX_NAIL_STRIPS - roomSummary.nailCount} nails available`}</p>
+                    <p className={`mt-2 min-h-4 text-center text-[10px] font-black ${feedback ? (feedback.valid ? "text-emerald-300" : "text-red-300") : "text-zinc-500"}`}>{feedback?.message ?? `Hold 1s to ${buildMode} · ${MAX_WALL_SEGMENTS - roomSummary.wallCount} walls · ${MAX_NAIL_STRIPS - roomSummary.nailCount} nails`}</p>
                   </div>
                 ) : (
                   <div className={`${styles.controls} mt-2 p-2`}>
