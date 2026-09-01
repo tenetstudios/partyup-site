@@ -9,7 +9,7 @@ import {
   SIMULATION_STEP_SECONDS,
   applyGameAction,
   createBalloonRoom,
-  createDevBalloonSpawner,
+  createSendBalloonAction,
   createWallSegment,
   findBalloonAtPoint,
   findClosestGridEdge,
@@ -17,12 +17,11 @@ import {
   hasRequiredRoutes,
   placeNailStrip,
   placeWall,
-  updateDevBalloonSpawner,
   updateRoomSimulation,
   validateWallPlacement,
   validateNailPlacement,
   type BalloonRoom,
-  type DevBalloonSpawner,
+  type SpawnLane,
 } from "@partyup/balloon-core";
 import { drawBalloonRoom, type RoomVisualEffect, type WallPreview } from "@/lib/balloonRooms/rendering";
 import styles from "./BalloonRooms.module.css";
@@ -30,7 +29,6 @@ import styles from "./BalloonRooms.module.css";
 type RoomKey = "yours" | "opponent";
 type BuildMode = "wall" | "nails" | "remove";
 type RoomCollection = Record<RoomKey, BalloonRoom>;
-type SpawnerCollection = Record<RoomKey, DevBalloonSpawner>;
 type CanvasCollection = Record<RoomKey, HTMLCanvasElement | null>;
 type RoomSummary = Record<RoomKey, {
   health: number;
@@ -57,10 +55,6 @@ function createRooms(): RoomCollection {
   return { yours, opponent };
 }
 
-function createSpawners(): SpawnerCollection {
-  return { yours: createDevBalloonSpawner(410), opponent: createDevBalloonSpawner(920) };
-}
-
 function summarize(rooms: RoomCollection): RoomSummary {
   return Object.fromEntries(roomKeys.map((key) => {
     const room = rooms[key];
@@ -83,15 +77,17 @@ function summarize(rooms: RoomCollection): RoomSummary {
 
 export default function BalloonRoomsClient() {
   const roomsRef = useRef<RoomCollection>(createRooms());
-  const spawnersRef = useRef<SpawnerCollection>(createSpawners());
+  const sendSequenceRef = useRef(0);
   const canvasesRef = useRef<CanvasCollection>({ yours: null, opponent: null });
   const effectsRef = useRef<RoomVisualEffect[]>([]);
   const previewRef = useRef<WallPreview>(null);
   const feedbackTimerRef = useRef<number | null>(null);
   const [buildMode, setBuildMode] = useState<BuildMode>("wall");
+  const [selectedAttackLane, setSelectedAttackLane] = useState<SpawnLane>(1);
   const [debugPaths, setDebugPaths] = useState(false);
   const [feedback, setFeedback] = useState<{ message: string; valid: boolean } | null>(null);
   const [lastNailContact, setLastNailContact] = useState("No nail contacts yet");
+  const [lastSend, setLastSend] = useState("No balloons sent yet");
   const [summary, setSummary] = useState<RoomSummary>({
     yours: { health: ROOM_MAX_HEALTH, count: 0, running: true, wallCount: 0, verticalCount: 0, horizontalCount: 0, supportedHorizontalCount: 0, routesValid: true, nailCount: 0, brokenNailCount: 0 },
     opponent: { health: ROOM_MAX_HEALTH, count: 0, running: true, wallCount: 3, verticalCount: 1, horizontalCount: 2, supportedHorizontalCount: 2, routesValid: true, nailCount: 1, brokenNailCount: 0 },
@@ -120,9 +116,8 @@ export default function BalloonRoomsClient() {
       while (accumulator >= SIMULATION_STEP_SECONDS) {
         for (const key of roomKeys) {
           const room = roomsRef.current[key];
-          const spawned = updateDevBalloonSpawner(room, spawnersRef.current[key], SIMULATION_STEP_SECONDS);
           const events = updateRoomSimulation(room, SIMULATION_STEP_SECONDS);
-          if (spawned.length > 0 || events.length > 0) summaryChanged = true;
+          if (events.length > 0) summaryChanged = true;
           for (const event of events) {
             if (event.type === "balloon_escaped") {
               effectsRef.current.push({ roomKey: key, x: event.balloon.x, y: 0.02, kind: "escape", startedAt: now });
@@ -229,13 +224,35 @@ export default function BalloonRoomsClient() {
     setFeedback(null);
   }, []);
 
+  const sendBalloon = useCallback(() => {
+    const opponent = roomsRef.current.opponent;
+    sendSequenceRef.current += 1;
+    const action = createSendBalloonAction({
+      matchId: "local-phase-4",
+      senderId: "web-local-player",
+      targetRoomId: opponent.id,
+      lane: selectedAttackLane,
+      senderSequence: sendSequenceRef.current,
+      sentAt: Date.now(),
+    });
+    const result = applyGameAction(opponent, action);
+    if (!result.applied) {
+      sendSequenceRef.current -= 1;
+      setLastSend(`Rejected Lane ${selectedAttackLane}: ${result.message}`);
+      return;
+    }
+    setLastSend(`${action.balloonId} → Lane ${selectedAttackLane}`);
+    refreshSummary();
+  }, [refreshSummary, selectedAttackLane]);
+
   const restart = useCallback(() => {
     roomsRef.current = createRooms();
-    spawnersRef.current = createSpawners();
+    sendSequenceRef.current = 0;
     effectsRef.current = [];
     previewRef.current = null;
     setFeedback(null);
     setLastNailContact("No nail contacts yet");
+    setLastSend("No balloons sent yet");
     refreshSummary();
   }, [refreshSummary]);
 
@@ -244,7 +261,7 @@ export default function BalloonRoomsClient() {
       <div className="mx-auto max-w-3xl px-2 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-4">
         <header className="mb-3 flex items-end justify-between gap-2 px-1">
           <div className="min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-[0.25em] text-pink-300">Phase 3 · Local test</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.25em] text-pink-300">Phase 4 · Local test</p>
             <h1 className="mt-1 text-2xl font-black tracking-tight sm:text-3xl">BALLOON ROOMS</h1>
           </div>
           <div className="flex gap-1">
@@ -253,7 +270,7 @@ export default function BalloonRoomsClient() {
           </div>
         </header>
 
-        <p className="mb-3 px-1 text-xs font-bold text-zinc-400">Tap balloons anytime to deal 1 damage. Build walls, arm them with nails, or remove nails and walls.</p>
+        <p className="mb-3 px-1 text-xs font-bold text-zinc-400">Defend your room, choose an opponent lane, and send Basic Balloons. Tap balloons anytime to deal 1 damage.</p>
         <div className={styles.roomsGrid}>
           {roomKeys.map((key) => {
             const roomSummary = summary[key];
@@ -288,7 +305,16 @@ export default function BalloonRoomsClient() {
                     <p className={`mt-2 min-h-4 text-center text-[10px] font-black ${feedback ? (feedback.valid ? "text-emerald-300" : "text-red-300") : "text-zinc-500"}`}>{feedback?.message ?? `${MAX_WALL_SEGMENTS - roomSummary.wallCount} walls · ${MAX_NAIL_STRIPS - roomSummary.nailCount} nails available`}</p>
                   </div>
                 ) : (
-                  <div className={`${styles.controls} mt-2 grid place-items-center px-2 text-center`}><span className="text-[9px] font-black uppercase tracking-[0.12em] text-zinc-600">Local test structure</span></div>
+                  <div className={`${styles.controls} mt-2 p-2`}>
+                    <p className="mb-2 text-center text-[9px] font-black uppercase tracking-[0.14em] text-pink-200">Choose attack lane</p>
+                    <div className="grid grid-cols-4 gap-1">
+                      {([1, 2, 3, 4] as SpawnLane[]).map((lane) => (
+                        <button key={lane} type="button" aria-label={`Select attack Lane ${lane}`} aria-pressed={selectedAttackLane === lane} onClick={() => setSelectedAttackLane(lane)} className={`min-h-11 rounded-md border text-xs font-black ${selectedAttackLane === lane ? "border-pink-300 bg-pink-500/40 text-white" : "border-white/10 bg-black/20 text-zinc-400"}`}>L{lane}</button>
+                      ))}
+                    </div>
+                    <button type="button" onClick={sendBalloon} disabled={!roomSummary.running} className="mt-2 min-h-12 w-full rounded-md border border-pink-300/70 bg-gradient-to-r from-purple-600 to-pink-600 text-xs font-black tracking-[0.12em] text-white disabled:cursor-not-allowed disabled:opacity-40">SEND BASIC BALLOON</button>
+                    <p className="mt-2 min-h-4 truncate text-center text-[9px] font-bold text-zinc-500">Selected Lane {selectedAttackLane} · no cost or cooldown</p>
+                  </div>
                 )}
               </section>
             );
@@ -296,7 +322,7 @@ export default function BalloonRoomsClient() {
         </div>
 
         <aside className="mt-3 rounded-lg border border-white/10 bg-black/25 px-3 py-2 font-mono text-[10px] text-zinc-500" aria-label="Development simulation status">
-          DEV · grid 6×10 · yours V{summary.yours.verticalCount}/H{summary.yours.horizontalCount} ({summary.yours.supportedHorizontalCount} supported), routes {summary.yours.routesValid ? "valid" : "invalid"} · opponent V{summary.opponent.verticalCount}/H{summary.opponent.horizontalCount} ({summary.opponent.supportedHorizontalCount} supported), routes {summary.opponent.routesValid ? "valid" : "invalid"}<br />LAST CONTACT · {lastNailContact}
+          DEV · grid 6×10 · yours V{summary.yours.verticalCount}/H{summary.yours.horizontalCount} ({summary.yours.supportedHorizontalCount} supported), routes {summary.yours.routesValid ? "valid" : "invalid"} · opponent V{summary.opponent.verticalCount}/H{summary.opponent.horizontalCount} ({summary.opponent.supportedHorizontalCount} supported), routes {summary.opponent.routesValid ? "valid" : "invalid"}<br />LAST SEND · {lastSend}<br />LAST CONTACT · {lastNailContact}
         </aside>
       </div>
     </main>

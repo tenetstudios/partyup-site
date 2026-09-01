@@ -5,9 +5,11 @@ import {
   NAIL_DAMAGE,
   NAIL_MAX_DURABILITY,
   SPAWN_LANES,
+  applyGameAction,
   createBalloonRoom,
   createBasicBalloon,
   createDevBalloonSpawner,
+  createSendBalloonAction,
   createWallSegment,
   damageBalloon,
   findBalloonAtPoint,
@@ -30,6 +32,26 @@ import {
 function wall(room, orientation, gridX, gridY) {
   return createWallSegment(room.id, orientation, gridX, gridY);
 }
+
+function sendAction(room, lane, senderSequence) {
+  return createSendBalloonAction({
+    matchId: "web-verification",
+    senderId: "web-player",
+    targetRoomId: room.id,
+    lane,
+    senderSequence,
+    sentAt: senderSequence * 1000,
+  });
+}
+
+// Phase 4 client contract: each action creates one balloon in the chosen lane and selection can change.
+const sendRoom = createBalloonRoom("web-send");
+assert.equal(applyGameAction(sendRoom, sendAction(sendRoom, 3, 1)).applied, true);
+assert.equal(sendRoom.balloons.length, 1);
+assert.equal(sendRoom.balloons[0].spawnLane, 3);
+assert.equal(applyGameAction(sendRoom, sendAction(sendRoom, 3, 2)).applied, true);
+assert.equal(applyGameAction(sendRoom, sendAction(sendRoom, 1, 3)).applied, true);
+assert.deepEqual(sendRoom.balloons.map((balloon) => balloon.spawnLane), [3, 3, 1]);
 
 // Phase 1 regression: one tap is one damage event, three taps pop, and popped balloons never escape.
 const popRoom = createBalloonRoom("pop");
@@ -287,4 +309,4 @@ const pathAfterNails = findPathToCeiling(getLaneCell(2), breakRoom.walls, "left"
 assert.deepEqual(pathBeforeNails, pathWithoutNails);
 assert.deepEqual(pathWithoutNails, pathAfterNails);
 
-console.log("Balloon Rooms Phase 3 passed: popping, wall/path rules, deterministic nail contact, automatic nail exhaustion, removal, repeat contact, and path independence.");
+console.log("Balloon Rooms Phase 4 passed: chosen-lane sends, popping, wall/path rules, deterministic nail contact, automatic nail exhaustion, removal, repeat contact, and path independence.");
