@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   BASIC_BALLOON_COST,
   BASIC_BALLOON_INCOME_GAIN,
+  BASIC_BALLOON_LAUNCH_INTERVAL_MS,
   INCOME_TICK_INTERVAL_MS,
   MAX_NAIL_STRIPS,
   MAX_WALL_SEGMENTS,
@@ -47,19 +48,24 @@ function sendAction(room, lane, senderSequence) {
   });
 }
 
-// Phase 4 client contract: each action creates one balloon in the chosen lane and selection can change.
+// Phase 5.1 client contract: purchase order is queued and canonical scheduling launches one at a time.
 const sendRoom = createBalloonRoom("web-send");
 const senderRoom = createBalloonRoom("web-sender");
 assert.equal(applyGameAction(senderRoom, sendAction(sendRoom, 3, 1), sendRoom).applied, true);
-assert.equal(sendRoom.balloons.length, 1);
-assert.equal(sendRoom.balloons[0].spawnLane, 3);
 assert.equal(applyGameAction(senderRoom, sendAction(sendRoom, 3, 2), sendRoom).applied, true);
 assert.equal(applyGameAction(senderRoom, sendAction(sendRoom, 1, 3), sendRoom).applied, true);
+assert.equal(sendRoom.balloons.length, 0);
+assert.deepEqual(senderRoom.attack.queue.map((queued) => queued.lane), [3, 3, 1]);
+applyGameAction(senderRoom, { type: "APPLY_LAUNCH_QUEUE", simulationTimeMs: 0 }, sendRoom);
+assert.equal(sendRoom.balloons.length, 1);
+assert.equal(applyGameAction(senderRoom, { type: "APPLY_LAUNCH_QUEUE", simulationTimeMs: BASIC_BALLOON_LAUNCH_INTERVAL_MS - 1 }, sendRoom).launchedBalloon, undefined);
+applyGameAction(senderRoom, { type: "APPLY_LAUNCH_QUEUE", simulationTimeMs: BASIC_BALLOON_LAUNCH_INTERVAL_MS }, sendRoom);
+applyGameAction(senderRoom, { type: "APPLY_LAUNCH_QUEUE", simulationTimeMs: BASIC_BALLOON_LAUNCH_INTERVAL_MS * 2 }, sendRoom);
 assert.deepEqual(sendRoom.balloons.map((balloon) => balloon.spawnLane), [3, 3, 1]);
-assert.equal(senderRoom.economy.coins, 500 - 3 * BASIC_BALLOON_COST);
-assert.equal(senderRoom.economy.income, 100 + 3 * BASIC_BALLOON_INCOME_GAIN);
+assert.equal(senderRoom.economy.coins, 300 - 3 * BASIC_BALLOON_COST);
+assert.equal(senderRoom.economy.income, 30 + 3 * BASIC_BALLOON_INCOME_GAIN);
 applyGameAction(senderRoom, { type: "APPLY_INCOME_TICK", simulationTimeMs: INCOME_TICK_INTERVAL_MS });
-assert.equal(senderRoom.economy.coins, 425 + 115);
+assert.equal(senderRoom.economy.coins, 264);
 
 // Phase 1 regression: one tap is one damage event, three taps pop, and popped balloons never escape.
 const popRoom = createBalloonRoom("pop");
@@ -317,4 +323,4 @@ const pathAfterNails = findPathToCeiling(getLaneCell(2), breakRoom.walls, "left"
 assert.deepEqual(pathBeforeNails, pathWithoutNails);
 assert.deepEqual(pathWithoutNails, pathAfterNails);
 
-console.log("Balloon Rooms Phase 5 passed: shared economy, chosen-lane sends, popping, wall/path rules, deterministic nail contact, automatic nail exhaustion, no-refund removal, repeat contact, and path independence.");
+console.log("Balloon Rooms Phase 5.1 passed: slower shared economy, FIFO launch queue pacing, chosen lanes, popping, wall/path rules, deterministic nail contact, automatic nail exhaustion, no-refund removal, repeat contact, and path independence.");

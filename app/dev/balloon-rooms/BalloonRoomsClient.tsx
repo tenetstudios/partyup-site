@@ -7,6 +7,7 @@ import {
   INCOME_TICK_INTERVAL_MS,
   NAIL_STRIP_COST,
   MAX_FRAME_DELTA_SECONDS,
+  MAX_LAUNCH_QUEUE_SIZE,
   MAX_NAIL_STRIPS,
   MAX_WALL_SEGMENTS,
   ROOM_MAX_HEALTH,
@@ -47,6 +48,7 @@ type RoomSummary = Record<RoomKey, {
   coins: number;
   income: number;
   nextIncomeInMs: number;
+  queueLanes: SpawnLane[];
 }>;
 
 const roomKeys: RoomKey[] = ["yours", "opponent"];
@@ -80,6 +82,7 @@ function summarize(rooms: RoomCollection, simulationTimeMs: number): RoomSummary
       coins: room.economy.coins,
       income: room.economy.income,
       nextIncomeInMs: Math.max(0, room.economy.nextIncomeTickAt - simulationTimeMs),
+      queueLanes: room.attack.queue.map((queued) => queued.lane),
     }];
   })) as RoomSummary;
 }
@@ -127,6 +130,9 @@ export default function BalloonRoomsClient() {
           const room = roomsRef.current[key];
           const incomeResult = applyGameAction(room, { type: "APPLY_INCOME_TICK", simulationTimeMs: simulationTimeMsRef.current });
           if (incomeResult.applied && incomeResult.incomeTicksApplied) summaryChanged = true;
+          const targetRoom = roomsRef.current[key === "yours" ? "opponent" : "yours"];
+          const launchResult = applyGameAction(room, { type: "APPLY_LAUNCH_QUEUE", simulationTimeMs: simulationTimeMsRef.current }, targetRoom);
+          if (launchResult.applied && launchResult.launchedBalloon) summaryChanged = true;
           const events = updateRoomSimulation(room, SIMULATION_STEP_SECONDS);
           if (events.length > 0) summaryChanged = true;
           for (const event of events) {
@@ -276,7 +282,7 @@ export default function BalloonRoomsClient() {
       <div className="mx-auto max-w-3xl px-2 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-4">
         <header className="mb-3 flex items-end justify-between gap-2 px-1">
           <div className="min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-[0.25em] text-pink-300">Phase 5 · Shared economy</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.25em] text-pink-300">Phase 5.1 · Launch queue</p>
             <h1 className="mt-1 text-2xl font-black tracking-tight sm:text-3xl">BALLOON ROOMS</h1>
           </div>
           <div className="flex gap-1">
@@ -335,8 +341,14 @@ export default function BalloonRoomsClient() {
                         <button key={lane} type="button" aria-label={`Select attack Lane ${lane}`} aria-pressed={selectedAttackLane === lane} onClick={() => setSelectedAttackLane(lane)} className={`min-h-11 rounded-md border text-xs font-black ${selectedAttackLane === lane ? "border-pink-300 bg-pink-500/40 text-white" : "border-white/10 bg-black/20 text-zinc-400"}`}>L{lane}</button>
                       ))}
                     </div>
-                    <button type="button" onClick={sendBalloon} disabled={!roomSummary.running || summary.yours.coins < BASIC_BALLOON_COST} className="mt-2 min-h-12 w-full rounded-md border border-pink-300/70 bg-gradient-to-r from-purple-600 to-pink-600 text-xs font-black tracking-[0.12em] text-white disabled:cursor-not-allowed disabled:opacity-40">SEND BASIC · {BASIC_BALLOON_COST}</button>
-                    <p className="mt-2 min-h-4 truncate text-center text-[9px] font-bold text-emerald-300">Lane {selectedAttackLane} · +{BASIC_BALLOON_INCOME_GAIN} Income</p>
+                    <button type="button" onClick={sendBalloon} disabled={!roomSummary.running || summary.yours.coins < BASIC_BALLOON_COST || summary.yours.queueLanes.length >= MAX_LAUNCH_QUEUE_SIZE} className="mt-2 min-h-12 w-full rounded-md border border-pink-300/70 bg-gradient-to-r from-purple-600 to-pink-600 text-xs font-black tracking-[0.12em] text-white disabled:cursor-not-allowed disabled:opacity-40">SEND BASIC · {BASIC_BALLOON_COST}</button>
+                    <p className={`mt-2 min-h-4 truncate text-center text-[9px] font-bold ${summary.yours.queueLanes.length >= MAX_LAUNCH_QUEUE_SIZE || summary.yours.coins < BASIC_BALLOON_COST ? "text-red-300" : "text-emerald-300"}`}>{summary.yours.queueLanes.length >= MAX_LAUNCH_QUEUE_SIZE ? "QUEUE FULL" : summary.yours.coins < BASIC_BALLOON_COST ? `NEED ${BASIC_BALLOON_COST}` : `Lane ${selectedAttackLane} · +${BASIC_BALLOON_INCOME_GAIN} Income`}</p>
+                    <div className={styles.queuePanel} aria-label={`Launch queue ${summary.yours.queueLanes.length} of ${MAX_LAUNCH_QUEUE_SIZE}`}>
+                      <p className="text-[8px] font-black tracking-[0.12em] text-zinc-500">QUEUE {summary.yours.queueLanes.length}/{MAX_LAUNCH_QUEUE_SIZE}</p>
+                      <div className="mt-1 flex min-h-6 items-center gap-1 overflow-hidden">
+                        {summary.yours.queueLanes.length > 0 ? summary.yours.queueLanes.map((lane, index) => <span key={`${index}-${lane}`} className="flex items-center gap-1"><span className="grid size-5 place-items-center rounded-full border border-pink-300/30 bg-pink-500/15 text-[9px] font-black text-pink-100">{lane}</span>{index < summary.yours.queueLanes.length - 1 ? <span className="text-[8px] text-zinc-600">→</span> : null}</span>) : <span className="text-[8px] font-bold text-zinc-600">EMPTY</span>}
+                      </div>
+                    </div>
                   </div>
                 )}
               </section>
