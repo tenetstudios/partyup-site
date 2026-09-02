@@ -14,7 +14,8 @@ export type RoomVisualEffect = {
   roomKey: string;
   x: number;
   y: number;
-  kind: "tap" | "pop" | "escape" | "nail";
+  kind: "tap" | "pop" | "escape" | "nail" | "wall" | "collapse";
+  label?: string;
   startedAt: number;
 };
 
@@ -26,7 +27,7 @@ export function drawBalloonRoom(
   roomKey: string,
   effects: RoomVisualEffect[],
   now: number,
-  options: { debugPaths: boolean; preview: WallPreview },
+  options: { debugPaths: boolean; preview: WallPreview; selectedWallId?: string | null },
 ): void {
   const bounds = canvas.getBoundingClientRect();
   const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
@@ -44,7 +45,9 @@ export function drawBalloonRoom(
   drawGrid(context, bounds.width, bounds.height);
   drawLanes(context, bounds.width, bounds.height);
   if (options.debugPaths) drawPaths(context, room, bounds.width, bounds.height);
-  for (const wall of room.walls) drawWall(context, wall, bounds.width, bounds.height, "rgba(195, 93, 255, 0.96)", 5);
+  for (const wall of room.walls) drawWall(context, wall, bounds.width, bounds.height, "rgba(195, 93, 255, 0.96)", 5, true);
+  const selectedWall = room.walls.find((wall) => wall.id === options.selectedWallId);
+  if (selectedWall) drawWall(context, selectedWall, bounds.width, bounds.height, "rgba(253, 230, 138, 0.9)", 11);
   for (const glue of room.glueTraps) {
     const wall = room.walls.find((candidate) => candidate.id === glue.wallSegmentId);
     if (wall) drawGlue(context, wall, bounds.width, bounds.height);
@@ -120,7 +123,7 @@ function drawPaths(context: CanvasRenderingContext2D, room: BalloonRoom, width: 
   context.restore();
 }
 
-function drawWall(context: CanvasRenderingContext2D, wall: WallSegment, width: number, height: number, color: string, lineWidth: number): void {
+function drawWall(context: CanvasRenderingContext2D, wall: WallSegment, width: number, height: number, color: string, lineWidth: number, showIntegrity = false): void {
   context.save();
   context.strokeStyle = color;
   context.lineWidth = lineWidth;
@@ -138,7 +141,28 @@ function drawWall(context: CanvasRenderingContext2D, wall: WallSegment, width: n
     context.lineTo(((wall.gridX + 1) / GRID_COLUMNS) * width, y);
   }
   context.stroke();
+  if (showIntegrity && wall.integrity < wall.maxIntegrity) {
+    const midpoint = getWallCenter(wall);
+    const ratio = wall.integrity / wall.maxIntegrity;
+    context.shadowBlur = 0;
+    context.strokeStyle = "rgba(7,3,15,0.78)";
+    context.lineWidth = Math.max(1.5, lineWidth * 0.45);
+    context.setLineDash(ratio <= 0.3 ? [7, 5] : [3, 9]);
+    context.stroke();
+    context.setLineDash([]);
+    context.fillStyle = "rgba(253,230,138,0.98)";
+    context.font = "900 8px monospace";
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillText(`${wall.integrity}/${wall.maxIntegrity}`, midpoint.x * width + (wall.orientation === "vertical" ? 12 : 0), midpoint.y * height - (wall.orientation === "horizontal" ? 9 : 0));
+  }
   context.restore();
+}
+
+export function getWallCenter(wall: WallSegment): { x: number; y: number } {
+  return wall.orientation === "vertical"
+    ? { x: wall.gridX / GRID_COLUMNS, y: (wall.gridY + 0.5) / GRID_ROWS }
+    : { x: (wall.gridX + 0.5) / GRID_COLUMNS, y: wall.gridY / GRID_ROWS };
 }
 
 function drawGlue(context: CanvasRenderingContext2D, wall: WallSegment, width: number, height: number): void {
@@ -220,11 +244,21 @@ function drawEffects(context: CanvasRenderingContext2D, roomKey: string, effects
         ? `rgba(244, 114, 182, ${1 - progress})`
         : effect.kind === "nail"
           ? `rgba(167, 243, 208, ${1 - progress})`
+          : effect.kind === "wall"
+            ? `rgba(253, 230, 138, ${1 - progress})`
+            : effect.kind === "collapse"
+              ? `rgba(251, 113, 133, ${1 - progress})`
           : `rgba(255, 255, 255, ${1 - progress})`;
       context.lineWidth = 2;
       context.beginPath();
       context.arc(x, y, 10 + progress * (effect.kind === "pop" ? 30 : 12), 0, Math.PI * 2);
       context.stroke();
+      if (effect.label) {
+        context.fillStyle = effect.kind === "collapse" ? `rgba(254, 202, 202, ${1 - progress})` : `rgba(253, 230, 138, ${1 - progress})`;
+        context.font = "900 9px monospace";
+        context.textAlign = "center";
+        context.fillText(effect.label, x, y - 12 - progress * 8);
+      }
     }
     context.restore();
   }

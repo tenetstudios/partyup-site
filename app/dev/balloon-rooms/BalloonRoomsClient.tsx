@@ -13,6 +13,9 @@ import {
   ROOM_MAX_HEALTH,
   SIMULATION_STEP_SECONDS,
   VERTICAL_WALL_COST,
+  WALL_REPAIR_AMOUNT,
+  WALL_REPAIR_COST,
+  WALL_REPAIR_THRESHOLD,
   applyGameAction,
   createBalloonRoom,
   createSendBalloonAction,
@@ -33,8 +36,9 @@ import {
   type BalloonType,
   type SpawnLane,
   type WaveState,
+  type WallSegment,
 } from "@partyup/balloon-core";
-import { drawBalloonRoom, type RoomVisualEffect, type WallPreview } from "@/lib/balloonRooms/rendering";
+import { drawBalloonRoom, getWallCenter, type RoomVisualEffect, type WallPreview } from "@/lib/balloonRooms/rendering";
 import styles from "./BalloonRooms.module.css";
 
 type RoomKey = "yours" | "opponent";
@@ -58,6 +62,7 @@ type RoomSummary = Record<RoomKey, {
   nextIncomeInMs: number;
   queue: { balloonType: BalloonType; lane: SpawnLane }[];
   unlockedBalloonTypes: Record<BalloonType, boolean>;
+  walls: WallSegment[];
 }>;
 
 type WaveSummary = {
@@ -104,6 +109,7 @@ function summarize(rooms: RoomCollection, simulationTimeMs: number): RoomSummary
       nextIncomeInMs: Math.max(0, room.economy.nextIncomeTickAt - simulationTimeMs),
       queue: room.attack.queue.map((queued) => ({ balloonType: queued.balloonType, lane: queued.lane })),
       unlockedBalloonTypes: { ...room.unlockedBalloonTypes },
+      walls: room.walls.map((wall) => ({ ...wall })),
     }];
   })) as RoomSummary;
 }
@@ -136,6 +142,7 @@ export default function BalloonRoomsClient() {
   const feedbackTimerRef = useRef<number | null>(null);
   const buildHoldRef = useRef<{ pointerId: number; clientX: number; clientY: number; timeoutId: number } | null>(null);
   const [buildMode, setBuildMode] = useState<BuildMode>("wall");
+  const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
   const [selectedAttackLane, setSelectedAttackLane] = useState<SpawnLane>(1);
   const [selectedBalloonType, setSelectedBalloonType] = useState<BalloonType>("basic");
   const [debugPaths, setDebugPaths] = useState(false);
@@ -190,6 +197,17 @@ export default function BalloonRoomsClient() {
               const balloon = room.balloons.find((candidate) => candidate.id === event.balloonId);
               if (balloon) effectsRef.current.push({ roomKey: key, x: balloon.x, y: balloon.y, kind: event.popped ? "pop" : "nail", startedAt: now });
               setLastNailContact(`${event.balloonId} → ${event.nailStripId} · HP ${event.balloonHealthBefore}→${event.balloonHealthAfter} · nails ${event.durabilityBefore}→${event.durabilityAfter}`);
+            } else if (event.type === "wall_damage" && !event.destroyed) {
+              const wall = room.walls.find((candidate) => candidate.id === event.wallSegmentId);
+              if (wall) {
+                const center = getWallCenter(wall);
+                effectsRef.current.push({ roomKey: key, ...center, kind: "wall", label: `-${event.damage}`, startedAt: now });
+              }
+            } else if (event.type === "wall_destroyed") {
+              for (const wall of [event.wall, ...event.collapsedWalls]) {
+                const center = getWallCenter(wall);
+                effectsRef.current.push({ roomKey: key, ...center, kind: "collapse", label: wall.id === event.wall.id ? "BREAK" : "COLLAPSE", startedAt: now });
+              }
             }
           }
         }
@@ -215,13 +233,14 @@ export default function BalloonRoomsClient() {
         if (canvas) drawBalloonRoom(canvas, roomsRef.current[key], key, effectsRef.current, now, {
           debugPaths,
           preview: key === "yours" ? previewRef.current : null,
+          selectedWallId: key === "yours" ? selectedWallId : null,
         });
       }
       animationFrame = requestAnimationFrame(frame);
     };
     animationFrame = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(animationFrame);
-  }, [debugPaths, refreshSummary]);
+  }, [debugPaths, refreshSummary, selectedWallId]);
 
   const setCanvas = useCallback((key: RoomKey, canvas: HTMLCanvasElement | null) => {
     canvasesRef.current[key] = canvas;
@@ -324,6 +343,28 @@ export default function BalloonRoomsClient() {
     previewRef.current = { wall, valid };
   }, [buildMode, cancelBuildHold, showFeedback]);
 
+  const handlePointerUp = useCallback((key: RoomKey, event: React.PointerEvent<HTMLCanvasElement>) => {
+    const hold = buildHoldRef.current;
+    if (key !== "yours" || !hold || hold.pointerId !== event.pointerId) {
+      cancelBuildHold(event.pointerId);
+      return;
+    }
+    cancelBuildHold(event.pointerId);
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const edge = findClosestGridEdge(
+      (event.clientX - bounds.left) / bounds.width,
+      (event.clientY - bounds.top) / bounds.height,
+      bounds.width,
+      bounds.height,
+      28,
+    );
+    const candidateId = edge
+      ? createWallSegment(roomsRef.current.yours.id, edge.orientation, edge.gridX, edge.gridY).id
+      : null;
+    setSelectedWallId(candidateId && roomsRef.current.yours.walls.some((wall) => wall.id === candidateId) ? candidateId : null);
+    setFeedback(null);
+  }, [cancelBuildHold]);
+
   const selectMode = useCallback((mode: BuildMode) => {
     previewRef.current = null;
     setBuildMode(mode);
@@ -352,6 +393,13 @@ export default function BalloonRoomsClient() {
     refreshSummary();
   }, [refreshSummary, selectedAttackLane, selectedBalloonType]);
 
+  const repairSelectedWall = useCallback(() => {
+    if (!selectedWallId) return;
+    const result = applyGameAction(roomsRef.current.yours, { type: "REPAIR_WALL", wallSegmentId: selectedWallId });
+    showFeedback(result.message, result.applied);
+    if (result.applied) refreshSummary();
+  }, [refreshSummary, selectedWallId, showFeedback]);
+
   const restart = useCallback(() => {
     cancelBuildHold();
     roomsRef.current = createRooms();
@@ -360,6 +408,7 @@ export default function BalloonRoomsClient() {
     sendSequenceRef.current = 0;
     effectsRef.current = [];
     previewRef.current = null;
+    setSelectedWallId(null);
     setFeedback(null);
     setLastNailContact("No nail contacts yet");
     setLastSend("No balloons sent yet");
@@ -369,6 +418,10 @@ export default function BalloonRoomsClient() {
   }, [cancelBuildHold, refreshSummary]);
 
   const selectedBalloonConfig = BALLOON_TYPES[selectedBalloonType];
+  const selectedWall = summary.yours.walls.find((wall) => wall.id === selectedWallId) ?? null;
+  const selectedWallRepairable = selectedWall !== null
+    && selectedWall.integrity > 0
+    && selectedWall.integrity <= WALL_REPAIR_THRESHOLD;
   const currentRound = waveSummary.roundId ? getWaveRound(waveSummary.roundId) : null;
 
   return (
@@ -376,7 +429,7 @@ export default function BalloonRoomsClient() {
       <div className="mx-auto max-w-3xl px-2 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-4">
         <header className="mb-3 flex items-end justify-between gap-2 px-1">
           <div className="min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-[0.25em] text-pink-300">Phase 6 · Waves</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.25em] text-pink-300">Phase 7.1 · Repairs</p>
             <h1 className="mt-1 text-2xl font-black tracking-tight sm:text-3xl">BALLOON ROOMS</h1>
           </div>
           <div className="flex gap-1">
@@ -415,12 +468,12 @@ export default function BalloonRoomsClient() {
                     className={styles.canvas}
                     onPointerDown={(event) => handlePointerDown(key, event)}
                     onPointerMove={(event) => handlePointerMove(key, event)}
-                    onPointerUp={(event) => cancelBuildHold(event.pointerId)}
+                    onPointerUp={(event) => handlePointerUp(key, event)}
                     onPointerCancel={(event) => cancelBuildHold(event.pointerId)}
                     onLostPointerCapture={(event) => cancelBuildHold(event.pointerId)}
                     onPointerLeave={(event) => { if (key === "yours") { cancelBuildHold(event.pointerId); previewRef.current = null; } }}
                     onContextMenu={(event) => event.preventDefault()}
-                    aria-label={`${label} balloon playfield.`}
+                    aria-label={`${label} balloon playfield. Tap balloons to damage them. Tap your walls to select repair options.`}
                   />
                 </div>
                 <div className={`${styles.statusPanel} p-3`}>
@@ -440,6 +493,12 @@ export default function BalloonRoomsClient() {
                         return <button key={mode} type="button" aria-pressed={buildMode === mode} disabled={unavailable} onClick={() => selectMode(mode)} className={`min-h-11 rounded-md border px-1 text-[10px] font-black disabled:cursor-not-allowed disabled:opacity-40 ${buildMode === mode ? "border-purple-300 bg-purple-500/35 text-white" : "border-white/10 bg-black/20 text-zinc-400"}`}>{mode.toUpperCase()}{cost !== null ? ` ${cost}` : ""}</button>;
                       })}
                     </div>
+                    {selectedWall ? (
+                      <div className="mt-2 flex min-h-11 items-center justify-between gap-2 rounded-md border border-amber-200/25 bg-amber-300/10 px-2 py-1">
+                        <p className="min-w-0 text-[9px] font-black text-amber-100">WALL {selectedWall.integrity}/{selectedWall.maxIntegrity}<span className="block truncate text-[8px] text-zinc-400">{selectedWallRepairable ? `Restore +${WALL_REPAIR_AMOUNT}` : `Repair at ${WALL_REPAIR_THRESHOLD} or less`}</span></p>
+                        <button type="button" onClick={repairSelectedWall} disabled={!selectedWallRepairable || roomSummary.coins < WALL_REPAIR_COST} className="min-h-9 shrink-0 rounded-md border border-amber-200/60 bg-amber-300/20 px-2 text-[9px] font-black text-amber-100 disabled:cursor-not-allowed disabled:opacity-40">{selectedWallRepairable && roomSummary.coins < WALL_REPAIR_COST ? `NEED ${WALL_REPAIR_COST}` : `REPAIR +${WALL_REPAIR_AMOUNT} · ${WALL_REPAIR_COST}`}</button>
+                      </div>
+                    ) : null}
                     <p className={`mt-2 min-h-4 text-center text-[10px] font-black ${feedback ? (feedback.valid ? "text-emerald-300" : "text-red-300") : "text-zinc-500"}`}>{feedback?.message ?? `Hold 1s to ${buildMode} · ${MAX_WALL_SEGMENTS - roomSummary.wallCount} walls · ${MAX_NAIL_STRIPS - roomSummary.nailCount} nails`}</p>
                   </div>
                 ) : (

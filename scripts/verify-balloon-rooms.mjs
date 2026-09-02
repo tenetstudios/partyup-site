@@ -6,9 +6,14 @@ import {
   BASIC_BALLOON_LAUNCH_INTERVAL_MS,
   INCOME_TICK_INTERVAL_MS,
   HEAVY_BALLOON_HP,
+  HEAVY_DIRECT_STRUCTURAL_DAMAGE,
   MAX_NAIL_STRIPS,
   MAX_WALL_SEGMENTS,
   NAIL_MAX_DURABILITY,
+  WALL_MAX_INTEGRITY,
+  WALL_REPAIR_AMOUNT,
+  WALL_REPAIR_COST,
+  WALL_REPAIR_THRESHOLD,
   PRE_ROUND_COUNTDOWN_MS,
   SPEED_BALLOON_HP,
   SPAWN_LANES,
@@ -21,6 +26,7 @@ import {
   createWaveState,
   createWallSegment,
   damageBalloon,
+  damageWallStructure,
   findBalloonAtPoint,
   findPathToCeiling,
   getCellCenter,
@@ -357,4 +363,26 @@ const pathAfterNails = findPathToCeiling(getLaneCell(2), breakRoom.walls, "left"
 assert.deepEqual(pathBeforeNails, pathWithoutNails);
 assert.deepEqual(pathWithoutNails, pathAfterNails);
 
-console.log("Balloon Rooms Phase 6 passed: deterministic equal waves, Speed/Heavy configs, mixed FIFO offense, unlock-ready state, shared economy, popping, walls, routes, and nails.");
+const structuralRoom = createBalloonRoom("web-phase-7");
+placeWall(structuralRoom, wall(structuralRoom, "vertical", 3, 8));
+const structuralSpan = wall(structuralRoom, "horizontal", 2, 9);
+placeWall(structuralRoom, structuralSpan);
+assert.deepEqual([structuralSpan.integrity, structuralSpan.maxIntegrity], [WALL_MAX_INTEGRITY, WALL_MAX_INTEGRITY]);
+const structuralHeavy = createBalloon(structuralRoom.id, "web-phase-7-heavy", "heavy", 2);
+structuralRoom.balloons.push(structuralHeavy);
+const structuralEvents = updateBalloonPosition(structuralRoom, structuralHeavy, 0.001);
+assert.equal(structuralSpan.integrity, WALL_MAX_INTEGRITY - HEAVY_DIRECT_STRUCTURAL_DAMAGE);
+assert.ok(structuralEvents.some((event) => event.type === "wall_damage" && event.impact === "direct"));
+damageWallStructure(structuralRoom, structuralSpan.id, structuralSpan.integrity);
+assert.equal(structuralRoom.walls.some((candidate) => candidate.id === structuralSpan.id), false);
+
+const repairRoom = createBalloonRoom("web-phase-7-1");
+const repairWall = wall(repairRoom, "vertical", 3, 9);
+placeWall(repairRoom, repairWall);
+repairWall.integrity = WALL_REPAIR_THRESHOLD;
+const repairCoins = repairRoom.economy.coins;
+assert.equal(applyGameAction(repairRoom, { type: "REPAIR_WALL", wallSegmentId: repairWall.id }).applied, true);
+assert.equal(repairWall.integrity, Math.min(WALL_MAX_INTEGRITY, WALL_REPAIR_THRESHOLD + WALL_REPAIR_AMOUNT));
+assert.equal(repairRoom.economy.coins, repairCoins - WALL_REPAIR_COST);
+
+console.log("Balloon Rooms Phase 7.1 passed: paid contextual repair, shared structural damage, deterministic destruction, and prior systems.");
