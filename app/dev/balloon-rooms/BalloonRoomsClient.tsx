@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   BALLOON_TYPES,
@@ -111,7 +112,6 @@ export default function BalloonRoomsClient() {
   const [initialMatch] = useState(createDevMatch);
   const matchRef = useRef<FloatMatchState>(initialMatch);
   const [matchSnapshot, setMatchSnapshot] = useState<FloatMatchState>(() => structuredClone(initialMatch));
-  const sendSequenceRef = useRef<Record<PlayerId, number>>({ playerA: 0, playerB: 0 });
   const canvasesRef = useRef<CanvasCollection>({ yours: null, opponent: null });
   const effectsRef = useRef<RoomVisualEffect[]>([]);
   const previewRef = useRef<WallPreview>(null);
@@ -279,9 +279,7 @@ export default function BalloonRoomsClient() {
 
   const sendBalloon = useCallback((balloonType: BalloonType) => {
     const targetPlayerId = getOpponentPlayerId(matchRef.current, viewAs) as PlayerId;
-    sendSequenceRef.current[viewAs] += 1;
-    const result = applyFloatMatchAction(matchRef.current, { type: "SEND_BALLOON", actorPlayerId: viewAs, targetPlayerId, lane: attackLanes[viewAs], senderSequence: sendSequenceRef.current[viewAs], sentAt: matchRef.current.simulationTimeMs, balloonType });
-    if (!result.applied) sendSequenceRef.current[viewAs] -= 1;
+    const result = applyFloatMatchAction(matchRef.current, { type: "SEND_BALLOON", actorPlayerId: viewAs, targetPlayerId, lane: attackLanes[viewAs], sentAt: matchRef.current.simulationTimeMs, balloonType });
     setLastSends((current) => ({ ...current, [viewAs]: result.applied ? `${balloonType.toUpperCase()} sent to Lane ${attackLanes[viewAs]}` : result.message }));
     if (result.applied) refresh();
   }, [attackLanes, refresh, viewAs]);
@@ -297,7 +295,6 @@ export default function BalloonRoomsClient() {
   const restart = useCallback(() => {
     cancelBuildHold();
     matchRef.current = createDevMatch();
-    sendSequenceRef.current = { playerA: 0, playerB: 0 };
     effectsRef.current = [];
     previewRef.current = null;
     setSelectedWallIds({ playerA: null, playerB: null });
@@ -323,7 +320,7 @@ export default function BalloonRoomsClient() {
       <div className={styles.gameFrame}>
         <header className="flex items-center justify-between gap-2 px-1">
           <div className="flex items-center gap-2"><h1 className="text-lg font-black tracking-tight sm:text-xl">FLOAT</h1><div className={styles.perspectivePicker} aria-label="Development player perspective">{playerIds.map((playerId) => <button key={playerId} type="button" aria-pressed={viewAs === playerId} onClick={() => switchPerspective(playerId)} className={viewAs === playerId ? styles.perspectiveSelected : undefined}>VIEW AS {playerId === "playerA" ? "A" : "B"}</button>)}</div></div>
-          <div className="flex gap-1"><button type="button" aria-pressed={debugPaths} onClick={() => setDebugPaths((value) => !value)} className="min-h-9 rounded-lg border border-white/15 px-2 text-[9px] font-black">PATHS</button><button type="button" onClick={restart} className="min-h-9 rounded-lg border border-white/15 px-2 text-[9px] font-black">RESTART</button></div>
+          <div className="flex gap-1"><Link href="/dev/balloon-rooms/network" className="grid min-h-9 place-items-center rounded-lg border border-purple-300/35 px-2 text-[8px] font-black text-purple-200">NETWORK</Link><button type="button" aria-pressed={debugPaths} onClick={() => setDebugPaths((value) => !value)} className="min-h-9 rounded-lg border border-white/15 px-2 text-[9px] font-black">PATHS</button><button type="button" onClick={restart} className="min-h-9 rounded-lg border border-white/15 px-2 text-[9px] font-black">RESTART</button></div>
         </header>
 
         <div className={styles.roundBar}>
