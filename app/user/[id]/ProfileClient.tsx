@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import HomeHeader from "@/app/components/HomeHeader";
 import { PartyUpPageShell, partyUpTheme } from "@/app/components/PartyUpTheme";
 import {
@@ -72,18 +72,27 @@ export default function ProfileClient({ profileId }: { profileId: string }) {
     tone: "success" | "error";
     text: string;
   } | null>(null);
+  const profileLoadId = useRef(0);
 
   const loadProfile = useCallback(async () => {
+    const loadId = ++profileLoadId.current;
     setLoading(true);
     setMessage(null);
 
     try {
       const { data: userData } = await supabase.auth.getUser();
       const userId = userData.user?.id ?? null;
-      setCurrentUserId(userId);
+      const [loadedHostData, loadedSeries, loadedMemoryGroups] = await Promise.all([
+        getHostReputationProfile(supabase, profileId),
+        getHostEventSeries(supabase, profileId).catch(() => []),
+        userId === profileId ? getMySavedMemoryGroups(supabase).catch(() => []) : Promise.resolve([]),
+      ]);
 
-      const loadedHostData = await getHostReputationProfile(supabase, profileId);
-      const loadedSeries = await getHostEventSeries(supabase, profileId).catch(() => []);
+      if (loadId !== profileLoadId.current) {
+        return;
+      }
+
+      setCurrentUserId(userId);
       setHostData(loadedHostData);
       setHostSeries(loadedSeries);
       setProfile(loadedHostData?.profile ?? null);
@@ -95,16 +104,28 @@ export default function ProfileClient({ profileId }: { profileId: string }) {
         setState(loadedHostData.social);
 
         if (userId === profileId) {
-          setMemoryGroups(await getMySavedMemoryGroups(supabase));
+          setMemoryGroups(loadedMemoryGroups);
         } else {
           setMemoryGroups([]);
           setActiveSection("profile");
         }
+      } else {
+        setState(emptyState);
+        setMemoryGroups([]);
       }
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Could not load this profile.");
+      if (loadId === profileLoadId.current) {
+        setProfile(null);
+        setHostData(null);
+        setHostSeries([]);
+        setMemoryGroups([]);
+        setState(emptyState);
+        setMessage(error instanceof Error ? error.message : "Could not load this profile.");
+      }
     } finally {
-      setLoading(false);
+      if (loadId === profileLoadId.current) {
+        setLoading(false);
+      }
     }
   }, [profileId, supabase]);
 
@@ -115,6 +136,7 @@ export default function ProfileClient({ profileId }: { profileId: string }) {
 
     return () => {
       window.clearTimeout(timeoutId);
+      profileLoadId.current += 1;
     };
   }, [loadProfile]);
 
