@@ -144,10 +144,8 @@ export default function BalloonRoomsClient() {
   const [buildMode, setBuildMode] = useState<BuildMode>("wall");
   const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
   const [selectedAttackLane, setSelectedAttackLane] = useState<SpawnLane>(1);
-  const [selectedBalloonType, setSelectedBalloonType] = useState<BalloonType>("basic");
   const [debugPaths, setDebugPaths] = useState(false);
   const [feedback, setFeedback] = useState<{ message: string; valid: boolean } | null>(null);
-  const [lastNailContact, setLastNailContact] = useState("No nail contacts yet");
   const [lastSend, setLastSend] = useState("No balloons sent yet");
   const [summary, setSummary] = useState<RoomSummary>(() => summarize(createRooms(), 0));
   const [waveSummary, setWaveSummary] = useState<WaveSummary>(() => summarizeWave(createWaveState(601), 0));
@@ -196,7 +194,6 @@ export default function BalloonRoomsClient() {
             } else if (event.type === "nail_contact") {
               const balloon = room.balloons.find((candidate) => candidate.id === event.balloonId);
               if (balloon) effectsRef.current.push({ roomKey: key, x: balloon.x, y: balloon.y, kind: event.popped ? "pop" : "nail", startedAt: now });
-              setLastNailContact(`${event.balloonId} → ${event.nailStripId} · HP ${event.balloonHealthBefore}→${event.balloonHealthAfter} · nails ${event.durabilityBefore}→${event.durabilityAfter}`);
             } else if (event.type === "wall_damage" && !event.destroyed) {
               const wall = room.walls.find((candidate) => candidate.id === event.wallSegmentId);
               if (wall) {
@@ -371,7 +368,7 @@ export default function BalloonRoomsClient() {
     setFeedback(null);
   }, []);
 
-  const sendBalloon = useCallback(() => {
+  const sendBalloon = useCallback((balloonType: BalloonType) => {
     const opponent = roomsRef.current.opponent;
     sendSequenceRef.current += 1;
     const action = createSendBalloonAction({
@@ -381,7 +378,7 @@ export default function BalloonRoomsClient() {
       lane: selectedAttackLane,
       senderSequence: sendSequenceRef.current,
       sentAt: Date.now(),
-      balloonType: selectedBalloonType,
+      balloonType,
     });
     const result = applyGameAction(roomsRef.current.yours, action, opponent);
     if (!result.applied) {
@@ -389,9 +386,9 @@ export default function BalloonRoomsClient() {
       setLastSend(`Rejected Lane ${selectedAttackLane}: ${result.message}`);
       return;
     }
-    setLastSend(`${selectedBalloonType.toUpperCase()} ${action.balloonId} → Lane ${selectedAttackLane}`);
+    setLastSend(`${balloonType.toUpperCase()} sent to Lane ${selectedAttackLane}`);
     refreshSummary();
-  }, [refreshSummary, selectedAttackLane, selectedBalloonType]);
+  }, [refreshSummary, selectedAttackLane]);
 
   const repairSelectedWall = useCallback(() => {
     if (!selectedWallId) return;
@@ -410,14 +407,11 @@ export default function BalloonRoomsClient() {
     previewRef.current = null;
     setSelectedWallId(null);
     setFeedback(null);
-    setLastNailContact("No nail contacts yet");
     setLastSend("No balloons sent yet");
-    setSelectedBalloonType("basic");
     setWaveNotice(null);
     refreshSummary();
   }, [cancelBuildHold, refreshSummary]);
 
-  const selectedBalloonConfig = BALLOON_TYPES[selectedBalloonType];
   const selectedWall = summary.yours.walls.find((wall) => wall.id === selectedWallId) ?? null;
   const selectedWallRepairable = selectedWall !== null
     && selectedWall.integrity > 0
@@ -426,42 +420,33 @@ export default function BalloonRoomsClient() {
 
   return (
     <main className={`${styles.gameShell} text-white`}>
-      <div className="mx-auto max-w-3xl px-2 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-4">
-        <header className="mb-3 flex items-end justify-between gap-2 px-1">
-          <div className="min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-[0.25em] text-pink-300">Phase 7.1 · Repairs</p>
-            <h1 className="mt-1 text-2xl font-black tracking-tight sm:text-3xl">BALLOON ROOMS</h1>
-          </div>
+      <div className={styles.gameFrame}>
+        <header className="flex items-center justify-between gap-2 px-1">
+          <h1 className="text-lg font-black tracking-tight sm:text-xl">BALLOON ROOMS</h1>
           <div className="flex gap-1">
-            <button type="button" aria-pressed={debugPaths} onClick={() => setDebugPaths((current) => !current)} className="min-h-11 rounded-lg border border-white/15 px-2 text-[10px] font-black text-zinc-200 active:bg-white/10">PATHS</button>
-            <button type="button" onClick={restart} className="min-h-11 rounded-lg border border-white/15 px-2 text-[10px] font-black text-zinc-200 active:bg-white/10">RESTART</button>
+            <button type="button" aria-pressed={debugPaths} onClick={() => setDebugPaths((value) => !value)} className="min-h-9 rounded-lg border border-white/15 px-2 text-[9px] font-black">PATHS</button>
+            <button type="button" onClick={restart} className="min-h-9 rounded-lg border border-white/15 px-2 text-[9px] font-black">RESTART</button>
           </div>
         </header>
 
-        <div className="mb-3 rounded-lg border border-purple-300/20 bg-purple-950/35 px-3 py-2 text-center">
-          <p className="text-sm font-black text-white">{waveSummary.status === "complete" ? "ALL WAVES COMPLETE" : waveSummary.status === "transition" ? `ROUND ${waveSummary.nextRoundId} STARTS IN ${waveSummary.nextRoundInSeconds}` : `ROUND ${waveSummary.roundId}`}</p>
-          <p className="mt-1 text-[10px] font-bold text-purple-200">
-            {waveSummary.status === "transition"
-              ? "BUILD WINDOW · HOLD 1s ON A GRID EDGE"
-              : currentRound
-                ? currentRound.composition.map((entry) => `${entry.count} ${entry.balloonType}`).join(" · ")
-                : "PvP remains active"}
-            {waveSummary.status === "active" ? ` · ${waveSummary.spawnedCount}/${waveSummary.totalCount} deployed` : ""}
-          </p>
-          {waveNotice ? <p className="mt-1 text-[10px] font-black tracking-[0.12em] text-emerald-300">{waveNotice}</p> : null}
+        <div className={styles.roundBar}>
+          <p className="shrink-0 text-[10px] font-black">{waveSummary.status === "complete" ? "WAVES COMPLETE" : waveSummary.status === "transition" ? `ROUND ${waveSummary.nextRoundId} IN ${waveSummary.nextRoundInSeconds}s` : `ROUND ${waveSummary.roundId} · ${waveSummary.spawnedCount}/${waveSummary.totalCount}`}</p>
+          <p className="truncate text-[8px] font-bold text-purple-200">{waveSummary.status === "transition" ? "BUILD WINDOW · HOLD 1s ON A GRID EDGE" : currentRound ? currentRound.composition.map((entry) => `${entry.count} ${entry.balloonType}`).join(" · ") : "PvP ACTIVE"}</p>
+          {waveNotice ? <p className="truncate text-[8px] font-black text-emerald-300">{waveNotice}</p> : null}
         </div>
-        <p className="mb-3 px-1 text-xs font-bold text-zinc-400">Defend against waves while building and sending player attacks. Tap any balloon to deal 1 damage.</p>
+
         <div className={styles.roomsGrid}>
           {roomKeys.map((key) => {
             const roomSummary = summary[key];
-            const label = key === "yours" ? "YOUR ROOM" : "OPPONENT ROOM";
+            const label = key === "yours" ? "YOUR ROOM" : "OPPONENT";
             return (
               <section key={key} className={styles.room} aria-label={label}>
-                <h2 className="mb-2 truncate text-center text-[11px] font-black tracking-[0.12em] text-purple-100 sm:text-sm">{label}</h2>
+                <h2 className="truncate text-center text-[10px] font-black tracking-[0.12em] text-purple-100 sm:text-xs">{label}</h2>
                 <div className={styles.economyPanel} aria-label={`${label} economy`}>
-                  <div><p className="text-[8px] font-black tracking-[0.14em] text-zinc-500">COINS</p><p className="text-lg font-black tabular-nums text-amber-200">{roomSummary.coins}</p></div>
-                  <div className="text-right"><p className="text-[8px] font-black tracking-[0.14em] text-zinc-500">INCOME</p><p className="text-[10px] font-black tabular-nums text-emerald-300">+{roomSummary.income} / {INCOME_TICK_INTERVAL_MS / 1000}s</p><p className="text-[8px] font-bold tabular-nums text-zinc-500">NEXT 00:{String(Math.ceil(roomSummary.nextIncomeInMs / 1000)).padStart(2, "0")}</p></div>
+                  <p className="text-sm font-black tabular-nums text-amber-200">● {roomSummary.coins}</p>
+                  <p className="text-[8px] font-black tabular-nums text-emerald-300">+{roomSummary.income}/{INCOME_TICK_INTERVAL_MS / 1000}s <span className="text-zinc-500">· {Math.ceil(roomSummary.nextIncomeInMs / 1000)}s</span></p>
                 </div>
+
                 <div className={styles.playfield}>
                   <canvas
                     ref={(canvas) => setCanvas(key, canvas)}
@@ -473,67 +458,66 @@ export default function BalloonRoomsClient() {
                     onLostPointerCapture={(event) => cancelBuildHold(event.pointerId)}
                     onPointerLeave={(event) => { if (key === "yours") { cancelBuildHold(event.pointerId); previewRef.current = null; } }}
                     onContextMenu={(event) => event.preventDefault()}
-                    aria-label={`${label} balloon playfield. Tap balloons to damage them. Tap your walls to select repair options.`}
+                    aria-label={`${label} balloon playfield. Tap balloons to damage them.${key === "yours" ? " Hold a grid edge to build." : " Choose a lane at the bottom to target it."}`}
                   />
+                  {key === "opponent" ? (
+                    <div className={styles.lanePicker} aria-label="Choose attack lane">
+                      {([1, 2, 3, 4] as SpawnLane[]).map((lane) => (
+                        <button key={lane} type="button" aria-label={`Target attack Lane ${lane}`} aria-pressed={selectedAttackLane === lane} onClick={() => setSelectedAttackLane(lane)} className={selectedAttackLane === lane ? styles.laneSelected : undefined}>L{lane}</button>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
-                <div className={`${styles.statusPanel} p-3`}>
-                  {roomSummary.running ? <>
-                    <div className="flex items-center justify-between gap-1"><p className="text-[10px] font-black tracking-[0.14em] text-zinc-400">ROOM HP</p><div className="text-right text-[9px] font-bold"><p className="text-purple-300">WALLS {roomSummary.wallCount}/{MAX_WALL_SEGMENTS}</p><p className="text-emerald-300">NAILS {roomSummary.nailCount}/{MAX_NAIL_STRIPS} · GLUE {roomSummary.glueCount}{roomSummary.brokenNailCount > 0 ? ` · ${roomSummary.brokenNailCount} BROKEN` : ""}</p></div></div>
-                    <div className="mt-1 flex items-baseline justify-between gap-2"><p className="text-3xl font-black tabular-nums">{key === "opponent" ? "∞" : roomSummary.health}<span className="text-sm text-zinc-500">{key === "opponent" ? " DEV INVULNERABLE" : ` / ${ROOM_MAX_HEALTH}`}</span></p><p className="text-[9px] font-bold text-zinc-500">{roomSummary.count} ACTIVE</p></div>
-                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-black/50"><div className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-[width]" style={{ width: `${(roomSummary.health / ROOM_MAX_HEALTH) * 100}%` }} /></div>
-                  </> : <div className="grid min-h-14 place-items-center text-center"><p className="text-lg font-black text-red-300">ROOM BROKEN</p></div>}
+
+                <div className={styles.statusPanel}>
+                  {roomSummary.running ? (
+                    <div className="flex items-center justify-between gap-1">
+                      <p className="text-sm font-black tabular-nums">HP {key === "opponent" ? "∞" : `${roomSummary.health}/${ROOM_MAX_HEALTH}`}</p>
+                      <p className="text-right text-[7px] font-bold text-purple-300">{roomSummary.count} ACTIVE<br />W {roomSummary.wallCount}/{MAX_WALL_SEGMENTS} · N {roomSummary.nailCount}/{MAX_NAIL_STRIPS} · G {roomSummary.glueCount}</p>
+                    </div>
+                  ) : <p className="text-center text-sm font-black text-red-300">ROOM BROKEN</p>}
                 </div>
 
                 {key === "yours" ? (
-                  <div className={`${styles.controls} mt-2 p-2`}>
+                  <div className={styles.controls}>
                     <div className="grid grid-cols-4 gap-1">
                       {(["wall", "nails", "glue", "remove"] as BuildMode[]).map((mode) => {
                         const cost = mode === "wall" ? VERTICAL_WALL_COST : mode === "nails" ? NAIL_STRIP_COST : mode === "glue" ? GLUE_COST : null;
-                        const unavailable = cost !== null && roomSummary.coins < cost;
-                        return <button key={mode} type="button" aria-pressed={buildMode === mode} disabled={unavailable} onClick={() => selectMode(mode)} className={`min-h-11 rounded-md border px-1 text-[10px] font-black disabled:cursor-not-allowed disabled:opacity-40 ${buildMode === mode ? "border-purple-300 bg-purple-500/35 text-white" : "border-white/10 bg-black/20 text-zinc-400"}`}>{mode.toUpperCase()}{cost !== null ? ` ${cost}` : ""}</button>;
+                        return <button key={mode} type="button" aria-pressed={buildMode === mode} disabled={cost !== null && roomSummary.coins < cost} onClick={() => selectMode(mode)} className={`min-h-9 rounded-md border px-0.5 text-[7px] font-black disabled:opacity-40 ${buildMode === mode ? "border-purple-300 bg-purple-500/35 text-white" : "border-white/10 bg-black/20 text-zinc-400"}`}>{mode.toUpperCase()}<span className="block">{cost ?? "FREE"}</span></button>;
                       })}
                     </div>
                     {selectedWall ? (
-                      <div className="mt-2 flex min-h-11 items-center justify-between gap-2 rounded-md border border-amber-200/25 bg-amber-300/10 px-2 py-1">
-                        <p className="min-w-0 text-[9px] font-black text-amber-100">WALL {selectedWall.integrity}/{selectedWall.maxIntegrity}<span className="block truncate text-[8px] text-zinc-400">{selectedWallRepairable ? `Restore +${WALL_REPAIR_AMOUNT}` : `Repair at ${WALL_REPAIR_THRESHOLD} or less`}</span></p>
-                        <button type="button" onClick={repairSelectedWall} disabled={!selectedWallRepairable || roomSummary.coins < WALL_REPAIR_COST} className="min-h-9 shrink-0 rounded-md border border-amber-200/60 bg-amber-300/20 px-2 text-[9px] font-black text-amber-100 disabled:cursor-not-allowed disabled:opacity-40">{selectedWallRepairable && roomSummary.coins < WALL_REPAIR_COST ? `NEED ${WALL_REPAIR_COST}` : `REPAIR +${WALL_REPAIR_AMOUNT} · ${WALL_REPAIR_COST}`}</button>
+                      <div className="mt-1 flex min-h-8 items-center justify-between gap-1 rounded-md border border-amber-200/25 bg-amber-300/10 px-1">
+                        <p className="truncate text-[8px] font-black text-amber-100">WALL {selectedWall.integrity}/{selectedWall.maxIntegrity}</p>
+                        <button type="button" onClick={repairSelectedWall} disabled={!selectedWallRepairable || roomSummary.coins < WALL_REPAIR_COST} className="min-h-7 shrink-0 rounded border border-amber-200/60 px-1 text-[7px] font-black disabled:opacity-40">REPAIR +{WALL_REPAIR_AMOUNT} · {WALL_REPAIR_COST}</button>
                       </div>
                     ) : null}
-                    <p className={`mt-2 min-h-4 text-center text-[10px] font-black ${feedback ? (feedback.valid ? "text-emerald-300" : "text-red-300") : "text-zinc-500"}`}>{feedback?.message ?? `Hold 1s to ${buildMode} · ${MAX_WALL_SEGMENTS - roomSummary.wallCount} walls · ${MAX_NAIL_STRIPS - roomSummary.nailCount} nails`}</p>
+                    <p className={`mt-1 truncate text-center text-[7px] font-black ${feedback ? (feedback.valid ? "text-emerald-300" : "text-red-300") : "text-zinc-500"}`}>{feedback?.message ?? `Hold 1s to ${buildMode} · repair at ${WALL_REPAIR_THRESHOLD} HP`}</p>
                   </div>
                 ) : (
-                  <div className={`${styles.controls} mt-2 p-2`}>
-                    <p className="mb-2 text-center text-[9px] font-black uppercase tracking-[0.14em] text-pink-200">Choose balloon</p>
+                  <div className={styles.controls}>
+                    <p className="mb-1 truncate text-center text-[8px] font-black uppercase text-pink-200">Tap to send · Lane {selectedAttackLane}</p>
                     <div className="grid grid-cols-3 gap-1">
                       {(["basic", "speed", "heavy"] as BalloonType[]).map((balloonType) => {
                         const unlocked = summary.yours.unlockedBalloonTypes[balloonType];
-                        return <button key={balloonType} type="button" disabled={!unlocked} aria-pressed={selectedBalloonType === balloonType} onClick={() => setSelectedBalloonType(balloonType)} className={`min-h-10 rounded-md border px-1 text-[9px] font-black disabled:cursor-not-allowed disabled:opacity-45 ${selectedBalloonType === balloonType ? "border-amber-200 bg-amber-300/20 text-white" : "border-white/10 bg-black/20 text-zinc-400"}`}>{balloonType.toUpperCase()}{unlocked ? ` ${BALLOON_TYPES[balloonType].cost}` : " 🔒"}</button>;
+                        const config = BALLOON_TYPES[balloonType];
+                        const unavailable = !roomSummary.running || !unlocked || summary.yours.coins < config.cost || summary.yours.queue.length >= MAX_LAUNCH_QUEUE_SIZE;
+                        return <button key={balloonType} type="button" disabled={unavailable} onClick={() => sendBalloon(balloonType)} className="min-h-11 rounded-md border border-pink-300/35 bg-gradient-to-b from-purple-600/45 to-pink-600/35 px-0.5 text-[7px] font-black text-white disabled:border-white/10 disabled:bg-none disabled:text-zinc-500 disabled:opacity-55"><span className="block">{balloonType.toUpperCase()}</span><span className="text-[9px] text-amber-200">{unlocked ? config.cost : "LOCK"}</span></button>;
                       })}
                     </div>
-                    <p className="my-2 text-center text-[9px] font-black uppercase tracking-[0.14em] text-pink-200">Choose attack lane</p>
-                    <div className="grid grid-cols-4 gap-1">
-                      {([1, 2, 3, 4] as SpawnLane[]).map((lane) => (
-                        <button key={lane} type="button" aria-label={`Select attack Lane ${lane}`} aria-pressed={selectedAttackLane === lane} onClick={() => setSelectedAttackLane(lane)} className={`min-h-11 rounded-md border text-xs font-black ${selectedAttackLane === lane ? "border-pink-300 bg-pink-500/40 text-white" : "border-white/10 bg-black/20 text-zinc-400"}`}>L{lane}</button>
-                      ))}
-                    </div>
-                    <button type="button" onClick={sendBalloon} disabled={!roomSummary.running || summary.yours.coins < selectedBalloonConfig.cost || summary.yours.queue.length >= MAX_LAUNCH_QUEUE_SIZE || !summary.yours.unlockedBalloonTypes[selectedBalloonType]} className="mt-2 min-h-12 w-full rounded-md border border-pink-300/70 bg-gradient-to-r from-purple-600 to-pink-600 text-xs font-black tracking-[0.12em] text-white disabled:cursor-not-allowed disabled:opacity-40">SEND {selectedBalloonType.toUpperCase()} · {selectedBalloonConfig.cost}</button>
-                    <p className={`mt-2 min-h-4 truncate text-center text-[9px] font-bold ${summary.yours.queue.length >= MAX_LAUNCH_QUEUE_SIZE || summary.yours.coins < selectedBalloonConfig.cost ? "text-red-300" : "text-emerald-300"}`}>{summary.yours.queue.length >= MAX_LAUNCH_QUEUE_SIZE ? "QUEUE FULL" : summary.yours.coins < selectedBalloonConfig.cost ? `NEED ${selectedBalloonConfig.cost}` : `Lane ${selectedAttackLane} · +${selectedBalloonConfig.incomeGain} Income`}</p>
                     <div className={styles.queuePanel} aria-label={`Launch queue ${summary.yours.queue.length} of ${MAX_LAUNCH_QUEUE_SIZE}`}>
-                      <p className="text-[8px] font-black tracking-[0.12em] text-zinc-500">QUEUE {summary.yours.queue.length}/{MAX_LAUNCH_QUEUE_SIZE}</p>
-                      <div className="mt-1 flex min-h-6 items-center gap-1 overflow-hidden">
-                        {summary.yours.queue.length > 0 ? summary.yours.queue.map((queued, index) => <span key={`${index}-${queued.balloonType}-${queued.lane}`} className="flex items-center gap-1"><span className="grid min-w-7 place-items-center rounded-full border border-pink-300/30 bg-pink-500/15 px-1 py-1 text-[8px] font-black text-pink-100">{queued.balloonType[0].toUpperCase()}{queued.lane}</span>{index < summary.yours.queue.length - 1 ? <span className="text-[8px] text-zinc-600">→</span> : null}</span>) : <span className="text-[8px] font-bold text-zinc-600">EMPTY</span>}
+                      <div className="flex min-h-5 items-center gap-1 overflow-hidden">
+                        <span className="shrink-0 text-[7px] font-black text-zinc-500">Q {summary.yours.queue.length}/{MAX_LAUNCH_QUEUE_SIZE}</span>
+                        {summary.yours.queue.length > 0 ? summary.yours.queue.map((queued, index) => <span key={`${index}-${queued.balloonType}-${queued.lane}`} className="grid min-w-6 place-items-center rounded-full border border-pink-300/30 bg-pink-500/15 px-1 py-1 text-[7px] font-black text-pink-100">{queued.balloonType[0].toUpperCase()}{queued.lane}</span>) : <span className="text-[7px] font-bold text-zinc-600">EMPTY</span>}
                       </div>
                     </div>
+                    <p className={`mt-1 truncate text-center text-[7px] font-bold ${summary.yours.queue.length >= MAX_LAUNCH_QUEUE_SIZE ? "text-red-300" : "text-emerald-300"}`}>{summary.yours.queue.length >= MAX_LAUNCH_QUEUE_SIZE ? "QUEUE FULL" : lastSend}</p>
                   </div>
                 )}
               </section>
             );
           })}
         </div>
-
-        <aside className="mt-3 rounded-lg border border-white/10 bg-black/25 px-3 py-2 font-mono text-[10px] text-zinc-500" aria-label="Development simulation status">
-          DEV · grid 6×10 · yours V{summary.yours.verticalCount}/H{summary.yours.horizontalCount} ({summary.yours.supportedHorizontalCount} supported), routes {summary.yours.routesValid ? "valid" : "invalid"} · opponent V{summary.opponent.verticalCount}/H{summary.opponent.horizontalCount} ({summary.opponent.supportedHorizontalCount} supported), routes {summary.opponent.routesValid ? "valid" : "invalid"}<br />LAST SEND · {lastSend}<br />LAST CONTACT · {lastNailContact}
-        </aside>
       </div>
     </main>
   );
