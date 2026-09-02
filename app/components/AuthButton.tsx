@@ -94,9 +94,9 @@ export default function AuthButton() {
         )}
 
         <Link
-          href={`/user/${userId}`}
+          href="/account"
           className="flex h-10 items-center gap-2 rounded-md px-1 text-white hover:bg-white/10 sm:gap-3 sm:px-2"
-          aria-label="Open your profile"
+          aria-label="Open account management"
         >
           {profile?.avatar_url ? (
             <img

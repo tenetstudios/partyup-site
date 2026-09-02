@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type ProfileUpdateResult = {
-  status: "updated" | "name_taken" | "invalid_name" | "not_authenticated" | "profile_not_found";
+  status: "updated" | "name_taken" | "invalid_name" | "invalid_bio" | "invalid_location" | "not_authenticated" | "profile_not_found";
   message: string;
   username: string | null;
 };
@@ -16,6 +16,7 @@ export async function updateMyProfile(
     username: string;
     avatarUrl?: string | null;
     bio?: string | null;
+    location?: string | null;
     updateDetails?: boolean;
   },
 ): Promise<ProfileUpdateResult> {
@@ -23,6 +24,7 @@ export async function updateMyProfile(
     p_username: input.username,
     p_avatar_url: input.avatarUrl ?? null,
     p_bio: input.bio ?? null,
+    p_location: input.location ?? null,
     p_update_details: input.updateDetails === true,
   });
 
@@ -37,6 +39,8 @@ export async function updateMyProfile(
     status !== "updated" &&
     status !== "name_taken" &&
     status !== "invalid_name" &&
+    status !== "invalid_bio" &&
+    status !== "invalid_location" &&
     status !== "not_authenticated" &&
     status !== "profile_not_found"
   ) {
