@@ -27,6 +27,7 @@ import {
 } from "@/lib/memories";
 import { createSupabaseClient } from "@/lib/supabase";
 import { EventSeriesSummary, formatSeriesDate, getHostEventSeries } from "@/lib/eventSeries";
+import { updateMyProfile } from "@/lib/profileUpdates";
 
 type Profile = {
   id: string;
@@ -65,6 +66,12 @@ export default function ProfileClient({ profileId }: { profileId: string }) {
   const [processing, setProcessing] = useState(false);
   const [processingMemoryId, setProcessingMemoryId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [profileName, setProfileName] = useState("");
+  const [savingProfileName, setSavingProfileName] = useState(false);
+  const [profileNameMessage, setProfileNameMessage] = useState<{
+    tone: "success" | "error";
+    text: string;
+  } | null>(null);
 
   const loadProfile = useCallback(async () => {
     setLoading(true);
@@ -80,6 +87,9 @@ export default function ProfileClient({ profileId }: { profileId: string }) {
       setHostData(loadedHostData);
       setHostSeries(loadedSeries);
       setProfile(loadedHostData?.profile ?? null);
+      setProfileName(
+        loadedHostData?.profile.username ?? loadedHostData?.profile.display_name ?? "",
+      );
 
       if (loadedHostData) {
         setState(loadedHostData.social);
@@ -189,6 +199,47 @@ export default function ProfileClient({ profileId }: { profileId: string }) {
     await supabase.auth.signOut();
     setCurrentUserId(null);
     window.location.href = "/";
+  }
+
+  async function saveProfileName() {
+    if (!profile || currentUserId !== profile.id || savingProfileName) {
+      return;
+    }
+
+    setSavingProfileName(true);
+    setProfileNameMessage(null);
+
+    try {
+      const result = await updateMyProfile(supabase, { username: profileName });
+
+      if (result.status !== "updated" || !result.username) {
+        setProfileNameMessage({ tone: "error", text: result.message });
+        return;
+      }
+
+      const nextName = result.username;
+      setProfileName(nextName);
+      setProfile((current) =>
+        current ? { ...current, username: nextName, display_name: nextName } : current,
+      );
+      setHostData((current) =>
+        current
+          ? {
+              ...current,
+              profile: { ...current.profile, username: nextName, display_name: nextName },
+            }
+          : current,
+      );
+      setProfileNameMessage({ tone: "success", text: result.message });
+      window.dispatchEvent(new Event("partyup:profile-updated"));
+    } catch (error) {
+      setProfileNameMessage({
+        tone: "error",
+        text: error instanceof Error ? error.message : "Your profile name could not be updated.",
+      });
+    } finally {
+      setSavingProfileName(false);
+    }
   }
 
   async function removeSavedMemory(memory: SavedMemory) {
@@ -356,8 +407,57 @@ export default function ProfileClient({ profileId }: { profileId: string }) {
               ) : (
                 <div className="mt-6 border-t border-white/10 pt-6">
                   <p className={partyUpTheme.sectionLabel}>Account</p>
-                  <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="text-sm font-bold text-[#aaa4b8]">This is your public profile.</p>
+                  <form
+                    className="mt-4 max-w-xl rounded-lg border border-purple-100/15 bg-[#100b20]/55 p-4"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void saveProfileName();
+                    }}
+                  >
+                    <label htmlFor="partyup-profile-name" className="text-sm font-black text-white">
+                      PartyUp name
+                    </label>
+                    <p className="mt-1 text-xs font-bold leading-5 text-[#aaa4b8]">
+                      This public name must be unique. Capitalization does not create a different name.
+                    </p>
+                    <div className="mt-3 flex flex-col gap-3 sm:flex-row">
+                      <input
+                        id="partyup-profile-name"
+                        type="text"
+                        value={profileName}
+                        onChange={(event) => {
+                          setProfileName(event.target.value);
+                          setProfileNameMessage(null);
+                        }}
+                        minLength={2}
+                        maxLength={40}
+                        autoComplete="nickname"
+                        disabled={savingProfileName}
+                        className={`${partyUpTheme.input} min-h-11 flex-1 px-3`}
+                      />
+                      <button
+                        type="submit"
+                        disabled={savingProfileName || profileName.trim().length < 2}
+                        className={`${partyUpTheme.primaryButton} px-5 text-sm`}
+                      >
+                        {savingProfileName ? "Saving..." : "Save name"}
+                      </button>
+                    </div>
+                    {profileNameMessage && (
+                      <p
+                        className={`mt-3 text-sm font-bold ${
+                          profileNameMessage.tone === "success"
+                            ? "text-emerald-300"
+                            : "text-pink-300"
+                        }`}
+                        role="status"
+                      >
+                        {profileNameMessage.text}
+                      </p>
+                    )}
+                  </form>
+                  <div className="mt-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-sm font-bold text-[#aaa4b8]">Manage your PartyUp account.</p>
                     <div className="flex flex-wrap gap-3">
                       <Link
                         href="/delete-account"

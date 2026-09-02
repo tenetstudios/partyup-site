@@ -47,12 +47,19 @@ export default function AuthButton() {
       void loadUserAndProfile();
     }, 0);
 
+    const handleProfileUpdated = () => {
+      void loadUserAndProfile();
+    };
+
     const { data: listener } = supabase.auth.onAuthStateChange(() => {
       void loadUserAndProfile();
     });
 
+    window.addEventListener("partyup:profile-updated", handleProfileUpdated);
+
     return () => {
       window.clearTimeout(timeout);
+      window.removeEventListener("partyup:profile-updated", handleProfileUpdated);
       listener.subscription.unsubscribe();
     };
   }, [loadUserAndProfile, supabase]);

@@ -146,8 +146,8 @@ export async function getHostReputationProfile(
 
 export function getHostDisplayName(profile: HostProfile) {
   return (
-    profile.display_name?.trim() ||
     profile.username?.trim() ||
+    profile.display_name?.trim() ||
     `Guest ${profile.id.slice(0, 4)}`
   );
 }
