@@ -45,9 +45,13 @@ export function drawBalloonRoom(
   drawLanes(context, bounds.width, bounds.height);
   if (options.debugPaths) drawPaths(context, room, bounds.width, bounds.height);
   for (const wall of room.walls) drawWall(context, wall, bounds.width, bounds.height, "rgba(195, 93, 255, 0.96)", 5);
-  for (const nail of room.nailStrips) {
-    const wall = room.walls.find((candidate) => candidate.id === nail.wallSegmentId);
-    if (wall) drawNailStrip(context, wall, nail, bounds.width, bounds.height);
+  for (const glue of room.glueTraps) {
+    const wall = room.walls.find((candidate) => candidate.id === glue.wallSegmentId);
+    if (wall) drawGlue(context, wall, bounds.width, bounds.height);
+  }
+  for (const wall of room.walls) {
+    const nails = room.nailStrips.filter((nail) => nail.wallSegmentId === wall.id);
+    if (nails.length > 0) drawNailStack(context, wall, nails, bounds.width, bounds.height);
   }
   if (options.preview) {
     drawWall(context, options.preview.wall, bounds.width, bounds.height, options.preview.valid ? "rgba(216, 180, 254, 0.72)" : "rgba(248, 113, 113, 0.82)", 7);
@@ -137,17 +141,21 @@ function drawWall(context: CanvasRenderingContext2D, wall: WallSegment, width: n
   context.restore();
 }
 
-function drawNailStrip(
+function drawGlue(context: CanvasRenderingContext2D, wall: WallSegment, width: number, height: number): void {
+  drawWall(context, wall, width, height, "rgba(74, 222, 128, 0.92)", 10);
+}
+
+function drawNailStack(
   context: CanvasRenderingContext2D,
   wall: WallSegment,
-  nail: NailStrip,
+  nails: NailStrip[],
   width: number,
   height: number,
 ): void {
-  const ratio = nail.durability / nail.maxDurability;
-  const color = nail.status === "broken"
-    ? "rgba(113, 113, 122, 0.72)"
-    : ratio <= 0.2
+  const totalDurability = nails.reduce((sum, nail) => sum + nail.durability, 0);
+  const totalMaximum = nails.reduce((sum, nail) => sum + nail.maxDurability, 0);
+  const ratio = totalDurability / totalMaximum;
+  const color = ratio <= 0.2
       ? "rgba(248, 113, 113, 0.96)"
       : ratio <= 0.6
         ? "rgba(251, 191, 36, 0.96)"
@@ -163,8 +171,7 @@ function drawNailStrip(
   context.fillStyle = color;
   context.lineWidth = 1.5;
   context.shadowColor = color;
-  context.shadowBlur = nail.status === "broken" ? 0 : 5 * ratio;
-  if (nail.status === "broken") context.setLineDash([2, 3]);
+  context.shadowBlur = 5 * ratio;
   for (let index = 0; index < spikeCount; index += 1) {
     const progress = (index + 0.5) / spikeCount;
     const x = wall.orientation === "vertical" ? startX : startX + length * progress;
@@ -187,10 +194,10 @@ function drawNailStrip(
   context.font = "900 8px monospace";
   context.textAlign = "center";
   context.textBaseline = "middle";
-  context.fillStyle = nail.status === "broken" ? "rgba(161, 161, 170, 0.9)" : "rgba(255,255,255,0.95)";
+  context.fillStyle = "rgba(255,255,255,0.95)";
   const labelX = wall.orientation === "vertical" ? startX + 12 : startX + length / 2;
   const labelY = wall.orientation === "vertical" ? startY + length / 2 : startY - 10;
-  context.fillText(`${nail.durability}/${nail.maxDurability}`, labelX, labelY);
+  context.fillText(`×${nails.length} ${totalDurability}`, labelX, labelY);
   context.restore();
 }
 
@@ -260,6 +267,13 @@ function drawBalloon(context: CanvasRenderingContext2D, balloon: Balloon, width:
   context.textBaseline = "middle";
   context.fillStyle = "rgba(255,255,255,0.96)";
   context.fillText(`${balloon.health}`, x, y + radius * 0.27);
+  if (balloon.glued) {
+    context.strokeStyle = "rgba(74, 222, 128, 0.95)";
+    context.lineWidth = 2;
+    context.beginPath();
+    context.arc(x, y, radius * 1.08, 0, Math.PI * 2);
+    context.stroke();
+  }
   if (showDebug) {
     context.font = "700 8px monospace";
     context.textAlign = "center";

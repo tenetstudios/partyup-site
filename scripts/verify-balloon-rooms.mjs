@@ -8,7 +8,6 @@ import {
   HEAVY_BALLOON_HP,
   MAX_NAIL_STRIPS,
   MAX_WALL_SEGMENTS,
-  NAIL_DAMAGE,
   NAIL_MAX_DURABILITY,
   PRE_ROUND_COUNTDOWN_MS,
   SPEED_BALLOON_HP,
@@ -200,10 +199,10 @@ assert.ok(supportedRoom.walls.some((candidate) => candidate.id === supportId));
 
 // Wall budget is shared by both orientations and capped centrally.
 const budgetRoom = createBalloonRoom("budget");
-for (let row = 0; row < MAX_WALL_SEGMENTS; row += 1) {
-  assert.equal(placeWall(budgetRoom, wall(budgetRoom, "vertical", 1, row)).valid, true);
-}
-assert.equal(validateWallPlacement(budgetRoom, wall(budgetRoom, "vertical", 2, 0)).code, "budget_reached");
+const budgetWalls = [];
+for (let gridX = 1; gridX <= 5; gridX += 1) for (let row = 0; row < 10; row += 1) budgetWalls.push(wall(budgetRoom, "vertical", gridX, row));
+for (const segment of budgetWalls.slice(0, MAX_WALL_SEGMENTS)) assert.equal(placeWall(budgetRoom, segment).valid, true);
+assert.equal(validateWallPlacement(budgetRoom, budgetWalls[MAX_WALL_SEGMENTS]).code, "budget_reached");
 
 // Dev spawning uses only the four typed lanes, exercises all four deterministically, and rooms remain independent.
 const spawnRoom = createBalloonRoom("spawn");
@@ -258,7 +257,7 @@ for (const armedWall of nailPlacementRoom.walls.slice(0, MAX_NAIL_STRIPS)) {
 }
 assert.equal(nailPlacementRoom.nailStrips.length, MAX_NAIL_STRIPS);
 assert.equal(placeNailStrip(nailPlacementRoom, nailPlacementRoom.walls[MAX_NAIL_STRIPS].id).code, "limit_reached");
-assert.equal(placeNailStrip(nailPlacementRoom, nailPlacementRoom.walls[0].id).code, "duplicate");
+assert.equal(placeNailStrip(nailPlacementRoom, nailPlacementRoom.walls[0].id).code, "limit_reached");
 
 // A completed logical move into either cell bordering an armed wall is one contact, independent of frames.
 const damageRoom = createArmedContactRoom("nail-damage");
@@ -266,11 +265,11 @@ const nailTarget = createBasicBalloon(damageRoom.id, "nail-target", 2, "left");
 damageRoom.balloons.push(nailTarget);
 const firstContactEvents = updateRoomSimulation(damageRoom, 1).filter((event) => event.type === "nail_contact");
 assert.equal(firstContactEvents.length, 1);
-assert.equal(nailTarget.health, 3 - NAIL_DAMAGE);
-assert.equal(damageRoom.nailStrips[0].durability, NAIL_MAX_DURABILITY - 1);
+assert.equal(nailTarget.health, 0);
+assert.equal(damageRoom.nailStrips[0].durability, NAIL_MAX_DURABILITY - 3);
 updateRoomSimulation(damageRoom, 0.25);
-assert.equal(nailTarget.health, 2, "render/fixed-step frames beside the strip must not duplicate contact");
-assert.equal(damageRoom.nailStrips[0].durability, 9);
+assert.equal(nailTarget.health, 0, "render/fixed-step frames beside the strip must not duplicate contact");
+assert.equal(damageRoom.nailStrips[0].durability, 7);
 
 // The same Nail Strip primitive arms horizontal walls and uses the same contact rule.
 const horizontalNailRoom = createBalloonRoom("horizontal-nails");
@@ -290,8 +289,8 @@ Object.assign(horizontalTarget, {
   pathRevision: horizontalNailRoom.wallRevision,
 });
 assert.equal(updateBalloonPosition(horizontalNailRoom, horizontalTarget, 2).filter((event) => event.type === "nail_contact").length, 1);
-assert.equal(horizontalTarget.health, 2);
-assert.equal(horizontalNailRoom.nailStrips[0].durability, 9);
+assert.equal(horizontalTarget.health, 0);
+assert.equal(horizontalNailRoom.nailStrips[0].durability, 7);
 
 // A legal wall route can make one BFS-driven balloon leave and encounter the same strip from its other side.
 const repeatRoom = createBalloonRoom("repeat-contact");
@@ -305,15 +304,17 @@ const repeatStructure = [
 ];
 for (const structureWall of repeatStructure) assert.equal(placeWall(repeatRoom, structureWall).valid, true);
 assert.equal(placeNailStrip(repeatRoom, repeatStructure[1].id).valid, true);
+repeatRoom.nailStrips[0].durability = 1;
 const repeatTarget = createBasicBalloon(repeatRoom.id, "repeat-target", 2, "left");
 repeatRoom.balloons.push(repeatTarget);
 recalculateBalloonPath(repeatRoom, repeatTarget);
 const routedPath = repeatTarget.path.map((cell) => `${cell.column}:${cell.row}`);
 assert.ok(routedPath.indexOf("2:5") < routedPath.indexOf("2:4"));
 const repeatEvents = updateBalloonPosition(repeatRoom, repeatTarget, 8).filter((event) => event.type === "nail_contact");
-assert.equal(repeatEvents.length, 2);
-assert.equal(repeatTarget.health, 1);
-assert.equal(repeatRoom.nailStrips[0].durability, 8);
+assert.equal(repeatEvents.length, 1);
+assert.equal(repeatTarget.health, 2);
+assert.equal(repeatRoom.nailStrips.length, 0);
+damageBalloon(repeatRoom, repeatTarget.id);
 assert.deepEqual(damageBalloon(repeatRoom, repeatTarget.id), { balloonId: repeatTarget.id, remainingHealth: 0, popped: true });
 
 // Nail kills use the same damage/removal lifecycle and can never escape afterward.

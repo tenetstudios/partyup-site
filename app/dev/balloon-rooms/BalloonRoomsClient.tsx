@@ -4,13 +4,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   BALLOON_TYPES,
   INCOME_TICK_INTERVAL_MS,
+  GLUE_COST,
   NAIL_STRIP_COST,
   MAX_FRAME_DELTA_SECONDS,
   MAX_LAUNCH_QUEUE_SIZE,
   MAX_NAIL_STRIPS,
   MAX_WALL_SEGMENTS,
   ROOM_MAX_HEALTH,
-  WAVE_ROUNDS,
   SIMULATION_STEP_SECONDS,
   VERTICAL_WALL_COST,
   applyGameAction,
@@ -22,11 +22,13 @@ import {
   findClosestGridEdge,
   getUnsupportedHorizontalWalls,
   getCurrentWaveRound,
+  getWaveRound,
   hasRequiredRoutes,
   updateRoomSimulation,
   updateWaveState,
   validateWallPlacement,
   validateNailPlacement,
+  validateGluePlacement,
   type BalloonRoom,
   type BalloonType,
   type SpawnLane,
@@ -36,7 +38,7 @@ import { drawBalloonRoom, type RoomVisualEffect, type WallPreview } from "@/lib/
 import styles from "./BalloonRooms.module.css";
 
 type RoomKey = "yours" | "opponent";
-type BuildMode = "wall" | "nails" | "remove";
+type BuildMode = "wall" | "nails" | "glue" | "remove";
 type RoomCollection = Record<RoomKey, BalloonRoom>;
 type CanvasCollection = Record<RoomKey, HTMLCanvasElement | null>;
 type RoomSummary = Record<RoomKey, {
@@ -50,6 +52,7 @@ type RoomSummary = Record<RoomKey, {
   routesValid: boolean;
   nailCount: number;
   brokenNailCount: number;
+  glueCount: number;
   coins: number;
   income: number;
   nextIncomeInMs: number;
@@ -75,6 +78,7 @@ function createRooms(): RoomCollection {
   applyGameAction(opponent, { type: "PLACE_WALL", wall: createWallSegment(opponent.id, "horizontal", 2, 5) });
   applyGameAction(opponent, { type: "PLACE_WALL", wall: createWallSegment(opponent.id, "horizontal", 3, 5) });
   applyGameAction(opponent, { type: "PLACE_NAILS", wallSegmentId: opponent.walls[1].id });
+  applyGameAction(opponent, { type: "PLACE_GLUE", wallSegmentId: opponent.walls[1].id });
   return { yours, opponent };
 }
 
@@ -94,6 +98,7 @@ function summarize(rooms: RoomCollection, simulationTimeMs: number): RoomSummary
       routesValid: hasRequiredRoutes(room, room.walls) && unsupportedCount === 0,
       nailCount: room.nailStrips.length,
       brokenNailCount: room.nailStrips.filter((nail) => nail.status === "broken").length,
+      glueCount: room.glueTraps.length,
       coins: room.economy.coins,
       income: room.economy.income,
       nextIncomeInMs: Math.max(0, room.economy.nextIncomeTickAt - simulationTimeMs),
@@ -113,7 +118,7 @@ function summarizeWave(state: WaveState, simulationTimeMs: number): WaveSummary 
   return {
     status: state.status,
     roundId: round?.id ?? null,
-    nextRoundId: WAVE_ROUNDS[nextRoundIndex]?.id ?? null,
+    nextRoundId: getWaveRound(nextRoundIndex + 1)?.id ?? null,
     spawnedCount: state.spawnedCount,
     totalCount: round?.composition.reduce((sum, entry) => sum + entry.count, 0) ?? 0,
     nextRoundInSeconds: state.transitionEndsAt === null ? 0 : Math.max(0, Math.ceil((state.transitionEndsAt - simulationTimeMs) / 1000)),
@@ -259,7 +264,9 @@ export default function BalloonRoomsClient() {
       ? applyGameAction(room, { type: "PLACE_WALL", wall })
       : buildMode === "nails"
         ? applyGameAction(room, { type: "PLACE_NAILS", wallSegmentId: wall.id })
-        : applyGameAction(room, { type: "REMOVE_WALL", wallSegmentId: wall.id });
+        : buildMode === "glue"
+          ? applyGameAction(room, { type: "PLACE_GLUE", wallSegmentId: wall.id })
+          : applyGameAction(room, { type: "REMOVE_WALL", wallSegmentId: wall.id });
     showFeedback(result.message, result.applied);
     if (result.applied) refreshSummary();
     previewRef.current = null;
@@ -311,7 +318,9 @@ export default function BalloonRoomsClient() {
       ? validateWallPlacement(room, wall).valid && room.economy.coins >= VERTICAL_WALL_COST
       : buildMode === "nails"
         ? validateNailPlacement(room, wall.id).valid && room.economy.coins >= NAIL_STRIP_COST
-        : existingWall;
+        : buildMode === "glue"
+          ? validateGluePlacement(room, wall.id).valid && room.economy.coins >= GLUE_COST
+          : existingWall;
     previewRef.current = { wall, valid };
   }, [buildMode, cancelBuildHold, showFeedback]);
 
@@ -360,7 +369,7 @@ export default function BalloonRoomsClient() {
   }, [cancelBuildHold, refreshSummary]);
 
   const selectedBalloonConfig = BALLOON_TYPES[selectedBalloonType];
-  const currentRound = waveSummary.roundId ? WAVE_ROUNDS[waveSummary.roundId - 1] : null;
+  const currentRound = waveSummary.roundId ? getWaveRound(waveSummary.roundId) : null;
 
   return (
     <main className={`${styles.gameShell} text-white`}>
@@ -416,7 +425,7 @@ export default function BalloonRoomsClient() {
                 </div>
                 <div className={`${styles.statusPanel} p-3`}>
                   {roomSummary.running ? <>
-                    <div className="flex items-center justify-between gap-1"><p className="text-[10px] font-black tracking-[0.14em] text-zinc-400">ROOM HP</p><div className="text-right text-[9px] font-bold"><p className="text-purple-300">WALLS {roomSummary.wallCount}/{MAX_WALL_SEGMENTS}</p><p className="text-emerald-300">NAILS {roomSummary.nailCount}/{MAX_NAIL_STRIPS}{roomSummary.brokenNailCount > 0 ? ` · ${roomSummary.brokenNailCount} BROKEN` : ""}</p></div></div>
+                    <div className="flex items-center justify-between gap-1"><p className="text-[10px] font-black tracking-[0.14em] text-zinc-400">ROOM HP</p><div className="text-right text-[9px] font-bold"><p className="text-purple-300">WALLS {roomSummary.wallCount}/{MAX_WALL_SEGMENTS}</p><p className="text-emerald-300">NAILS {roomSummary.nailCount}/{MAX_NAIL_STRIPS} · GLUE {roomSummary.glueCount}{roomSummary.brokenNailCount > 0 ? ` · ${roomSummary.brokenNailCount} BROKEN` : ""}</p></div></div>
                     <div className="mt-1 flex items-baseline justify-between gap-2"><p className="text-3xl font-black tabular-nums">{key === "opponent" ? "∞" : roomSummary.health}<span className="text-sm text-zinc-500">{key === "opponent" ? " DEV INVULNERABLE" : ` / ${ROOM_MAX_HEALTH}`}</span></p><p className="text-[9px] font-bold text-zinc-500">{roomSummary.count} ACTIVE</p></div>
                     <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-black/50"><div className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-[width]" style={{ width: `${(roomSummary.health / ROOM_MAX_HEALTH) * 100}%` }} /></div>
                   </> : <div className="grid min-h-14 place-items-center text-center"><p className="text-lg font-black text-red-300">ROOM BROKEN</p></div>}
@@ -424,9 +433,9 @@ export default function BalloonRoomsClient() {
 
                 {key === "yours" ? (
                   <div className={`${styles.controls} mt-2 p-2`}>
-                    <div className="grid grid-cols-3 gap-1">
-                      {(["wall", "nails", "remove"] as BuildMode[]).map((mode) => {
-                        const cost = mode === "wall" ? VERTICAL_WALL_COST : mode === "nails" ? NAIL_STRIP_COST : null;
+                    <div className="grid grid-cols-4 gap-1">
+                      {(["wall", "nails", "glue", "remove"] as BuildMode[]).map((mode) => {
+                        const cost = mode === "wall" ? VERTICAL_WALL_COST : mode === "nails" ? NAIL_STRIP_COST : mode === "glue" ? GLUE_COST : null;
                         const unavailable = cost !== null && roomSummary.coins < cost;
                         return <button key={mode} type="button" aria-pressed={buildMode === mode} disabled={unavailable} onClick={() => selectMode(mode)} className={`min-h-11 rounded-md border px-1 text-[10px] font-black disabled:cursor-not-allowed disabled:opacity-40 ${buildMode === mode ? "border-purple-300 bg-purple-500/35 text-white" : "border-white/10 bg-black/20 text-zinc-400"}`}>{mode.toUpperCase()}{cost !== null ? ` ${cost}` : ""}</button>;
                       })}
