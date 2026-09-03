@@ -15,6 +15,14 @@ The web development UI is the first playable network client. The Expo repository
 
 The current snapshot-per-action plus two-second reconciliation is intentionally correctness-first. At larger concurrency, move passive ticking to scheduled/server workers and add checkpoint snapshots with action-log retention instead of increasing client sync frequency.
 
+## Phase 9 matchmaking
+
+`float_pool_entries` is the single authenticated queue for both `room` and `global` searches. A user has at most one row; changing modes replaces the prior search. The `float-match` function validates the client/core version and delegates pairing to `float_server_join_pool`, which serializes formation in PostgreSQL, ignores entries older than 45 seconds, chooses the oldest compatible opponent, and creates one existing `float_matches` row with deterministic A/B slots.
+
+Room searches use `event_attendees.status = 'accepted'` plus a non-ended `event_rooms` row as their server-side membership authority. Active/sticky room storage is only used to populate the UI. Pool rows are participant-private under RLS, and Realtime updates the waiting player's own row with the shared match ID. A 15-second client heartbeat refreshes the search; cancellation loses to an already-committed match.
+
+Set `FLOAT_MATCHMAKING_DEBUG=true` on the Edge Function only while diagnosing pool join, cancellation, or match formation events.
+
 ## Local verification
 
 With Docker Desktop or Podman running:

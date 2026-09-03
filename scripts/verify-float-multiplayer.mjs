@@ -40,4 +40,23 @@ for (const contract of [
   "alter publication supabase_realtime add table public.float_match_actions",
 ]) assert.ok(migration.includes(contract), `Missing database contract: ${contract}`);
 
-console.log("Float 8.1 browser/server core parity and database transport contracts verified.");
+const poolMigration = await readFile(new URL("../supabase/migrations/20260903001000_float_matchmaking_pool.sql", import.meta.url), "utf8");
+for (const contract of [
+  "create table public.float_pool_entries",
+  "user_id uuid primary key",
+  "pool_mode text not null check (pool_mode in ('room', 'global'))",
+  "last_seen_at >= now() - interval '45 seconds'",
+  "order by candidate.joined_at, candidate.user_id",
+  "for update skip locked",
+  "attendee.status::text = 'accepted'",
+  "create trigger float_matches_single_active_participant",
+  "create policy float_pool_own_select",
+  "alter publication supabase_realtime add table public.float_pool_entries",
+]) assert.ok(poolMigration.includes(contract), `Missing Float pool contract: ${contract}`);
+
+const edgeFunction = await readFile(new URL("../supabase/functions/float-match/index.ts", import.meta.url), "utf8");
+for (const operation of ["poolJoin", "poolStatus", "poolCancel"]) {
+  assert.ok(edgeFunction.includes(`body.operation === "${operation}"`), `Missing Float Edge operation: ${operation}`);
+}
+
+console.log("Float 8.1 core parity, transport, and Phase 9 room/global pooling contracts verified.");

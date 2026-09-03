@@ -203,6 +203,7 @@ export default async function RoomPage({
         <div className="grid flex-1 gap-5 xl:grid-cols-[280px_minmax(0,1fr)_350px]">
           <div className="order-2 xl:order-1">
             <EventMatchButton roomId={id} />
+            <Link href={`/float?roomId=${encodeURIComponent(id)}`} className="mt-3 flex min-h-12 items-center justify-center rounded-xl bg-purple-600 px-4 text-sm font-black text-white hover:bg-purple-500">PLAY FLOAT HERE</Link>
           </div>
 
           <div className="order-1 flex min-w-0 flex-col gap-5 xl:order-2">

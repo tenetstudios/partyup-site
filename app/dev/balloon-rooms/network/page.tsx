@@ -10,10 +10,13 @@ export const metadata: Metadata = {
 export default async function FloatNetworkPage({
   searchParams,
 }: {
-  searchParams: Promise<{ code?: string | string[] }>;
+  searchParams: Promise<{ code?: string | string[]; roomId?: string | string[] }>;
 }) {
   if (process.env.NODE_ENV !== "development") notFound();
-  const value = (await searchParams).code;
+  const params = await searchParams;
+  const value = params.code;
+  const roomValue = params.roomId;
   const initialCode = (Array.isArray(value) ? value[0] : value)?.toUpperCase() ?? "";
-  return <NetworkBalloonRoomsClient initialCode={initialCode} />;
+  const initialRoomId = (Array.isArray(roomValue) ? roomValue[0] : roomValue) ?? null;
+  return <NetworkBalloonRoomsClient initialCode={initialCode} initialRoomId={initialRoomId} />;
 }

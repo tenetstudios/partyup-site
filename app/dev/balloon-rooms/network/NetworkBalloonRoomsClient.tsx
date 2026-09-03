@@ -33,9 +33,13 @@ import {
 import { drawBalloonRoom, type WallPreview } from "@/lib/balloonRooms/rendering";
 import {
   FLOAT_CORE_VERSION,
+  FLOAT_POOL_HEARTBEAT_MS,
   FLOAT_RECONNECT_AFTER_MS,
   FLOAT_SYNC_INTERVAL_MS,
+  cancelFloatPool,
   createFloatNetworkMatch,
+  getFloatPoolStatus,
+  joinFloatPool,
   joinFloatNetworkMatch,
   playerIdForUser,
   readyFloatNetworkMatch,
@@ -44,8 +48,10 @@ import {
   type FloatActionIntent,
   type FloatMatchRow,
   type FloatPlayerId,
+  type FloatPoolMode,
 } from "@/lib/floatMultiplayer";
 import { createSupabaseClient } from "@/lib/supabase";
+import { readActiveRoomContext } from "@/lib/activeRoomContext";
 import styles from "../BalloonRooms.module.css";
 
 type ViewKey = "yours" | "opponent";
@@ -73,7 +79,7 @@ function roomSummary(room: BalloonRoom, simulationTimeMs: number) {
   };
 }
 
-export default function NetworkBalloonRoomsClient({ initialCode }: { initialCode: string }) {
+export default function NetworkBalloonRoomsClient({ initialCode, initialRoomId }: { initialCode: string; initialRoomId: string | null }) {
   const supabase = useMemo(() => createSupabaseClient(), []);
   const [userId, setUserId] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
@@ -82,6 +88,8 @@ export default function NetworkBalloonRoomsClient({ initialCode }: { initialCode
   const [snapshot, setSnapshot] = useState<FloatMatchState | null>(null);
   const [code, setCode] = useState(initialCode.replace(/[^A-Z2-9]/g, "").slice(0, 6));
   const [busy, setBusy] = useState(false);
+  const [poolMode, setPoolMode] = useState<FloatPoolMode | null>(null);
+  const [roomId, setRoomId] = useState<string | null>(initialRoomId);
   const [message, setMessage] = useState("Create a match or enter a six-character code.");
   const [lane, setLane] = useState<SpawnLane>(1);
   const [buildMode, setBuildMode] = useState<BuildMode>("wall");
@@ -92,6 +100,10 @@ export default function NetworkBalloonRoomsClient({ initialCode }: { initialCode
   const holdRef = useRef<{ pointerId: number; x: number; y: number; timer: number } | null>(null);
   const matchRowRef = useRef<FloatMatchRow | null>(null);
   const busyRef = useRef(false);
+
+  useEffect(() => {
+    if (!roomId) setRoomId(readActiveRoomContext()?.roomId ?? null);
+  }, [roomId]);
 
   const acceptMatch = useCallback((row: FloatMatchRow) => {
     const current = matchRowRef.current;
@@ -122,6 +134,15 @@ export default function NetworkBalloonRoomsClient({ initialCode }: { initialCode
       setUserId(id);
       setAuthReady(true);
       if (!id) return;
+      try {
+        const pool = await getFloatPoolStatus();
+        if (pool.status === "matched" && pool.match) acceptMatch(pool.match);
+        else if (pool.status === "searching" && pool.entry) {
+          setPoolMode(pool.entry.pool_mode);
+          if (pool.entry.room_id) setRoomId(pool.entry.room_id);
+          setMessage(pool.entry.pool_mode === "room" ? "SEARCHING THIS ROOM..." : "SEARCHING PARTYUP...");
+        }
+      } catch { /* A missing Phase 9 migration must not block private-code recovery. */ }
       const savedId = window.localStorage.getItem("partyup_float_match_id");
       if (savedId) {
         try { await recover(savedId); } catch { window.localStorage.removeItem("partyup_float_match_id"); }
@@ -137,6 +158,29 @@ export default function NetworkBalloonRoomsClient({ initialCode }: { initialCode
 
   const matchId = matchRow?.id ?? null;
   const matchStatus = matchRow?.status ?? null;
+
+  const acceptPoolResult = useCallback((result: Awaited<ReturnType<typeof getFloatPoolStatus>>) => {
+    if (result.status === "matched" && result.match) {
+      setPoolMode(null);
+      setMessage("MATCH FOUND");
+      acceptMatch(result.match);
+    } else if (result.status === "expired") {
+      setPoolMode(null);
+      setMessage("Search expired. Try again.");
+    }
+  }, [acceptMatch]);
+
+  useEffect(() => {
+    if (!poolMode || !userId || matchId) return;
+    const refresh = () => void getFloatPoolStatus().then(acceptPoolResult).catch((error) => setMessage(error.message));
+    const channel = supabase.channel(`float-pool:${userId}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "float_pool_entries", filter: `user_id=eq.${userId}` }, refresh)
+      .subscribe();
+    const interval = window.setInterval(refresh, FLOAT_POOL_HEARTBEAT_MS);
+    const onVisibility = () => { if (document.visibilityState === "visible") refresh(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => { window.clearInterval(interval); document.removeEventListener("visibilitychange", onVisibility); void supabase.removeChannel(channel); };
+  }, [acceptPoolResult, matchId, poolMode, supabase, userId]);
 
   useEffect(() => {
     if (!matchId || !userId) return;
@@ -221,6 +265,30 @@ export default function NetworkBalloonRoomsClient({ initialCode }: { initialCode
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Float request failed.");
     } finally { busyRef.current = false; setBusy(false); }
+  };
+
+  const startPool = async (mode: FloatPoolMode) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    try {
+      const result = await joinFloatPool(mode, mode === "room" ? roomId : null);
+      if (result.status === "matched" && result.match) acceptPoolResult(result);
+      else { setPoolMode(mode); setMessage(mode === "room" ? "SEARCHING THIS ROOM..." : "SEARCHING PARTYUP..."); }
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Float search failed."); }
+    finally { busyRef.current = false; setBusy(false); }
+  };
+
+  const cancelPool = async () => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    try {
+      const result = await cancelFloatPool();
+      if (result.status === "matched" && result.match) acceptPoolResult(result);
+      else { setPoolMode(null); setMessage("Search cancelled."); }
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Could not cancel search."); }
+    finally { busyRef.current = false; setBusy(false); }
   };
 
   const closeMatch = () => {
@@ -341,7 +409,16 @@ export default function NetworkBalloonRoomsClient({ initialCode }: { initialCode
       <section className="w-full max-w-md rounded-2xl border border-purple-200/20 bg-black/35 p-5">
         <div className="flex items-center justify-between"><h1 className="text-2xl font-black">FLOAT NETWORK</h1><Link href="/dev/balloon-rooms" className="text-[10px] font-black text-purple-300">LOCAL MODE</Link></div>
         <p className="mt-2 text-xs text-zinc-400">Core {FLOAT_CORE_VERSION} · two authenticated sessions</p>
-        <button type="button" disabled={busy} onClick={() => void runLobbyAction(createFloatNetworkMatch)} className="mt-5 min-h-12 w-full rounded-xl bg-purple-600 font-black disabled:opacity-50">CREATE FLOAT MATCH</button>
+        {poolMode ? <>
+          <div className="mt-5 rounded-xl border border-purple-300/30 bg-purple-500/10 p-5 text-center"><p className="font-black">{poolMode === "room" ? "SEARCHING THIS ROOM..." : "SEARCHING PARTYUP..."}</p><p className="mt-1 text-xs text-zinc-400">Keep this page open while we find a compatible Float player.</p></div>
+          <button type="button" disabled={busy} onClick={() => void cancelPool()} className="mt-3 min-h-12 w-full rounded-xl border border-white/20 font-black disabled:opacity-50">CANCEL</button>
+        </> : <>
+          <button type="button" disabled={busy || !roomId} onClick={() => void startPool("room")} className="mt-5 min-h-12 w-full rounded-xl bg-purple-600 font-black disabled:opacity-40">FIND SOMEONE HERE<span className="block text-[10px] opacity-70">ROOM POOL</span></button>
+          {!roomId ? <p className="mt-2 text-center text-[10px] font-black text-amber-300">JOIN A ROOM TO PLAY PEOPLE HERE</p> : null}
+          <button type="button" disabled={busy} onClick={() => void startPool("global")} className="mt-3 min-h-12 w-full rounded-xl border border-purple-300/40 font-black disabled:opacity-50">PLAY ANYONE<span className="block text-[10px] text-purple-300">GLOBAL POOL</span></button>
+        </>}
+        <div className="my-4 flex items-center gap-2"><div className="h-px flex-1 bg-white/10" /><span className="text-[10px] font-black text-zinc-500">PRIVATE TESTING</span><div className="h-px flex-1 bg-white/10" /></div>
+        <button type="button" disabled={busy || Boolean(poolMode)} onClick={() => void runLobbyAction(createFloatNetworkMatch)} className="min-h-11 w-full rounded-xl border border-white/15 text-xs font-black disabled:opacity-50">CREATE BY CODE</button>
         <div className="my-4 flex items-center gap-2"><div className="h-px flex-1 bg-white/10" /><span className="text-[10px] font-black text-zinc-500">OR JOIN</span><div className="h-px flex-1 bg-white/10" /></div>
         <input value={code} onChange={(event) => setCode(event.target.value.toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 6))} maxLength={6} placeholder="MATCH CODE" className="min-h-12 w-full rounded-xl border border-white/15 bg-black/40 px-4 text-center text-xl font-black tracking-[0.35em] outline-none focus:border-purple-300" />
         <button type="button" disabled={busy || code.length !== 6} onClick={() => void runLobbyAction(() => joinFloatNetworkMatch(code))} className="mt-2 min-h-12 w-full rounded-xl border border-purple-300/40 font-black disabled:opacity-40">JOIN MATCH</button>

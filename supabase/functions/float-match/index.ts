@@ -15,6 +15,11 @@ const MAX_CATCH_UP_SECONDS = 15 * 60;
 const MAX_COMMIT_RETRIES = 5;
 const RECONNECT_GRACE_SECONDS = 60;
 const MATCH_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const DEBUG_MATCHMAKING = Deno.env.get("FLOAT_MATCHMAKING_DEBUG") === "true";
+
+function matchmakingLog(event: string, details: Record<string, unknown>) {
+  if (DEBUG_MATCHMAKING) console.info(`[FLOAT ${event}]`, details);
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -41,6 +46,39 @@ function randomMatchCode() {
 
 function createInitialState(matchId: string, seed: number) {
   return createFloatMatch({ matchId, playerIds: ["playerA", "playerB"], seed });
+}
+
+async function joinPool(
+  adminClient: ReturnType<typeof createClient>,
+  userId: string,
+  body: Record<string, unknown>,
+) {
+  if (body.poolMode !== "room" && body.poolMode !== "global") throw new Error("Invalid Float pool mode");
+  if (body.poolMode === "room" && typeof body.roomId !== "string") throw new Error("Float room required");
+  if (body.gameVersion !== GAME_VERSION || body.coreVersion !== CORE_VERSION) throw new Error("FLOAT UPDATE REQUIRED");
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const matchId = crypto.randomUUID();
+    const code = randomMatchCode();
+    const seed = crypto.getRandomValues(new Uint32Array(1))[0] & 0x7fffffff;
+    const { data, error } = await adminClient.rpc("float_server_join_pool", {
+      p_user_id: userId,
+      p_pool_mode: body.poolMode,
+      p_room_id: body.poolMode === "room" ? body.roomId : null,
+      p_game_version: GAME_VERSION,
+      p_core_version: CORE_VERSION,
+      p_platform: typeof body.platform === "string" ? body.platform : null,
+      p_match_id: matchId,
+      p_match_code: code,
+      p_match_seed: seed,
+      p_initial_state: createInitialState(matchId, seed),
+    });
+    if (!error) {
+      matchmakingLog(data?.status === "matched" ? "MATCH CREATED" : "POOL JOIN", { userId, poolMode: body.poolMode, roomId: body.roomId ?? null, matchId: data?.match?.id ?? null });
+      return data;
+    }
+    if (error.code !== "23505") throw error;
+  }
+  throw new Error("Could not allocate a Float match code");
 }
 
 function actorPlayerId(match: Record<string, unknown>, userId: string) {
@@ -234,6 +272,23 @@ Deno.serve(async (request) => {
   try { body = await request.json(); } catch { return jsonResponse({ error: "Malformed JSON request." }, 400); }
 
   try {
+    if (body.operation === "poolJoin") {
+      return jsonResponse(await joinPool(adminClient, userData.user.id, body));
+    }
+
+    if (body.operation === "poolStatus") {
+      const { data, error } = await adminClient.rpc("float_server_pool_status", { p_user_id: userData.user.id });
+      if (error) throw error;
+      return jsonResponse(data);
+    }
+
+    if (body.operation === "poolCancel") {
+      const { data, error } = await adminClient.rpc("float_server_cancel_pool", { p_user_id: userData.user.id });
+      if (error) throw error;
+      matchmakingLog(data?.status === "matched" ? "CANCEL LOST TO MATCH" : "POOL CANCEL", { userId: userData.user.id, matchId: data?.match?.id ?? null });
+      return jsonResponse(data);
+    }
+
     if (body.operation === "create") {
       for (let attempt = 0; attempt < 5; attempt += 1) {
         const matchId = crypto.randomUUID();
