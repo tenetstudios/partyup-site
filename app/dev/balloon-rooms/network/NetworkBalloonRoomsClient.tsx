@@ -15,6 +15,7 @@ import {
   WALL_REPAIR_AMOUNT,
   WALL_REPAIR_COST,
   WALL_REPAIR_THRESHOLD,
+  applyFloatMatchAction,
   createWallSegment,
   findBalloonAtPoint,
   findClosestGridEdge,
@@ -50,6 +51,12 @@ import {
   type FloatPlayerId,
   type FloatPoolMode,
 } from "@/lib/floatMultiplayer";
+import {
+  floatActionFromIntent,
+  isNewerGameplaySnapshot,
+  reconcileFloatState,
+  type PendingFloatAction,
+} from "@/lib/floatMultiplayerState";
 import { createSupabaseClient } from "@/lib/supabase";
 import { readActiveRoomContext } from "@/lib/activeRoomContext";
 import styles from "../BalloonRooms.module.css";
@@ -57,6 +64,7 @@ import styles from "../BalloonRooms.module.css";
 type ViewKey = "yours" | "opponent";
 type BuildMode = "wall" | "nails" | "glue" | "remove";
 type CanvasCollection = Record<ViewKey, HTMLCanvasElement | null>;
+type QueuedLocalAction = PendingFloatAction & { inputAt: number; localApplyMs: number };
 
 const viewKeys: ViewKey[] = ["yours", "opponent"];
 
@@ -94,16 +102,39 @@ export default function NetworkBalloonRoomsClient({ initialCode, initialRoomId }
   const [lane, setLane] = useState<SpawnLane>(1);
   const [buildMode, setBuildMode] = useState<BuildMode>("wall");
   const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
+  const [pendingCount, setPendingCount] = useState(0);
   const [now, setNow] = useState(0);
   const canvasesRef = useRef<CanvasCollection>({ yours: null, opponent: null });
   const previewRef = useRef<WallPreview>(null);
   const holdRef = useRef<{ pointerId: number; x: number; y: number; timer: number } | null>(null);
   const matchRowRef = useRef<FloatMatchRow | null>(null);
+  const canonicalMatchRef = useRef<FloatMatchRow | null>(null);
+  const pendingActionsRef = useRef<PendingFloatAction[]>([]);
+  const actionQueueRef = useRef<QueuedLocalAction[]>([]);
+  const actionQueueRunningRef = useRef(false);
   const busyRef = useRef(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate browser-only room context after mount
     if (!roomId) setRoomId(readActiveRoomContext()?.roomId ?? null);
   }, [roomId]);
+
+  const reconcileFromCanonical = useCallback((targetTimeMs?: number) => {
+    const canonical = canonicalMatchRef.current;
+    if (!canonical) return;
+    const target = Math.max(canonical.state.simulationTimeMs, targetTimeMs ?? matchRef.current?.simulationTimeMs ?? 0);
+    const state = reconcileFloatState(canonical.state, pendingActionsRef.current, target);
+    matchRef.current = state;
+    setSnapshot(cloneState(state));
+  }, []);
+
+  const removePendingAction = useCallback((actionId: string) => {
+    const next = pendingActionsRef.current.filter((pending) => pending.actionId !== actionId);
+    if (next.length === pendingActionsRef.current.length) return false;
+    pendingActionsRef.current = next;
+    setPendingCount(next.length);
+    return true;
+  }, []);
 
   const acceptMatch = useCallback((row: FloatMatchRow) => {
     const current = matchRowRef.current;
@@ -111,13 +142,23 @@ export default function NetworkBalloonRoomsClient({ initialCode, initialRoomId }
       row.state_revision < current.state_revision
       || (row.state_revision === current.state_revision && Date.parse(row.updated_at) < Date.parse(current.updated_at))
     )) return;
+    const newMatch = current?.id !== row.id;
+    if (newMatch) {
+      pendingActionsRef.current = [];
+      actionQueueRef.current = [];
+      setPendingCount(0);
+      canonicalMatchRef.current = null;
+    }
     matchRowRef.current = row;
     setMatchRow(row);
-    const state = cloneState(row.state);
-    matchRef.current = state;
-    setSnapshot(cloneState(state));
+    const canonicalRevision = canonicalMatchRef.current?.id === row.id ? canonicalMatchRef.current.state_revision : null;
+    if (isNewerGameplaySnapshot(canonicalRevision, row.state_revision)) {
+      const targetTimeMs = newMatch ? undefined : matchRef.current?.simulationTimeMs;
+      canonicalMatchRef.current = row;
+      reconcileFromCanonical(targetTimeMs);
+    }
     window.localStorage.setItem("partyup_float_match_id", row.id);
-  }, []);
+  }, [reconcileFromCanonical]);
 
   const recover = useCallback(async (matchId: string) => {
     const { data, error } = await supabase.from("float_matches").select("*").eq("id", matchId).maybeSingle();
@@ -154,7 +195,7 @@ export default function NetworkBalloonRoomsClient({ initialCode, initialRoomId }
       setAuthReady(true);
     });
     return () => { live = false; listener.subscription.unsubscribe(); };
-  }, [recover, supabase]);
+  }, [acceptMatch, recover, supabase]);
 
   const matchId = matchRow?.id ?? null;
   const matchStatus = matchRow?.status ?? null;
@@ -189,12 +230,13 @@ export default function NetworkBalloonRoomsClient({ initialCode, initialRoomId }
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "float_matches", filter: `id=eq.${matchId}` }, (payload) => {
         acceptMatch(payload.new as FloatMatchRow);
       })
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "float_match_actions", filter: `match_id=eq.${matchId}` }, () => {
-        void recover(matchId).catch((error) => setMessage(error instanceof Error ? error.message : "Could not recover Float state."));
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "float_match_actions", filter: `match_id=eq.${matchId}` }, (payload) => {
+        const actionId = typeof payload.new.client_action_id === "string" ? payload.new.client_action_id : null;
+        if (actionId) removePendingAction(actionId);
       })
       .subscribe();
     return () => { void supabase.removeChannel(channel); };
-  }, [acceptMatch, matchId, recover, supabase, userId]);
+  }, [acceptMatch, matchId, removePendingAction, supabase, userId]);
 
   useEffect(() => {
     if (!matchId || !userId || matchStatus === "complete" || matchStatus === "abandoned") return;
@@ -295,26 +337,92 @@ export default function NetworkBalloonRoomsClient({ initialCode, initialRoomId }
     cancelHold();
     window.localStorage.removeItem("partyup_float_match_id");
     matchRowRef.current = null;
+    canonicalMatchRef.current = null;
     matchRef.current = null;
+    pendingActionsRef.current = [];
+    actionQueueRef.current = [];
+    setPendingCount(0);
     setMatchRow(null);
     setSnapshot(null);
     setSelectedWallId(null);
     setMessage("Create a match or enter a six-character code.");
   };
 
-  const sendIntent = async (intent: FloatActionIntent) => {
+  const drainActionQueue = useCallback(async () => {
+    if (actionQueueRunningRef.current) return;
+    actionQueueRunningRef.current = true;
+    while (actionQueueRef.current.length > 0) {
+      const queued = actionQueueRef.current[0]!;
+      const currentMatch = matchRowRef.current;
+      if (!currentMatch) break;
+      const requestStartedAt = performance.now();
+      try {
+        const result = await submitFloatNetworkAction(currentMatch.id, queued.intent, queued.actionId);
+        removePendingAction(queued.actionId);
+        if (matchRowRef.current?.id !== currentMatch.id) continue;
+        acceptMatch(result.match);
+        reconcileFromCanonical();
+        setMessage(result.accepted ? "Synced" : result.error ?? "Action rejected");
+        if (!result.accepted) {
+          const recovery = await syncFloatNetworkMatch(currentMatch.id);
+          acceptMatch(recovery.match);
+          reconcileFromCanonical();
+        }
+        if (process.env.NODE_ENV === "development") {
+          console.debug(`[FLOAT ${queued.intent.actionType}]`, {
+            localApplyMs: queued.localApplyMs,
+            requestMs: Math.round(performance.now() - requestStartedAt),
+            totalReconcileMs: Math.round(performance.now() - queued.inputAt),
+            accepted: result.accepted,
+          });
+        }
+      } catch (error) {
+        removePendingAction(queued.actionId);
+        if (matchRowRef.current?.id !== currentMatch.id) continue;
+        try {
+          const recovery = await syncFloatNetworkMatch(currentMatch.id);
+          acceptMatch(recovery.match);
+        } catch (recoveryError) {
+          if (process.env.NODE_ENV === "development") console.error("[FLOAT RESYNC FAILED]", recoveryError);
+        }
+        reconcileFromCanonical();
+        setMessage(error instanceof Error ? error.message : "Action failed.");
+      } finally {
+        actionQueueRef.current.shift();
+      }
+    }
+    actionQueueRunningRef.current = false;
+  }, [acceptMatch, reconcileFromCanonical, removePendingAction]);
+
+  const handleSendIntent = (intent: FloatActionIntent) => {
     const currentMatch = matchRowRef.current;
-    if (!currentMatch || busyRef.current) return;
-    busyRef.current = true;
-    setBusy(true);
-    setMessage("Sending…");
+    const state = matchRef.current;
+    if (!currentMatch || !state || !playerId || currentMatch.status !== "active") return;
+    // eslint-disable-next-line react-hooks/purity -- sampled only when an input handler calls this function
+    const inputAt = performance.now();
+    const actionId = crypto.randomUUID();
     try {
-      const result = await submitFloatNetworkAction(currentMatch.id, intent);
-      acceptMatch(result.match);
-      setMessage(result.accepted ? "Accepted" : result.error ?? "Action rejected");
+      const action = floatActionFromIntent(state, playerId, intent);
+      const result = applyFloatMatchAction(state, action);
+      if (!result.applied) {
+        setMessage(result.message);
+        return;
+      }
+      // eslint-disable-next-line react-hooks/purity -- sampled immediately after the input's local core application
+      const localApplyMs = Math.round(performance.now() - inputAt);
+      const queued: QueuedLocalAction = { actionId, actorPlayerId: playerId, intent, simulationTimeMs: state.simulationTimeMs, inputAt, localApplyMs };
+      pendingActionsRef.current = [...pendingActionsRef.current, queued];
+      actionQueueRef.current.push(queued);
+      setPendingCount(pendingActionsRef.current.length);
+      setSnapshot(cloneState(state));
+      setMessage("Applied locally");
+      if (process.env.NODE_ENV === "development") {
+        console.debug(`[FLOAT ${intent.actionType}] local apply`, { actionId, elapsedMs: localApplyMs });
+      }
+      void drainActionQueue();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Action failed.");
-    } finally { busyRef.current = false; setBusy(false); }
+      setMessage(error instanceof Error ? error.message : "Action could not be applied.");
+    }
   };
 
   const cancelHold = (pointerId?: number) => {
@@ -331,7 +439,7 @@ export default function NetworkBalloonRoomsClient({ initialCode, initialRoomId }
   const buildAt = (canvas: HTMLCanvasElement, clientX: number, clientY: number) => {
     if (!playerId || !matchRef.current) return;
     const bounds = canvas.getBoundingClientRect();
-    const edge = findClosestGridEdge((clientX - bounds.left) / bounds.width, (clientY - bounds.top) / bounds.height, bounds.width, bounds.height);
+    const edge = findClosestGridEdge((clientX - bounds.left) / bounds.width, (clientY - bounds.top) / bounds.height, bounds.width, bounds.height, 28);
     if (!edge) { setMessage("Hold directly on a grid edge."); return; }
     const wall = createWallSegment(matchRef.current.players[playerId]!.room.id, edge.orientation, edge.gridX, edge.gridY);
     const intent: FloatActionIntent = buildMode === "wall"
@@ -342,15 +450,16 @@ export default function NetworkBalloonRoomsClient({ initialCode, initialRoomId }
           ? { actionType: "PLACE_GLUE", payload: { wallSegmentId: wall.id } }
           : { actionType: "REMOVE_WALL", payload: { wallSegmentId: wall.id } };
     previewRef.current = null;
-    void sendIntent(intent);
+    void handleSendIntent(intent);
   };
 
   const handlePointerDown = (key: ViewKey, event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (key !== "yours" || event.button !== 0 || !playerId || !matchRef.current || busy) return;
+    if (key !== "yours" || event.button !== 0 || !playerId || !matchRef.current) return;
+    event.preventDefault();
     const canvas = event.currentTarget;
     const bounds = canvas.getBoundingClientRect();
     const balloon = findBalloonAtPoint(matchRef.current.players[playerId]!.room, (event.clientX - bounds.left) / bounds.width, (event.clientY - bounds.top) / bounds.height, 22 / Math.min(bounds.width, bounds.height));
-    if (balloon) { void sendIntent({ actionType: "POP_BALLOON", payload: { balloonId: balloon.id } }); return; }
+    if (balloon) { void handleSendIntent({ actionType: "POP_BALLOON", payload: { balloonId: balloon.id } }); return; }
     cancelHold();
     canvas.setPointerCapture(event.pointerId);
     const hold = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, timer: 0 };
@@ -366,7 +475,10 @@ export default function NetworkBalloonRoomsClient({ initialCode, initialRoomId }
   const handlePointerMove = (key: ViewKey, event: React.PointerEvent<HTMLCanvasElement>) => {
     if (key !== "yours" || !playerId || !matchRef.current) return;
     const hold = holdRef.current;
-    if (hold?.pointerId === event.pointerId && Math.hypot(event.clientX - hold.x, event.clientY - hold.y) > 12) cancelHold(event.pointerId);
+    if (hold?.pointerId === event.pointerId && Math.hypot(event.clientX - hold.x, event.clientY - hold.y) > (event.pointerType === "touch" ? 24 : 12)) {
+      cancelHold(event.pointerId);
+      setMessage("Placement cancelled because the pointer moved.");
+    }
     const bounds = event.currentTarget.getBoundingClientRect();
     const edge = findClosestGridEdge((event.clientX - bounds.left) / bounds.width, (event.clientY - bounds.top) / bounds.height, bounds.width, bounds.height);
     if (!edge) { previewRef.current = null; return; }
@@ -462,7 +574,7 @@ export default function NetworkBalloonRoomsClient({ initialCode, initialRoomId }
     <main className={`${styles.gameShell} text-white`}>
       <div className={styles.gameFrame}>
         <header className="flex min-w-0 items-center justify-between gap-2 px-1"><div className="min-w-0"><h1 className="text-lg font-black">FLOAT · {matchRow.match_code}</h1><p className="truncate text-[8px] font-black text-purple-300">PLAYER {playerId === "playerA" ? "A" : "B"} · SEQ {matchRow.last_sequence} {opponentReconnecting ? "· OPPONENT RECONNECTING" : "· CONNECTED"}</p></div><div className="flex gap-1"><button type="button" onClick={closeMatch} className="min-h-9 rounded-lg border border-white/15 px-2 text-[8px] font-black">NEW</button><Link href="/dev/balloon-rooms" className="grid min-h-9 place-items-center rounded-lg border border-white/15 px-2 text-[8px] font-black">LOCAL</Link><button type="button" disabled={busy} onClick={() => void syncFloatNetworkMatch(matchRow.id).then((result) => acceptMatch(result.match)).catch((error) => setMessage(error.message))} className="min-h-9 rounded-lg border border-white/15 px-2 text-[8px] font-black disabled:opacity-40">SYNC</button></div></header>
-        <div className={styles.roundBar}><p className="shrink-0 text-[10px] font-black">{matchLabel}</p><p className={`truncate text-[8px] font-black ${message === "Accepted" ? "text-emerald-300" : "text-purple-200"}`}>{busy ? "CANONICAL ACTION PENDING…" : message}</p></div>
+        <div className={styles.roundBar}><p className="shrink-0 text-[10px] font-black">{matchLabel}</p><p className={`truncate text-[8px] font-black ${message === "Synced" ? "text-emerald-300" : "text-purple-200"}`}>{pendingCount > 0 ? `${message} · SYNCING ${pendingCount}` : message}</p></div>
         <div className={styles.roomsGrid}>
           {viewKeys.map((key) => {
             const summary = summaries[key];
@@ -474,11 +586,11 @@ export default function NetworkBalloonRoomsClient({ initialCode, initialRoomId }
               <div className={styles.statusPanel}><div className="flex items-center justify-between"><p className="text-sm font-black">HP {summary.health}/{ROOM_MAX_HEALTH}</p><p className="text-right text-[7px] font-bold text-purple-300">{summary.balloons} ACTIVE<br />W {summary.walls.length} · N {summary.nails} · G {summary.glue}</p></div></div>
               {key === "yours" ? <div className={styles.controls}>
                 <div className="grid grid-cols-4 gap-1">{(["wall", "nails", "glue", "remove"] as BuildMode[]).map((mode) => { const cost = mode === "wall" ? VERTICAL_WALL_COST : mode === "nails" ? NAIL_STRIP_COST : mode === "glue" ? GLUE_COST : null; return <button key={mode} type="button" disabled={busy || matchRow.status !== "active" || (cost !== null && summary.coins < cost)} aria-pressed={buildMode === mode} onClick={() => setBuildMode(mode)} className={`min-h-9 rounded-md border px-0.5 text-[7px] font-black disabled:opacity-40 ${buildMode === mode ? "border-purple-300 bg-purple-500/35" : "border-white/10 bg-black/20 text-zinc-400"}`}>{mode.toUpperCase()}<span className="block">{cost ?? "FREE"}</span></button>; })}</div>
-                {selectedWall ? <div className="mt-1 flex min-h-8 items-center justify-between rounded-md border border-amber-200/25 px-1"><p className="text-[8px] font-black">WALL {selectedWall.integrity}/{selectedWall.maxIntegrity}</p><button type="button" disabled={busy || selectedWall.integrity <= 0 || selectedWall.integrity > WALL_REPAIR_THRESHOLD || summary.coins < WALL_REPAIR_COST} onClick={() => void sendIntent({ actionType: "REPAIR_WALL", payload: { wallSegmentId: selectedWall.id } })} className="min-h-7 rounded border border-amber-200/60 px-1 text-[7px] font-black disabled:opacity-40">REPAIR +{WALL_REPAIR_AMOUNT} · {WALL_REPAIR_COST}</button></div> : null}
+                {selectedWall ? <div className="mt-1 flex min-h-8 items-center justify-between rounded-md border border-amber-200/25 px-1"><p className="text-[8px] font-black">WALL {selectedWall.integrity}/{selectedWall.maxIntegrity}</p><button type="button" disabled={busy || selectedWall.integrity <= 0 || selectedWall.integrity > WALL_REPAIR_THRESHOLD || summary.coins < WALL_REPAIR_COST} onClick={() => void handleSendIntent({ actionType: "REPAIR_WALL", payload: { wallSegmentId: selectedWall.id } })} className="min-h-7 rounded border border-amber-200/60 px-1 text-[7px] font-black disabled:opacity-40">REPAIR +{WALL_REPAIR_AMOUNT} · {WALL_REPAIR_COST}</button></div> : null}
                 <p className="mt-1 truncate text-center text-[7px] font-bold text-zinc-500">Hold 1s on your grid · tap balloons to pop</p>
               </div> : <div className={styles.controls}>
                 <p className="mb-1 text-center text-[8px] font-black uppercase text-pink-200">Tap to send · Lane {lane}</p>
-                <div className="grid grid-cols-3 gap-1">{(["basic", "speed", "heavy"] as BalloonType[]).map((type) => { const config = BALLOON_TYPES[type]; const disabled = busy || matchRow.status !== "active" || !summaries.yours.unlocked[type] || summaries.yours.coins < config.cost || summaries.yours.queue.length >= MAX_LAUNCH_QUEUE_SIZE; return <button key={type} type="button" disabled={disabled} onClick={() => void sendIntent({ actionType: "SEND_BALLOON", payload: { balloonType: type, lane } })} className="min-h-11 rounded-md border border-pink-300/35 bg-pink-500/20 text-[7px] font-black disabled:opacity-40">{type.toUpperCase()}<span className="block text-[9px] text-amber-200">{summaries.yours.unlocked[type] ? config.cost : "LOCK"}</span></button>; })}</div>
+                <div className="grid grid-cols-3 gap-1">{(["basic", "speed", "heavy"] as BalloonType[]).map((type) => { const config = BALLOON_TYPES[type]; const disabled = busy || matchRow.status !== "active" || !summaries.yours.unlocked[type] || summaries.yours.coins < config.cost || summaries.yours.queue.length >= MAX_LAUNCH_QUEUE_SIZE; return <button key={type} type="button" disabled={disabled} onClick={() => void handleSendIntent({ actionType: "SEND_BALLOON", payload: { balloonType: type, lane } })} className="min-h-11 rounded-md border border-pink-300/35 bg-pink-500/20 text-[7px] font-black disabled:opacity-40">{type.toUpperCase()}<span className="block text-[9px] text-amber-200">{summaries.yours.unlocked[type] ? config.cost : "LOCK"}</span></button>; })}</div>
                 <div className={styles.queuePanel}><p className="truncate text-[7px] font-black text-zinc-400">Q {summaries.yours.queue.length}/{MAX_LAUNCH_QUEUE_SIZE} · {summaries.yours.queue.map((item) => `${item.balloonType[0].toUpperCase()}${item.lane}`).join(" · ") || "EMPTY"}</p></div>
               </div>}
             </section>;

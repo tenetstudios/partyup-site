@@ -2,7 +2,7 @@
 
 Float network matches use the same `@partyup/balloon-core` 8.1.0 build in the web client, mobile client, and `float-match` Edge Function. PartyUp authentication supplies the user identity; clients never choose their canonical player slot.
 
-The web development UI is the first playable network client. The Expo repository includes the same pinned core and a native `src/lib/floatMultiplayer.ts` transport contract so a later native screen consumes the same endpoint and action shapes instead of introducing mobile-specific multiplayer rules.
+The web and Expo development UIs consume the same endpoint, pinned core, and action shapes instead of introducing platform-specific multiplayer rules.
 
 ## Authority and recovery
 
@@ -12,6 +12,14 @@ The web development UI is the first playable network client. The Expo repository
 - Clients interpolate the deterministic simulation locally between snapshots. Rendered coordinates and animation frames are never sent over Supabase.
 - Participants can read their match and ordered action log through RLS. Only the service-role Edge Function can create, join, ready, sequence, or mutate a match.
 - The UI shows `OPPONENT RECONNECTING` after 20 seconds without a heartbeat. After the centralized 60-second grace period, the match becomes abandoned with no winner.
+
+## Phase 9.05 stabilization
+
+The shared core retains fractional `simulationTimeMs` internally so gameplay speed and 60 Hz fidelity do not change. The `float_match_actions.simulation_time_ms` database field is an integer elapsed-millisecond audit value; the Edge Function is its only writer and converts through its validated `toDatabaseSimulationTimeMs` boundary immediately before the RPC. The helper is defined in the function entrypoint so the complete file can also be deployed through the Supabase Dashboard editor.
+
+The browser and Expo client track the highest authoritative `state_revision` separately from row metadata. Same-revision heartbeat updates refresh connection timestamps and status but cannot replace locally advanced gameplay state. A higher revision is rebased to the client's current simulation time, then any still-pending local actions are replayed through the shared core.
+
+Gameplay actions are applied through the shared core immediately and queued for the existing Edge Function one at a time. `client_action_id` connects each prediction to its server confirmation. Confirmed actions are removed before authoritative reconciliation, preventing double application; rejected or failed actions are removed and recovered from a server sync. Development builds log local-apply, request, and reconcile timings and preserve safe Supabase/Postgres diagnostics.
 
 The current snapshot-per-action plus two-second reconciliation is intentionally correctness-first. At larger concurrency, move passive ticking to scheduled/server workers and add checkpoint snapshots with action-log retention instead of increasing client sync frequency.
 

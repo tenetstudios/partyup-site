@@ -52,23 +52,42 @@ export function playerIdForUser(match: FloatMatchRow, userId: string): FloatPlay
   return null;
 }
 
+type FloatErrorBody = { error?: string; operation?: string; code?: string | null; details?: string | null; hint?: string | null };
+
+function reportFloatError(operation: string, status: number | null, body: FloatErrorBody, fallback: string) {
+  const message = body.error || fallback;
+  if (process.env.NODE_ENV === "development") {
+    console.error(`[FLOAT ${operation.toUpperCase()} FAILED]`, {
+      operation,
+      status,
+      code: body.code ?? null,
+      postgres: message,
+      details: body.details ?? null,
+      hint: body.hint ?? null,
+    });
+  }
+  return new Error(message);
+}
+
 async function invokeFloat<T>(body: Record<string, unknown>): Promise<T> {
   const supabase = createSupabaseClient();
+  const operation = typeof body.operation === "string" ? body.operation : "unknown";
   const { data, error } = await supabase.functions.invoke("float-match", { body });
   if (error) {
-    let message = error.message;
+    let responseBody: FloatErrorBody = {};
+    let status: number | null = null;
     const context = "context" in error ? error.context : null;
     if (context instanceof Response) {
+      status = context.status;
       try {
-        const responseBody = await context.clone().json() as { error?: string };
-        if (responseBody.error) message = responseBody.error;
+        responseBody = await context.clone().json() as FloatErrorBody;
       } catch {
         // Preserve the SDK error when the response is not JSON.
       }
     }
-    throw new Error(message);
+    throw reportFloatError(operation, status, responseBody, error.message);
   }
-  if (data?.error) throw new Error(String(data.error));
+  if (data?.error) throw reportFloatError(operation, null, data as FloatErrorBody, String(data.error));
   return data as T;
 }
 

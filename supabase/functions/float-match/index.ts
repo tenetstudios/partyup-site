@@ -16,9 +16,27 @@ const MAX_COMMIT_RETRIES = 5;
 const RECONNECT_GRACE_SECONDS = 60;
 const MATCH_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const DEBUG_MATCHMAKING = Deno.env.get("FLOAT_MATCHMAKING_DEBUG") === "true";
+const DEBUG_GAMEPLAY = Deno.env.get("FLOAT_GAMEPLAY_DEBUG") === "true";
 
 function matchmakingLog(event: string, details: Record<string, unknown>) {
   if (DEBUG_MATCHMAKING) console.info(`[FLOAT ${event}]`, details);
+}
+
+function errorDetails(error: unknown) {
+  const value = error && typeof error === "object" ? error as Record<string, unknown> : {};
+  return {
+    message: typeof value.message === "string" ? value.message : error instanceof Error ? error.message : "Float request failed.",
+    code: typeof value.code === "string" ? value.code : null,
+    details: typeof value.details === "string" ? value.details : null,
+    hint: typeof value.hint === "string" ? value.hint : null,
+  };
+}
+
+function toDatabaseSimulationTimeMs(simulationTimeMs: number) {
+  if (!Number.isFinite(simulationTimeMs) || simulationTimeMs < 0) {
+    throw new Error("Invalid Float simulation time");
+  }
+  return Math.floor(simulationTimeMs);
 }
 
 const corsHeaders = {
@@ -242,7 +260,7 @@ async function submitAction(adminClient: ReturnType<typeof createClient>, userId
       p_client_action_id: body.clientActionId,
       p_action_type: body.actionType,
       p_payload: canonical.payload,
-      p_simulation_time_ms: state.simulationTimeMs,
+      p_simulation_time_ms: toDatabaseSimulationTimeMs(state.simulationTimeMs),
       p_state: state,
       p_status: columns.status,
       p_result: columns.result,
@@ -351,8 +369,12 @@ Deno.serve(async (request) => {
     if (body.operation === "action") return jsonResponse(await submitAction(adminClient, userData.user.id, body));
     return jsonResponse({ error: "Unsupported Float operation." }, 400);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Float request failed.";
-    const status = /Authentication|required|participant/.test(message) ? 403 : /not found/i.test(message) ? 404 : /UPDATE REQUIRED/.test(message) ? 409 : 400;
-    return jsonResponse({ error: message }, status);
+    const diagnostic = errorDetails(error);
+    const operation = typeof body.operation === "string" ? body.operation : "unknown";
+    if (DEBUG_GAMEPLAY || DEBUG_MATCHMAKING) {
+      console.error("[FLOAT REQUEST FAILED]", { operation, userId: userData.user.id, ...diagnostic });
+    }
+    const status = /Authentication|required|participant/.test(diagnostic.message) ? 403 : /not found/i.test(diagnostic.message) ? 404 : /UPDATE REQUIRED/.test(diagnostic.message) ? 409 : 400;
+    return jsonResponse({ error: diagnostic.message, operation, code: diagnostic.code, details: diagnostic.details, hint: diagnostic.hint }, status);
   }
 });
