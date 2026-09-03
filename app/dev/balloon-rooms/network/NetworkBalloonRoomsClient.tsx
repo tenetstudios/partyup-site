@@ -327,7 +327,10 @@ export default function NetworkBalloonRoomsClient({ initialCode, initialRoomId }
         ownJournal.set(action.clientSequence, action);
       }
     }
-    timeline.advanceTo(Math.max(previousTick, timeline.currentTick));
+    const serverTick = recovery.match.started_at
+      ? simulationTimeMsToTick(Math.max(0, Date.now() - Date.parse(recovery.match.started_at)))
+      : timeline.currentTick;
+    timeline.advanceTo(Math.max(previousTick, serverTick, timeline.currentTick));
     timelineRef.current = timeline;
     matchRef.current = timeline.state;
     realtimeInboxRef.current = inboxes;
@@ -354,7 +357,8 @@ export default function NetworkBalloonRoomsClient({ initialCode, initialRoomId }
   useEffect(() => {
     if (!matchId || realtimeRecoveredMatchId !== matchId || !playerId || !opponentId || matchStatus !== "active") return;
     let closed = false;
-    let joined = 0;
+    const joinedActors = new Set<FloatPlayerId>();
+    let replayInterval: number | null = null;
     realtimeReadyRef.current = false;
     if (!realtimeInboxRef.current.playerA) realtimeInboxRef.current.playerA = new FloatSequenceInbox();
     if (!realtimeInboxRef.current.playerB) realtimeInboxRef.current.playerB = new FloatSequenceInbox();
@@ -375,7 +379,10 @@ export default function NetworkBalloonRoomsClient({ initialCode, initialRoomId }
         const received = inbox.receive(action);
         for (const ready of received.ready) {
           const result = timelineRef.current?.insert(ready);
-          if (result?.status === "too_old") void recoverRealtime(matchId, playerId).catch((error) => setMessage(error instanceof Error ? error.message : "Realtime recovery failed."));
+          if (result?.status === "too_old" || result?.status === "too_far_ahead") {
+            void recoverRealtime(matchId, playerId).catch((error) => setMessage(error instanceof Error ? error.message : "Realtime recovery failed."));
+            return;
+          }
           else if (result?.status === "rejected") setMessage(result.result.message);
         }
         if (received.missing) {
@@ -395,11 +402,17 @@ export default function NetworkBalloonRoomsClient({ initialCode, initialRoomId }
         };
         send(playerId, "protocol_control", ack);
       } catch (error) {
+        if (error instanceof Error && /sequence gap/i.test(error.message)) void recoverRealtime(matchId, playerId).catch(() => undefined);
         if (!closed) setMessage(error instanceof Error ? error.message : "Invalid realtime action.");
       }
     };
 
-    for (const topicActor of ["playerA", "playerB"] as const) {
+    const connect = async () => {
+      const { data, error } = await supabase.auth.getSession();
+      if (error || !data.session?.access_token) throw error ?? new Error("Float Realtime authentication is unavailable.");
+      await supabase.realtime.setAuth(data.session.access_token);
+      if (closed) return;
+      for (const topicActor of ["playerA", "playerB"] as const) {
       const channel = supabase
         .channel(floatActorTopic(matchId, topicActor), { config: { private: true, broadcast: { ack: true, self: false } } })
         .on("broadcast", { event: "gameplay_action" }, ({ payload }) => receiveAction(topicActor, payload))
@@ -432,25 +445,34 @@ export default function NetworkBalloonRoomsClient({ initialCode, initialRoomId }
             }
           }
         })
-        .subscribe((status) => {
+        .subscribe((status, error) => {
           if (status === "SUBSCRIBED") {
-            joined += 1;
-            if (joined === 2) realtimeReadyRef.current = true;
+            joinedActors.add(topicActor);
+            if (joinedActors.size === 2) {
+              realtimeReadyRef.current = true;
+              if (!closed) setMessage("Realtime connected.");
+            }
           } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+            joinedActors.delete(topicActor);
             realtimeReadyRef.current = false;
-            if (!closed) setMessage("Private Float realtime connection failed.");
+            if (process.env.NODE_ENV === "development") console.error("[FLOAT REALTIME SUBSCRIBE FAILED]", { topicActor, status, error });
+            if (!closed) setMessage(`Private Float realtime failed on ${topicActor}${error?.message ? `: ${error.message}` : "."}`);
           }
         });
       realtimeChannelsRef.current[topicActor] = channel;
-    }
-    const replayInterval = window.setInterval(() => {
-      if (!realtimeReadyRef.current) return;
-      for (const action of realtimeJournalRef.current.values()) send(playerId, "action_replay", action);
-    }, 500);
+      }
+      replayInterval = window.setInterval(() => {
+        if (!realtimeReadyRef.current) return;
+        for (const action of realtimeJournalRef.current.values()) send(playerId, "action_replay", action);
+      }, 500);
+    };
+    void connect().catch((error) => {
+      if (!closed) setMessage(error instanceof Error ? error.message : "Float Realtime authentication failed.");
+    });
 
     return () => {
       closed = true;
-      window.clearInterval(replayInterval);
+      if (replayInterval !== null) window.clearInterval(replayInterval);
       realtimeReadyRef.current = false;
       const channels = Object.values(realtimeChannelsRef.current);
       realtimeChannelsRef.current = {};
