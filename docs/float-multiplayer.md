@@ -1,27 +1,23 @@
-# Float 8.1 multiplayer
+# Float 9.1 multiplayer
 
-Float network matches use the same `@partyup/balloon-core` 8.1.0 build in the web client, mobile client, and `float-match` Edge Function. PartyUp authentication supplies the user identity; clients never choose their canonical player slot.
+Float network matches use the same `@partyup/balloon-core` 8.1.0 build and `@partyup/float-realtime-protocol` 1.0.0 package in the web and mobile clients. PartyUp authentication supplies the user identity; clients never choose their player slot.
 
 The web and Expo development UIs consume the same endpoint, pinned core, and action shapes instead of introducing platform-specific multiplayer rules.
 
 ## Authority and recovery
 
-- Clients submit intent only. The Edge Function advances the canonical match to server-derived time, validates the intent with the shared core, and commits the resulting state plus an immutable server-ordered action in one database transaction.
-- `client_action_id` makes action retries idempotent. Compare-and-swap `state_revision` retries serialize concurrent A/B actions.
-- Realtime table changes trigger an authoritative-state refresh. A two-second authenticated sync/heartbeat provides snapshot recovery and advances income, waves, queues, structural damage, health, and match completion when nobody is acting.
-- Clients interpolate the deterministic simulation locally between snapshots. Rendered coordinates and animation frames are never sent over Supabase.
-- Participants can read their match and ordered action log through RLS. Only the service-role Edge Function can create, join, ready, sequence, or mutate a match.
+- Gameplay actions are applied immediately and broadcast on private `float-match:{matchId}:playerA|playerB` actor topics. Topic authorization permits both participants to receive, but only the account mapped to that actor may send.
+- Every envelope carries protocol version, match ID, random action ID, actor, monotonically increasing actor sequence, integer 60 Hz simulation tick, action type, and validated logical payload. Render coordinates and animation frames are never transmitted.
+- Total ordering is `(simulationTick, actorPlayerId, clientSequence, actionId)`. Six-tick checkpoints and a 60-tick journal rewind late actions before replaying deterministically.
+- Peer ACKs, gap requests, replay, and action-ID deduplication handle dropped, reordered, and duplicate Broadcast messages. Database acknowledgements are not treated as peer processing.
+- Persistence is off the input path: clients batch immutable action-log writes asynchronously. Player A periodically writes a hashed checkpoint with both processed-sequence cursors and is the only checkpoint/final-state coordinator.
+- Both peers exchange SHA-256 state hashes only for the same protocol/core version, tick, and A/B cursors. A mismatch, sequence gap outside retained history, reload, or reconnect invokes checkpoint-plus-action-log recovery; recovered checkpoint hashes are recomputed before acceptance.
+- The Edge Function remains responsible for matchmaking, create/join/ready, heartbeat/liveness, persistence validation, checkpoints, and recovery. Heartbeats never advance gameplay state.
 - The UI shows `OPPONENT RECONNECTING` after 20 seconds without a heartbeat. After the centralized 60-second grace period, the match becomes abandoned with no winner.
 
-## Phase 9.05 stabilization
+Player A is the sole prototype checkpoint/finalization authority. If A disconnects, B may continue transient prediction during the existing grace window, but checkpoint authority is frozen and never transfers; A must recover the latest checkpoint/log on return, otherwise the existing 60-second liveness rule abandons the match. Rewind-generated simulation events are not re-emitted to presentation, so visible effects cannot replay twice.
 
-The shared core retains fractional `simulationTimeMs` internally so gameplay speed and 60 Hz fidelity do not change. The `float_match_actions.simulation_time_ms` database field is an integer elapsed-millisecond audit value; the Edge Function is its only writer and converts through its validated `toDatabaseSimulationTimeMs` boundary immediately before the RPC. The helper is defined in the function entrypoint so the complete file can also be deployed through the Supabase Dashboard editor.
-
-The browser and Expo client track the highest authoritative `state_revision` separately from row metadata. Same-revision heartbeat updates refresh connection timestamps and status but cannot replace locally advanced gameplay state. A higher revision is rebased to the client's current simulation time, then any still-pending local actions are replayed through the shared core.
-
-Gameplay actions are applied through the shared core immediately and queued for the existing Edge Function one at a time. `client_action_id` connects each prediction to its server confirmation. Confirmed actions are removed before authoritative reconciliation, preventing double application; rejected or failed actions are removed and recovered from a server sync. Development builds log local-apply, request, and reconcile timings and preserve safe Supabase/Postgres diagnostics.
-
-The current snapshot-per-action plus two-second reconciliation is intentionally correctness-first. At larger concurrency, move passive ticking to scheduled/server workers and add checkpoint snapshots with action-log retention instead of increasing client sync frequency.
+The legacy `action` operation remains in the Edge source temporarily for rollback compatibility, but Phase 9.1 web and Expo gameplay do not call it.
 
 ## Phase 9 matchmaking
 
@@ -43,3 +39,5 @@ supabase functions serve float-match
 ```
 
 Run the web app with `npm run dev`, then open `/dev/balloon-rooms/network` in two browser profiles or one normal and one private window. Sign in with two different PartyUp accounts. Player A creates and copies the join link; Player B joins; both press Ready.
+
+Run `npm run test:float-realtime` for ordering, spoof validation, all action mappings, sequence gaps, loss/replay, duplicates, rapid POP bursts, rewind timings at 0/100/250/500 ms, and two-peer convergence.

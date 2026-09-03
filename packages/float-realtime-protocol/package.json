@@ -1,0 +1,24 @@
+{
+  "name": "@partyup/float-realtime-protocol",
+  "version": "1.0.0",
+  "description": "Deterministic realtime action ordering and bounded rewind for PartyUp Float.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build"
+  },
+  "peerDependencies": {
+    "@partyup/balloon-core": "8.1.0"
+  }
+}

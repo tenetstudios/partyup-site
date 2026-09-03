@@ -52,6 +52,29 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
+function canonicalJson(value: unknown): string {
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new Error("Float checkpoint contains a non-finite number");
+    return JSON.stringify(Object.is(value, -0) ? 0 : Number(value.toFixed(9)));
+  }
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(",")}}`;
+}
+
+async function checkpointHash(body: Record<string, unknown>) {
+  const coordinates = {
+    protocolVersion: body.protocolVersion,
+    coreVersion: body.coreVersion,
+    simulationTick: body.simulationTick,
+    playerASequence: body.playerASequence,
+    playerBSequence: body.playerBSequence,
+  };
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonicalJson({ coordinates, state: body.state })));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 function bearerToken(request: Request) {
   const authorization = request.headers.get("Authorization") || "";
   return authorization.startsWith("Bearer ") ? authorization.slice(7) : null;
@@ -362,11 +385,80 @@ Deno.serve(async (request) => {
         p_grace_seconds: RECONNECT_GRACE_SECONDS,
       });
       if (heartbeatError) throw heartbeatError;
-      if (heartbeatMatch.status === "abandoned") return jsonResponse({ match: heartbeatMatch });
-      return jsonResponse({ match: await syncMatch(adminClient, userData.user.id, body.matchId) });
+      return jsonResponse({ match: heartbeatMatch });
     }
 
-    if (body.operation === "action") return jsonResponse(await submitAction(adminClient, userData.user.id, body));
+    if (body.operation === "heartbeat") {
+      if (typeof body.matchId !== "string") throw new Error("Float match ID required");
+      const { data, error } = await adminClient.rpc("float_server_heartbeat", {
+        p_user_id: userData.user.id,
+        p_match_id: body.matchId,
+        p_grace_seconds: RECONNECT_GRACE_SECONDS,
+      });
+      if (error) throw error;
+      return jsonResponse({ match: data });
+    }
+
+    if (body.operation === "persistActions") {
+      if (typeof body.matchId !== "string" || !Array.isArray(body.actions)) throw new Error("Float action batch required");
+      const { data, error } = await adminClient.rpc("float_server_persist_actions", {
+        p_user_id: userData.user.id,
+        p_match_id: body.matchId,
+        p_actions: body.actions,
+      });
+      if (error) throw error;
+      return jsonResponse(data);
+    }
+
+    if (body.operation === "checkpoint") {
+      if (typeof body.matchId !== "string") throw new Error("Float match ID required");
+      if (body.protocolVersion !== 1 || body.coreVersion !== CORE_VERSION) throw new Error("FLOAT UPDATE REQUIRED");
+      if (typeof body.stateHash !== "string" || await checkpointHash(body) !== body.stateHash) throw new Error("Float checkpoint hash validation failed");
+      const { data, error } = await adminClient.rpc("float_server_write_checkpoint", {
+        p_user_id: userData.user.id,
+        p_match_id: body.matchId,
+        p_expected_revision: body.expectedRevision,
+        p_simulation_tick: body.simulationTick,
+        p_state: body.state,
+        p_state_hash: body.stateHash,
+        p_player_a_sequence: body.playerASequence,
+        p_player_b_sequence: body.playerBSequence,
+      });
+      if (error) throw error;
+      return jsonResponse(data);
+    }
+
+    if (body.operation === "recover") {
+      if (typeof body.matchId !== "string") throw new Error("Float match ID required");
+      const match = await loadMatch(adminClient, body.matchId);
+      actorPlayerId(match, userData.user.id);
+      const playerASequence = Number(match.player_a_checkpoint_sequence ?? 0);
+      const playerBSequence = Number(match.player_b_checkpoint_sequence ?? 0);
+      const { data: actions, error } = await adminClient.from("float_match_actions")
+        .select("client_action_id,actor_player_id,client_sequence,simulation_tick,action_type,payload")
+        .eq("match_id", body.matchId)
+        .not("client_sequence", "is", null)
+        .or(`and(actor_player_id.eq.playerA,client_sequence.gt.${playerASequence}),and(actor_player_id.eq.playerB,client_sequence.gt.${playerBSequence})`)
+        .order("simulation_tick", { ascending: true })
+        .order("actor_player_id", { ascending: true })
+        .order("client_sequence", { ascending: true });
+      if (error) throw error;
+      return jsonResponse({
+        match,
+        actions: (actions ?? []).map((action) => ({
+          protocolVersion: 1,
+          matchId: body.matchId,
+          actionId: action.client_action_id,
+          actorPlayerId: action.actor_player_id,
+          clientSequence: Number(action.client_sequence),
+          simulationTick: Number(action.simulation_tick),
+          actionType: action.action_type,
+          payload: action.payload,
+        })),
+      });
+    }
+
+    if (body.operation === "action") return jsonResponse({ error: "Legacy Float gameplay actions are disabled; protocol 1 Realtime is required.", operation: "action" }, 410);
     return jsonResponse({ error: "Unsupported Float operation." }, 400);
   } catch (error) {
     const diagnostic = errorDetails(error);

@@ -1,4 +1,5 @@
 import type { FloatMatchState } from "@partyup/balloon-core";
+import type { FloatRealtimeAction } from "@partyup/float-realtime-protocol";
 import { createSupabaseClient } from "@/lib/supabase";
 
 export const FLOAT_GAME_VERSION = "8.1";
@@ -35,6 +36,14 @@ export type FloatMatchRow = {
   player_b_last_seen_at: string | null;
   pool_mode: FloatPoolMode | null;
   source_room_id: string | null;
+  protocol_version: number;
+  checkpoint_revision: number;
+  checkpoint_tick: number;
+  checkpoint_state: FloatMatchState | null;
+  checkpoint_hash: string | null;
+  player_a_checkpoint_sequence: number;
+  player_b_checkpoint_sequence: number;
+  checkpointed_at: string | null;
 };
 
 export type FloatPoolMode = "room" | "global";
@@ -119,11 +128,22 @@ export async function syncFloatNetworkMatch(matchId: string) {
   return invokeFloat<{ match: FloatMatchRow }>({ operation: "sync", matchId });
 }
 
-export async function submitFloatNetworkAction(matchId: string, intent: FloatActionIntent, clientActionId = crypto.randomUUID()) {
-  return invokeFloat<{ accepted: boolean; duplicate?: boolean; error?: string; code?: string; match: FloatMatchRow }>({
-    operation: "action",
-    matchId,
-    clientActionId,
-    ...intent,
-  });
+export async function heartbeatFloatNetworkMatch(matchId: string) {
+  return invokeFloat<{ match: FloatMatchRow }>({ operation: "heartbeat", matchId });
 }
+
+export async function persistFloatRealtimeActions(matchId: string, actions: FloatRealtimeAction[]) {
+  return invokeFloat<{ persisted: number; lastSequence: number }>({ operation: "persistActions", matchId, actions });
+}
+
+export async function checkpointFloatRealtimeMatch(
+  matchId: string,
+  checkpoint: { expectedRevision: number; simulationTick: number; state: FloatMatchState; stateHash: string; playerASequence: number; playerBSequence: number },
+) {
+  return invokeFloat<{ conflict: boolean; match: FloatMatchRow }>({ operation: "checkpoint", matchId, protocolVersion: 1, coreVersion: FLOAT_CORE_VERSION, ...checkpoint });
+}
+
+export async function recoverFloatRealtimeMatch(matchId: string) {
+  return invokeFloat<{ match: FloatMatchRow; actions: FloatRealtimeAction[] }>({ operation: "recover", matchId });
+}
+
