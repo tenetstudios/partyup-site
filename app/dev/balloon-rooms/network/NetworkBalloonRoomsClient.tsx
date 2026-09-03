@@ -467,9 +467,9 @@ export default function NetworkBalloonRoomsClient({ initialCode, initialRoomId }
       if (holdRef.current?.pointerId !== hold.pointerId) return;
       holdRef.current = null;
       buildAt(canvas, hold.x, hold.y);
-    }, 1_000);
+    }, 500);
     holdRef.current = hold;
-    setMessage("Hold steady for 1 second to build.");
+    setMessage("Hold steady for 0.5 seconds to build.");
   };
 
   const handlePointerMove = (key: ViewKey, event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -587,7 +587,7 @@ export default function NetworkBalloonRoomsClient({ initialCode, initialRoomId }
               {key === "yours" ? <div className={styles.controls}>
                 <div className="grid grid-cols-4 gap-1">{(["wall", "nails", "glue", "remove"] as BuildMode[]).map((mode) => { const cost = mode === "wall" ? VERTICAL_WALL_COST : mode === "nails" ? NAIL_STRIP_COST : mode === "glue" ? GLUE_COST : null; return <button key={mode} type="button" disabled={busy || matchRow.status !== "active" || (cost !== null && summary.coins < cost)} aria-pressed={buildMode === mode} onClick={() => setBuildMode(mode)} className={`min-h-9 rounded-md border px-0.5 text-[7px] font-black disabled:opacity-40 ${buildMode === mode ? "border-purple-300 bg-purple-500/35" : "border-white/10 bg-black/20 text-zinc-400"}`}>{mode.toUpperCase()}<span className="block">{cost ?? "FREE"}</span></button>; })}</div>
                 {selectedWall ? <div className="mt-1 flex min-h-8 items-center justify-between rounded-md border border-amber-200/25 px-1"><p className="text-[8px] font-black">WALL {selectedWall.integrity}/{selectedWall.maxIntegrity}</p><button type="button" disabled={busy || selectedWall.integrity <= 0 || selectedWall.integrity > WALL_REPAIR_THRESHOLD || summary.coins < WALL_REPAIR_COST} onClick={() => void handleSendIntent({ actionType: "REPAIR_WALL", payload: { wallSegmentId: selectedWall.id } })} className="min-h-7 rounded border border-amber-200/60 px-1 text-[7px] font-black disabled:opacity-40">REPAIR +{WALL_REPAIR_AMOUNT} · {WALL_REPAIR_COST}</button></div> : null}
-                <p className="mt-1 truncate text-center text-[7px] font-bold text-zinc-500">Hold 1s on your grid · tap balloons to pop</p>
+                <p className="mt-1 truncate text-center text-[7px] font-bold text-zinc-500">Hold 0.5s on your grid · tap balloons to pop</p>
               </div> : <div className={styles.controls}>
                 <p className="mb-1 text-center text-[8px] font-black uppercase text-pink-200">Tap to send · Lane {lane}</p>
                 <div className="grid grid-cols-3 gap-1">{(["basic", "speed", "heavy"] as BalloonType[]).map((type) => { const config = BALLOON_TYPES[type]; const disabled = busy || matchRow.status !== "active" || !summaries.yours.unlocked[type] || summaries.yours.coins < config.cost || summaries.yours.queue.length >= MAX_LAUNCH_QUEUE_SIZE; return <button key={type} type="button" disabled={disabled} onClick={() => void handleSendIntent({ actionType: "SEND_BALLOON", payload: { balloonType: type, lane } })} className="min-h-11 rounded-md border border-pink-300/35 bg-pink-500/20 text-[7px] font-black disabled:opacity-40">{type.toUpperCase()}<span className="block text-[9px] text-amber-200">{summaries.yours.unlocked[type] ? config.cost : "LOCK"}</span></button>; })}</div>
