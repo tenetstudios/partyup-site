@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createSupabaseClient } from "@/lib/supabase";
 import { EventSeriesSummary, getMyEventSeries } from "@/lib/eventSeries";
+import { ensurePartyUpIdentity } from "@/lib/matchmaking";
 
 type CreateRoomStatus = "live" | "scheduled";
 type TimePeriod = "AM" | "PM";
@@ -196,6 +197,8 @@ export default function CreateRoomButton({
         setLoading(false);
         return;
       }
+
+      await ensurePartyUpIdentity(supabase);
 
       let coverImage: string | null = null;
 

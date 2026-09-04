@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createSupabaseClient } from "@/lib/supabase";
+import { ensurePartyUpIdentity } from "@/lib/matchmaking";
 
 type Profile = {
   username: string | null;
@@ -28,6 +29,8 @@ export default function AuthButton() {
       setIsAdmin(false);
       return;
     }
+
+    await ensurePartyUpIdentity(supabase);
 
     const [{ data: profileData }, { data: adminAccess }] = await Promise.all([
       supabase
