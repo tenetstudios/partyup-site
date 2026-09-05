@@ -5,11 +5,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BALLOON_TYPES,
   GLUE_COST,
-  INCOME_TICK_INTERVAL_MS,
   MAX_FRAME_DELTA_SECONDS,
   MAX_LAUNCH_QUEUE_SIZE,
   NAIL_STRIP_COST,
-  ROOM_MAX_HEALTH,
   SIMULATION_STEP_SECONDS,
   VERTICAL_WALL_COST,
   WALL_REPAIR_AMOUNT,
@@ -73,6 +71,7 @@ import {
 import { isNewerGameplaySnapshot } from "@/lib/floatMultiplayerState";
 import { createSupabaseClient } from "@/lib/supabase";
 import { readActiveRoomContext } from "@/lib/activeRoomContext";
+import { Coin, FloatHeader, FloatIcon, LanePicker, RoomHeader } from "../FloatVisuals";
 import styles from "../BalloonRooms.module.css";
 
 type ViewKey = "yours" | "opponent";
@@ -562,6 +561,7 @@ export default function NetworkBalloonRoomsClient({ initialCode, initialRoomId }
           const canvas = canvasesRef.current[key];
           if (canvas) drawBalloonRoom(canvas, state.players[ids[key]]!.room, ids[key], [], timestamp, {
             debugPaths: false,
+            showGrid: canvas.dataset.placement === "true",
             preview: key === "yours" ? previewRef.current : null,
             selectedWallId: key === "yours" ? selectedWallId : null,
           });
@@ -790,35 +790,35 @@ export default function NetworkBalloonRoomsClient({ initialCode, initialRoomId }
   if (!authReady) return <main className={`${styles.gameShell} grid place-items-center text-white`}>Loading Float…</main>;
   if (!userId) return (
     <main className={`${styles.gameShell} grid place-items-center p-6 text-white`}>
-      <section className="w-full max-w-md rounded-2xl border border-purple-200/20 bg-black/35 p-6 text-center">
-        <p className="text-xs font-black uppercase tracking-[0.2em] text-purple-300">Float 8.1 Network Match</p>
+      <section className={styles.lobbyPanel}>
+        <p className="text-xs font-black uppercase tracking-[0.2em] text-sky-100">BUILD · DEFEND · OUTLAST</p>
         <h1 className="mt-2 text-3xl font-black">Sign in as a PartyUp player</h1>
-        <p className="mt-3 text-sm text-zinc-400">Each browser session must use a different authenticated account.</p>
-        <button type="button" onClick={() => void supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.href } })} className="mt-5 min-h-12 w-full rounded-xl bg-purple-600 font-black">SIGN IN WITH GOOGLE</button>
-        <Link href="/dev/balloon-rooms" className="mt-4 inline-block text-xs font-bold text-purple-300">Back to local A/B mode</Link>
+        <p className="mt-3 text-sm text-sky-100">Sign in to build, defend, and outlast your opponent.</p>
+        <button type="button" onClick={() => void supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.href } })} className="mt-5 min-h-12 w-full rounded-xl bg-sky-600 font-black">SIGN IN WITH GOOGLE</button>
+        <Link href="/dev/balloon-rooms" className="mt-4 inline-block text-xs font-bold text-sky-100">Back to local A/B mode</Link>
       </section>
     </main>
   );
 
   if (!matchRow) return (
     <main className={`${styles.gameShell} grid place-items-center p-5 text-white`}>
-      <section className="w-full max-w-md rounded-2xl border border-purple-200/20 bg-black/35 p-5">
-        <div className="flex items-center justify-between"><h1 className="text-2xl font-black">FLOAT NETWORK</h1><Link href="/dev/balloon-rooms" className="text-[10px] font-black text-purple-300">LOCAL MODE</Link></div>
-        <p className="mt-2 text-xs text-zinc-400">Core {FLOAT_CORE_VERSION} · two authenticated sessions</p>
+      <section className={styles.lobbyPanel}>
+        <div className="flex items-center justify-between"><h1 className="text-2xl font-black">FLOAT</h1><Link href="/dev/balloon-rooms" className="text-[10px] font-black text-sky-100">LOCAL MODE</Link></div>
+        <p className="mt-2 text-xs text-sky-100">Find your next opponent.</p>
         {poolMode ? <>
-          <div className="mt-5 rounded-xl border border-purple-300/30 bg-purple-500/10 p-5 text-center"><p className="font-black">{poolMode === "room" ? "SEARCHING THIS ROOM..." : "SEARCHING PARTYUP..."}</p><p className="mt-1 text-xs text-zinc-400">Keep this page open while we find a compatible Float player.</p></div>
+          <div className="mt-5 rounded-xl border border-sky-300/30 bg-sky-300/10 p-5 text-center"><p className="font-black">{poolMode === "room" ? "SEARCHING THIS ROOM..." : "SEARCHING PARTYUP..."}</p><p className="mt-1 text-xs text-sky-100">Keep this page open while we find a compatible Float player.</p></div>
           <button type="button" disabled={busy} onClick={() => void cancelPool()} className="mt-3 min-h-12 w-full rounded-xl border border-white/20 font-black disabled:opacity-50">CANCEL</button>
         </> : <>
-          <button type="button" disabled={busy || !roomId} onClick={() => void startPool("room")} className="mt-5 min-h-12 w-full rounded-xl bg-purple-600 font-black disabled:opacity-40">FIND SOMEONE HERE<span className="block text-[10px] opacity-70">ROOM POOL</span></button>
+          <button type="button" disabled={busy || !roomId} onClick={() => void startPool("room")} className="mt-5 min-h-12 w-full rounded-xl bg-sky-600 font-black disabled:opacity-40">FIND SOMEONE HERE<span className="block text-[10px] opacity-70">ROOM POOL</span></button>
           {!roomId ? <p className="mt-2 text-center text-[10px] font-black text-amber-300">JOIN A ROOM TO PLAY PEOPLE HERE</p> : null}
-          <button type="button" disabled={busy} onClick={() => void startPool("global")} className="mt-3 min-h-12 w-full rounded-xl border border-purple-300/40 font-black disabled:opacity-50">PLAY ANYONE<span className="block text-[10px] text-purple-300">GLOBAL POOL</span></button>
+          <button type="button" disabled={busy} onClick={() => void startPool("global")} className="mt-3 min-h-12 w-full rounded-xl border border-sky-300/40 font-black disabled:opacity-50">PLAY ANYONE<span className="block text-[10px] text-sky-100">GLOBAL POOL</span></button>
         </>}
-        <div className="my-4 flex items-center gap-2"><div className="h-px flex-1 bg-white/10" /><span className="text-[10px] font-black text-zinc-500">PRIVATE TESTING</span><div className="h-px flex-1 bg-white/10" /></div>
+        <div className="my-4 flex items-center gap-2"><div className="h-px flex-1 bg-white/10" /><span className="text-[10px] font-black text-sky-200">PRIVATE TESTING</span><div className="h-px flex-1 bg-white/10" /></div>
         <button type="button" disabled={busy || Boolean(poolMode)} onClick={() => void runLobbyAction(createFloatNetworkMatch)} className="min-h-11 w-full rounded-xl border border-white/15 text-xs font-black disabled:opacity-50">CREATE BY CODE</button>
-        <div className="my-4 flex items-center gap-2"><div className="h-px flex-1 bg-white/10" /><span className="text-[10px] font-black text-zinc-500">OR JOIN</span><div className="h-px flex-1 bg-white/10" /></div>
-        <input value={code} onChange={(event) => setCode(event.target.value.toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 6))} maxLength={6} placeholder="MATCH CODE" className="min-h-12 w-full rounded-xl border border-white/15 bg-black/40 px-4 text-center text-xl font-black tracking-[0.35em] outline-none focus:border-purple-300" />
-        <button type="button" disabled={busy || code.length !== 6} onClick={() => void runLobbyAction(() => joinFloatNetworkMatch(code))} className="mt-2 min-h-12 w-full rounded-xl border border-purple-300/40 font-black disabled:opacity-40">JOIN MATCH</button>
-        <p className="mt-4 text-center text-xs font-bold text-zinc-400">{message}</p>
+        <div className="my-4 flex items-center gap-2"><div className="h-px flex-1 bg-white/10" /><span className="text-[10px] font-black text-sky-200">OR JOIN</span><div className="h-px flex-1 bg-white/10" /></div>
+        <input value={code} onChange={(event) => setCode(event.target.value.toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 6))} maxLength={6} placeholder="MATCH CODE" className="min-h-12 w-full rounded-xl border border-white/15 bg-sky-950/25 px-4 text-center text-xl font-black tracking-[0.35em] outline-none focus:border-sky-300" />
+        <button type="button" disabled={busy || code.length !== 6} onClick={() => void runLobbyAction(() => joinFloatNetworkMatch(code))} className="mt-2 min-h-12 w-full rounded-xl border border-sky-300/40 font-black disabled:opacity-40">JOIN MATCH</button>
+        <p className="mt-4 text-center text-xs font-bold text-sky-100">{message}</p>
       </section>
     </main>
   );
@@ -828,15 +828,15 @@ export default function NetworkBalloonRoomsClient({ initialCode, initialRoomId }
     const joinUrl = typeof window === "undefined" ? "" : `${window.location.origin}/dev/balloon-rooms/network?code=${matchRow.match_code}`;
     return (
       <main className={`${styles.gameShell} grid place-items-center p-5 text-white`}>
-        <section className="w-full max-w-lg rounded-2xl border border-purple-200/20 bg-black/35 p-6 text-center">
-          <p className="text-xs font-black text-purple-300">YOU ARE PLAYER {playerId === "playerA" ? "A" : "B"}</p>
+        <section className={styles.lobbyPanel}>
+          <p className="text-xs font-black text-sky-100">YOU ARE PLAYER {playerId === "playerA" ? "A" : "B"}</p>
           <h1 className="mt-2 text-4xl font-black tracking-[0.25em]">{matchRow.match_code}</h1>
-          <p className="mt-2 text-sm text-zinc-400">{matchRow.player_b_id ? "Both players joined." : "Waiting for Player B to join."}</p>
+          <p className="mt-2 text-sm text-sky-100">{matchRow.player_b_id ? "Both players joined." : "Waiting for Player B to join."}</p>
           <div className="mt-5 grid grid-cols-2 gap-2 text-xs font-black"><div className="rounded-lg border border-white/10 p-3">A · {matchRow.player_a_ready ? "READY" : "WAITING"}</div><div className="rounded-lg border border-white/10 p-3">B · {matchRow.player_b_ready ? "READY" : matchRow.player_b_id ? "WAITING" : "OPEN"}</div></div>
-          <button type="button" onClick={() => void navigator.clipboard.writeText(joinUrl).then(() => setMessage("Join link copied."))} className="mt-3 min-h-11 w-full rounded-lg border border-purple-300/30 font-black">COPY JOIN LINK</button>
-          <button type="button" disabled={busy || isReady || !matchRow.player_b_id} onClick={() => void runLobbyAction(() => readyFloatNetworkMatch(matchRow.id))} className="mt-2 min-h-12 w-full rounded-xl bg-purple-600 font-black disabled:opacity-45">{isReady ? "READY — WAITING FOR OPPONENT" : "READY"}</button>
-          <button type="button" onClick={closeMatch} className="mt-3 text-[10px] font-black text-zinc-500">CLOSE THIS MATCH</button>
-          <p className="mt-3 text-xs font-bold text-zinc-400">{message}</p>
+          <button type="button" onClick={() => void navigator.clipboard.writeText(joinUrl).then(() => setMessage("Join link copied."))} className="mt-3 min-h-11 w-full rounded-lg border border-sky-300/30 font-black">COPY JOIN LINK</button>
+          <button type="button" disabled={busy || isReady || !matchRow.player_b_id} onClick={() => void runLobbyAction(() => readyFloatNetworkMatch(matchRow.id))} className="mt-2 min-h-12 w-full rounded-xl bg-sky-600 font-black disabled:opacity-45">{isReady ? "READY — WAITING FOR OPPONENT" : "READY"}</button>
+          <button type="button" onClick={closeMatch} className="mt-3 text-[10px] font-black text-sky-200">CLOSE THIS MATCH</button>
+          <p className="mt-3 text-xs font-bold text-sky-100">{message}</p>
         </section>
       </main>
     );
@@ -857,29 +857,35 @@ export default function NetworkBalloonRoomsClient({ initialCode, initialRoomId }
   return (
     <main className={`${styles.gameShell} text-white`}>
       <div className={styles.gameFrame}>
-        <header className="flex min-w-0 items-center justify-between gap-2 px-1"><div className="min-w-0"><h1 className="text-lg font-black">FLOAT · {matchRow.match_code}</h1><p className="truncate text-[8px] font-black text-purple-300">PLAYER {playerId === "playerA" ? "A" : "B"} · SEQ {matchRow.last_sequence} {opponentReconnecting ? "· OPPONENT RECONNECTING" : "· CONNECTED"}</p></div><div className="flex gap-1"><button type="button" onClick={closeMatch} className="min-h-9 rounded-lg border border-white/15 px-2 text-[8px] font-black">NEW</button><Link href="/dev/balloon-rooms" className="grid min-h-9 place-items-center rounded-lg border border-white/15 px-2 text-[8px] font-black">LOCAL</Link><button type="button" disabled={busy || !playerId} onClick={() => playerId && void recoverRealtime(matchRow.id, playerId).catch((error) => setMessage(error.message))} className="min-h-9 rounded-lg border border-white/15 px-2 text-[8px] font-black disabled:opacity-40">RECOVER</button></div></header>
-        <div className={styles.roundBar}><p className="shrink-0 text-[10px] font-black">{matchLabel}</p><p className={`truncate text-[8px] font-black ${message === "Synced" ? "text-emerald-300" : "text-purple-200"}`}>{pendingCount > 0 ? `${message} · SYNCING ${pendingCount}` : message}</p></div>
+        <FloatHeader round={`ROUND ${snapshot.waveState.status === "transition" ? nextRound?.id ?? 20 : waveRound?.id ?? 1} / 20`} subtitle={snapshot.waveState.status === "transition" ? matchLabel : "Keep them from reaching the top."} connection={opponentReconnecting ? "RECONNECTING" : pendingCount > 0 ? "SYNCING" : "ONLINE"}>
+          <p>Match {matchRow.match_code} · Player {playerId === "playerA" ? "A" : "B"}</p><p>{message}{pendingCount > 0 ? ` · ${pendingCount} pending` : ""}</p><button type="button" onClick={closeMatch}>NEW MATCH</button><Link href="/dev/balloon-rooms">LOCAL PLAY</Link><button type="button" disabled={busy || !playerId} onClick={() => playerId && void recoverRealtime(matchRow.id, playerId).catch(error => setMessage(error.message))}>RECOVER CONNECTION</button>
+        </FloatHeader>
         <div className={styles.roomsGrid}>
           {viewKeys.map((key) => {
-            const summary = summaries[key];
-            const label = key === "yours" ? "YOUR ROOM" : "OPPONENT";
+            const summary = summaries[key]; const id = ids[key];
+            const label = `${key === "yours" ? "YOUR ROOM" : "OPPONENT"} · ${id === "playerA" ? "A" : "B"}`;
             return <section key={key} className={styles.room} aria-label={label}>
-              <h2 className="text-center text-[10px] font-black tracking-[0.12em] text-purple-100">{label} · {ids[key] === "playerA" ? "A" : "B"}</h2>
-              <div className={styles.economyPanel}><p className="text-sm font-black tabular-nums text-amber-200">● {summary.coins}</p><p className="text-[8px] font-black tabular-nums text-emerald-300">+{summary.income}/{INCOME_TICK_INTERVAL_MS / 1000}s · {Math.ceil(summary.nextIncomeInMs / 1000)}s</p></div>
-              <div className={styles.playfield}><canvas ref={(canvas) => { canvasesRef.current[key] = canvas; }} className={styles.canvas} onPointerDown={(event) => handlePointerDown(key, event)} onPointerMove={(event) => handlePointerMove(key, event)} onPointerUp={(event) => handlePointerUp(key, event)} onPointerCancel={(event) => cancelHold(event.pointerId)} onLostPointerCapture={(event) => cancelHold(event.pointerId)} onPointerLeave={(event) => { cancelHold(event.pointerId); previewRef.current = null; }} onContextMenu={(event) => event.preventDefault()} />{key === "opponent" ? <div className={styles.lanePicker}>{([1, 2, 3, 4] as SpawnLane[]).map((item) => <button key={item} type="button" aria-pressed={lane === item} onClick={() => setLane(item)} className={lane === item ? styles.laneSelected : undefined}>L{item}</button>)}</div> : null}</div>
-              <div className={styles.statusPanel}><div className="flex items-center justify-between"><p className="text-sm font-black">HP {summary.health}/{ROOM_MAX_HEALTH}</p><p className="text-right text-[7px] font-bold text-purple-300">{summary.balloons} ACTIVE<br />W {summary.walls.length} · N {summary.nails} · G {summary.glue}</p></div></div>
+              <RoomHeader label={label} coins={summary.coins} income={summary.income} health={summary.health} />
+              <div className={styles.playfield}>
+                <canvas ref={(canvas) => { canvasesRef.current[key] = canvas; }} className={styles.canvas} data-placement={key === "yours" && buildMode === "wall"} onPointerDown={(event) => handlePointerDown(key, event)} onPointerMove={(event) => handlePointerMove(key, event)} onPointerUp={(event) => handlePointerUp(key, event)} onPointerCancel={(event) => cancelHold(event.pointerId)} onLostPointerCapture={(event) => cancelHold(event.pointerId)} onPointerLeave={(event) => { if (key === "yours") { cancelHold(event.pointerId); previewRef.current = null; } }} onContextMenu={(event) => event.preventDefault()} aria-label={`${label} playfield`} />
+                {key === "opponent" ? <LanePicker lane={lane} onSelect={setLane} /> : null}
+              </div>
               {key === "yours" ? <div className={styles.controls}>
-                <div className="grid grid-cols-4 gap-1">{(["wall", "nails", "glue", "remove"] as BuildMode[]).map((mode) => { const cost = mode === "wall" ? VERTICAL_WALL_COST : mode === "nails" ? NAIL_STRIP_COST : mode === "glue" ? GLUE_COST : null; return <button key={mode} type="button" disabled={busy || matchRow.status !== "active" || (cost !== null && summary.coins < cost)} aria-pressed={buildMode === mode} onClick={() => setBuildMode(mode)} className={`min-h-9 rounded-md border px-0.5 text-[7px] font-black disabled:opacity-40 ${buildMode === mode ? "border-purple-300 bg-purple-500/35" : "border-white/10 bg-black/20 text-zinc-400"}`}>{mode.toUpperCase()}<span className="block">{cost ?? "FREE"}</span></button>; })}</div>
-                {selectedWall ? <div className="mt-1 flex min-h-8 items-center justify-between rounded-md border border-amber-200/25 px-1"><p className="text-[8px] font-black">WALL {selectedWall.integrity}/{selectedWall.maxIntegrity}</p><button type="button" disabled={busy || selectedWall.integrity <= 0 || selectedWall.integrity > WALL_REPAIR_THRESHOLD || summary.coins < WALL_REPAIR_COST} onClick={() => void handleSendIntent({ actionType: "REPAIR_WALL", payload: { wallSegmentId: selectedWall.id } })} className="min-h-7 rounded border border-amber-200/60 px-1 text-[7px] font-black disabled:opacity-40">REPAIR +{WALL_REPAIR_AMOUNT} · {WALL_REPAIR_COST}</button></div> : null}
-                <p className="mt-1 truncate text-center text-[7px] font-bold text-zinc-500">Hold 0.5s on your grid · tap balloons to pop</p>
-              </div> : <div className={styles.controls}>
-                <p className="mb-1 text-center text-[8px] font-black uppercase text-pink-200">Tap to send · Lane {lane}</p>
-                <div className="grid grid-cols-3 gap-1">{(["basic", "speed", "heavy"] as BalloonType[]).map((type) => { const config = BALLOON_TYPES[type]; const disabled = busy || matchRow.status !== "active" || !summaries.yours.unlocked[type] || summaries.yours.coins < config.cost || summaries.yours.queue.length >= MAX_LAUNCH_QUEUE_SIZE; return <button key={type} type="button" disabled={disabled} onClick={() => void handleSendIntent({ actionType: "SEND_BALLOON", payload: { balloonType: type, lane } })} className="min-h-11 rounded-md border border-pink-300/35 bg-pink-500/20 text-[7px] font-black disabled:opacity-40">{type.toUpperCase()}<span className="block text-[9px] text-amber-200">{summaries.yours.unlocked[type] ? config.cost : "LOCK"}</span></button>; })}</div>
-                <div className={styles.queuePanel}><p className="truncate text-[7px] font-black text-zinc-400">Q {summaries.yours.queue.length}/{MAX_LAUNCH_QUEUE_SIZE} · {summaries.yours.queue.map((item) => `${item.balloonType[0].toUpperCase()}${item.lane}`).join(" · ") || "EMPTY"}</p></div>
+                <div className={styles.toolRow}>{(["wall", "nails", "glue", "remove"] as BuildMode[]).map((mode, index) => {
+                  const cost = mode === "wall" ? VERTICAL_WALL_COST : mode === "nails" ? NAIL_STRIP_COST : mode === "glue" ? GLUE_COST : null;
+                  return <button key={mode} type="button" aria-pressed={buildMode === mode} disabled={busy || matchRow.status !== "active" || (cost !== null && summary.coins < cost)} onClick={() => { setBuildMode(mode); previewRef.current = null; }} className={styles.toolButton}><small aria-hidden="true">{index + 1}</small><FloatIcon kind={mode} /><span>{mode.toUpperCase()}</span>{cost !== null ? <span className={styles.cost}><Coin />{cost}</span> : <span className={styles.cost}>FREE</span>}</button>;
+                })}</div>
+                {selectedWall ? <div className={styles.repairPanel}><p>WALL {selectedWall.integrity}/{selectedWall.maxIntegrity}</p><button type="button" disabled={busy || selectedWall.integrity <= 0 || selectedWall.integrity > WALL_REPAIR_THRESHOLD || summary.coins < WALL_REPAIR_COST} onClick={() => void handleSendIntent({ actionType: "REPAIR_WALL", payload: { wallSegmentId: selectedWall.id } })}>REPAIR +{WALL_REPAIR_AMOUNT} · <Coin /> {WALL_REPAIR_COST}</button></div> : null}
+                <p className={styles.feedback} role="status">{message === "Synced" || message.endsWith("applied locally") ? `Hold 0.5s to ${buildMode} · Tap balloons to pop` : message}</p>
+              </div> : <div className={`${styles.controls} ${styles.attackControls}`}>
+                <p className={styles.toolbarHint}>TAP TO SEND TO LANE {lane}</p>
+                <div className={styles.toolRow}>{(["basic", "speed", "heavy"] as BalloonType[]).map(type => { const config = BALLOON_TYPES[type]; const unlocked = summaries.yours.unlocked[type]; const unavailable = busy || matchRow.status !== "active" || !unlocked || summaries.yours.coins < config.cost || summaries.yours.queue.length >= MAX_LAUNCH_QUEUE_SIZE; return <button key={type} type="button" disabled={unavailable} onClick={() => void handleSendIntent({ actionType: "SEND_BALLOON", payload: { balloonType: type, lane } })} className={styles.toolButton}><FloatIcon kind={type} /><span>{type.toUpperCase()}</span><span className={styles.cost}>{unlocked ? <><Coin />{config.cost}</> : "LOCKED"}</span></button>; })}</div>
+                {summaries.yours.queue.length > 0 ? <p className={styles.queuePanel}>{summaries.yours.queue.length}/{MAX_LAUNCH_QUEUE_SIZE} queued</p> : null}
               </div>}
             </section>;
           })}
         </div>
+        {matchRow.status === "complete" || opponentReconnecting ? <div className={styles.matchOverlay} role="status">{matchRow.status === "complete" ? matchRow.result === "draw" ? "DRAW" : matchRow.winner_user_id === userId ? "VICTORY" : "DEFEAT" : "OPPONENT RECONNECTING"}</div> : null}
       </div>
     </main>
   );

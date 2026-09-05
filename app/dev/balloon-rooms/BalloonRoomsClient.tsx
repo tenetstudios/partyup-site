@@ -5,13 +5,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   BALLOON_TYPES,
   GLUE_COST,
-  INCOME_TICK_INTERVAL_MS,
   MAX_FRAME_DELTA_SECONDS,
   MAX_LAUNCH_QUEUE_SIZE,
-  MAX_NAIL_STRIPS,
-  MAX_WALL_SEGMENTS,
   NAIL_STRIP_COST,
-  ROOM_MAX_HEALTH,
   SIMULATION_STEP_SECONDS,
   VERTICAL_WALL_COST,
   WALL_REPAIR_AMOUNT,
@@ -39,6 +35,7 @@ import {
   type WaveState,
 } from "@partyup/balloon-core";
 import { drawBalloonRoom, getWallCenter, type RoomVisualEffect, type WallPreview } from "@/lib/balloonRooms/rendering";
+import { Coin, FloatHeader, FloatIcon, LanePicker, RoomHeader } from "./FloatVisuals";
 import styles from "./BalloonRooms.module.css";
 
 type PlayerId = "playerA" | "playerB";
@@ -185,6 +182,7 @@ export default function BalloonRoomsClient() {
         const playerId = perspective[key];
         if (canvas) drawBalloonRoom(canvas, matchRef.current.players[playerId]!.room, playerId, effectsRef.current, now, {
           debugPaths,
+          showGrid: canvas.dataset.placement === "true",
           preview: key === "yours" ? previewRef.current : null,
           selectedWallId: key === "yours" ? selectedWallIds[playerId] : null,
         });
@@ -309,7 +307,6 @@ export default function BalloonRoomsClient() {
   const perspective = getPerspectiveIds();
   const summaries = { yours: summarizeRoom(match.players[perspective.yours]!.room, match.simulationTimeMs), opponent: summarizeRoom(match.players[perspective.opponent]!.room, match.simulationTimeMs) };
   const waveSummary = summarizeWave(match);
-  const currentRound = waveSummary.roundId ? getWaveRound(waveSummary.roundId) : null;
   const selectedWall = summaries.yours.walls.find((wall) => wall.id === selectedWallIds[viewAs]) ?? null;
   const selectedWallRepairable = selectedWall !== null && selectedWall.integrity > 0 && selectedWall.integrity <= WALL_REPAIR_THRESHOLD;
   const buildMode = buildModes[viewAs];
@@ -318,43 +315,38 @@ export default function BalloonRoomsClient() {
   return (
     <main className={`${styles.gameShell} text-white`}>
       <div className={styles.gameFrame}>
-        <header className="flex items-center justify-between gap-2 px-1">
-          <div className="flex items-center gap-2"><h1 className="text-lg font-black tracking-tight sm:text-xl">FLOAT</h1><div className={styles.perspectivePicker} aria-label="Development player perspective">{playerIds.map((playerId) => <button key={playerId} type="button" aria-pressed={viewAs === playerId} onClick={() => switchPerspective(playerId)} className={viewAs === playerId ? styles.perspectiveSelected : undefined}>VIEW AS {playerId === "playerA" ? "A" : "B"}</button>)}</div></div>
-          <div className="flex gap-1"><Link href="/dev/balloon-rooms/network" className="grid min-h-9 place-items-center rounded-lg border border-purple-300/35 px-2 text-[8px] font-black text-purple-200">NETWORK</Link><button type="button" aria-pressed={debugPaths} onClick={() => setDebugPaths((value) => !value)} className="min-h-9 rounded-lg border border-white/15 px-2 text-[9px] font-black">PATHS</button><button type="button" onClick={restart} className="min-h-9 rounded-lg border border-white/15 px-2 text-[9px] font-black">RESTART</button></div>
-        </header>
-
-        <div className={styles.roundBar}>
-          <p className="shrink-0 text-[10px] font-black">{match.status === "complete" ? (match.result?.type === "draw" ? "DRAW" : `${match.result?.winnerPlayerId === "playerA" ? "PLAYER A" : "PLAYER B"} WINS`) : waveSummary.status === "transition" ? `ROUND ${waveSummary.nextRoundId} IN ${waveSummary.nextRoundInSeconds}s` : `ROUND ${waveSummary.roundId} · ${waveSummary.spawnedCount}/${waveSummary.totalCount}`}</p>
-          <p className="truncate text-[8px] font-bold text-purple-200">{waveSummary.status === "transition" ? "BUILD WINDOW · HOLD 0.5s ON A GRID EDGE" : currentRound ? currentRound.composition.map((entry) => `${entry.count} ${entry.balloonType}`).join(" · ") : "PVP ACTIVE"}</p>
-          {waveNotice ? <p className="truncate text-[8px] font-black text-emerald-300">{waveNotice}</p> : null}
-        </div>
-
+        <FloatHeader round={`ROUND ${waveSummary.status === "transition" ? waveSummary.nextRoundId ?? 20 : waveSummary.roundId ?? 1} / 20`} subtitle={waveSummary.status === "transition" ? `Build your defense · Next round in ${waveSummary.nextRoundInSeconds}s` : "Keep them from reaching the top."} connection="LOCAL">
+          <div className={styles.perspectivePicker}>{playerIds.map(id => <button key={id} type="button" aria-pressed={viewAs === id} onClick={() => switchPerspective(id)} className={viewAs === id ? styles.perspectiveSelected : undefined}>VIEW AS {id === "playerA" ? "A" : "B"}</button>)}</div>
+          <Link href="/dev/balloon-rooms/network">NETWORK PLAY</Link><button type="button" aria-pressed={debugPaths} onClick={() => setDebugPaths(value => !value)}>DEBUG PATHS</button><button type="button" onClick={restart}>RESTART MATCH</button>
+          <p>{waveNotice ?? "Local two-player preview"}</p>
+        </FloatHeader>
         <div className={styles.roomsGrid}>
           {viewRoomKeys.map((key) => {
-            const roomSummary = summaries[key];
-            const playerId = perspective[key];
-            const label = key === "yours" ? `YOUR ROOM · ${playerId === "playerA" ? "A" : "B"}` : `OPPONENT · ${playerId === "playerA" ? "A" : "B"}`;
+            const summary = summaries[key];
+            const id = perspective[key];
+            const label = `${key === "yours" ? "YOUR ROOM" : "OPPONENT"} · ${id === "playerA" ? "A" : "B"}`;
             return <section key={key} className={styles.room} aria-label={label}>
-              <h2 className="truncate text-center text-[10px] font-black tracking-[0.12em] text-purple-100 sm:text-xs">{label}</h2>
-              <div className={styles.economyPanel}><p className="text-sm font-black tabular-nums text-amber-200">● {roomSummary.coins}</p><p className="text-[8px] font-black tabular-nums text-emerald-300">+{roomSummary.income}/{INCOME_TICK_INTERVAL_MS / 1000}s <span className="text-zinc-500">· {Math.ceil(roomSummary.nextIncomeInMs / 1000)}s</span></p></div>
+              <RoomHeader label={label} coins={summary.coins} income={summary.income} health={summary.health} />
               <div className={styles.playfield}>
-                <canvas ref={(canvas) => { canvasesRef.current[key] = canvas; }} className={styles.canvas} onPointerDown={(event) => handlePointerDown(key, event)} onPointerMove={(event) => handlePointerMove(key, event)} onPointerUp={(event) => handlePointerUp(key, event)} onPointerCancel={(event) => cancelBuildHold(event.pointerId)} onLostPointerCapture={(event) => cancelBuildHold(event.pointerId)} onPointerLeave={(event) => { if (key === "yours") { cancelBuildHold(event.pointerId); previewRef.current = null; } }} onContextMenu={(event) => event.preventDefault()} aria-label={`${label} playfield`} />
-                {key === "opponent" ? <div className={styles.lanePicker} aria-label="Choose attack lane">{([1, 2, 3, 4] as SpawnLane[]).map((lane) => <button key={lane} type="button" aria-label={`Target Lane ${lane}`} aria-pressed={selectedAttackLane === lane} onClick={() => setAttackLanes((current) => ({ ...current, [viewAs]: lane }))} className={selectedAttackLane === lane ? styles.laneSelected : undefined}>L{lane}</button>)}</div> : null}
+                <canvas ref={(canvas) => { canvasesRef.current[key] = canvas; }} className={styles.canvas} data-placement={key === "yours" && buildMode === "wall"} onPointerDown={(event) => handlePointerDown(key, event)} onPointerMove={(event) => handlePointerMove(key, event)} onPointerUp={(event) => handlePointerUp(key, event)} onPointerCancel={(event) => cancelBuildHold(event.pointerId)} onLostPointerCapture={(event) => cancelBuildHold(event.pointerId)} onPointerLeave={(event) => { if (key === "yours") { cancelBuildHold(event.pointerId); previewRef.current = null; } }} onContextMenu={(event) => event.preventDefault()} aria-label={`${label} playfield`} />
+                {key === "opponent" ? <LanePicker lane={selectedAttackLane} onSelect={value => setAttackLanes(current => ({ ...current, [viewAs]: value }))} /> : null}
               </div>
-              <div className={styles.statusPanel}>{roomSummary.running ? <div className="flex items-center justify-between gap-1"><p className="text-sm font-black tabular-nums">HP {roomSummary.health}/{ROOM_MAX_HEALTH}</p><p className="text-right text-[7px] font-bold text-purple-300">{roomSummary.count} ACTIVE<br />W {roomSummary.wallCount}/{MAX_WALL_SEGMENTS} · N {roomSummary.nailCount}/{MAX_NAIL_STRIPS} · G {roomSummary.glueCount}</p></div> : <p className="text-center text-sm font-black text-red-300">ROOM BROKEN</p>}</div>
               {key === "yours" ? <div className={styles.controls}>
-                <div className="grid grid-cols-4 gap-1">{(["wall", "nails", "glue", "remove"] as BuildMode[]).map((mode) => { const cost = mode === "wall" ? VERTICAL_WALL_COST : mode === "nails" ? NAIL_STRIP_COST : mode === "glue" ? GLUE_COST : null; return <button key={mode} type="button" aria-pressed={buildMode === mode} disabled={match.status === "complete" || (cost !== null && roomSummary.coins < cost)} onClick={() => { setBuildModes((current) => ({ ...current, [viewAs]: mode })); setFeedback(null); }} className={`min-h-9 rounded-md border px-0.5 text-[7px] font-black disabled:opacity-40 ${buildMode === mode ? "border-purple-300 bg-purple-500/35 text-white" : "border-white/10 bg-black/20 text-zinc-400"}`}>{mode.toUpperCase()}<span className="block">{cost ?? "FREE"}</span></button>; })}</div>
-                {selectedWall ? <div className="mt-1 flex min-h-8 items-center justify-between gap-1 rounded-md border border-amber-200/25 bg-amber-300/10 px-1"><p className="truncate text-[8px] font-black text-amber-100">WALL {selectedWall.integrity}/{selectedWall.maxIntegrity}</p><button type="button" onClick={repairSelectedWall} disabled={match.status === "complete" || !selectedWallRepairable || roomSummary.coins < WALL_REPAIR_COST} className="min-h-7 shrink-0 rounded border border-amber-200/60 px-1 text-[7px] font-black disabled:opacity-40">REPAIR +{WALL_REPAIR_AMOUNT} · {WALL_REPAIR_COST}</button></div> : null}
-                <p className={`mt-1 truncate text-center text-[7px] font-black ${feedback ? (feedback.valid ? "text-emerald-300" : "text-red-300") : "text-zinc-500"}`}>{feedback?.message ?? `Hold 0.5s to ${buildMode} · repair at ${WALL_REPAIR_THRESHOLD} HP`}</p>
-              </div> : <div className={styles.controls}>
-                <p className="mb-1 truncate text-center text-[8px] font-black uppercase text-pink-200">Tap to send · Lane {selectedAttackLane}</p>
-                <div className="grid grid-cols-3 gap-1">{(["basic", "speed", "heavy"] as BalloonType[]).map((balloonType) => { const unlocked = summaries.yours.unlockedBalloonTypes[balloonType]; const config = BALLOON_TYPES[balloonType]; const unavailable = match.status === "complete" || !summaries.opponent.running || !unlocked || summaries.yours.coins < config.cost || summaries.yours.queue.length >= MAX_LAUNCH_QUEUE_SIZE; return <button key={balloonType} type="button" disabled={unavailable} onClick={() => sendBalloon(balloonType)} className="min-h-11 rounded-md border border-pink-300/35 bg-gradient-to-b from-purple-600/45 to-pink-600/35 px-0.5 text-[7px] font-black text-white disabled:border-white/10 disabled:bg-none disabled:text-zinc-500 disabled:opacity-55"><span className="block">{balloonType.toUpperCase()}</span><span className="text-[9px] text-amber-200">{unlocked ? config.cost : "LOCK"}</span></button>; })}</div>
-                <div className={styles.queuePanel}><div className="flex min-h-5 items-center gap-1 overflow-hidden"><span className="shrink-0 text-[7px] font-black text-zinc-500">Q {summaries.yours.queue.length}/{MAX_LAUNCH_QUEUE_SIZE}</span>{summaries.yours.queue.length > 0 ? summaries.yours.queue.map((queued, index) => <span key={`${index}-${queued.balloonType}-${queued.lane}`} className="grid min-w-6 place-items-center rounded-full border border-pink-300/30 bg-pink-500/15 px-1 py-1 text-[7px] font-black text-pink-100">{queued.balloonType[0].toUpperCase()}{queued.lane}</span>) : <span className="text-[7px] font-bold text-zinc-600">EMPTY</span>}</div></div>
-                <p className={`mt-1 truncate text-center text-[7px] font-bold ${summaries.yours.queue.length >= MAX_LAUNCH_QUEUE_SIZE ? "text-red-300" : "text-emerald-300"}`}>{summaries.yours.queue.length >= MAX_LAUNCH_QUEUE_SIZE ? "QUEUE FULL" : lastSends[viewAs]}</p>
+                <div className={styles.toolRow}>{(["wall", "nails", "glue", "remove"] as BuildMode[]).map((mode, index) => {
+                  const cost = mode === "wall" ? VERTICAL_WALL_COST : mode === "nails" ? NAIL_STRIP_COST : mode === "glue" ? GLUE_COST : null;
+                  return <button key={mode} type="button" aria-pressed={buildMode === mode} disabled={match.status === "complete" || (cost !== null && summary.coins < cost)} onClick={() => { setBuildModes(current => ({ ...current, [viewAs]: mode })); setFeedback(null); previewRef.current = null; }} className={styles.toolButton}><small aria-hidden="true">{index + 1}</small><FloatIcon kind={mode} /><span>{mode.toUpperCase()}</span>{cost !== null ? <span className={styles.cost}><Coin />{cost}</span> : <span className={styles.cost}>FREE</span>}</button>;
+                })}</div>
+                {selectedWall ? <div className={styles.repairPanel}><p>WALL {selectedWall.integrity}/{selectedWall.maxIntegrity}</p><button type="button" onClick={repairSelectedWall} disabled={match.status === "complete" || !selectedWallRepairable || summary.coins < WALL_REPAIR_COST}>REPAIR +{WALL_REPAIR_AMOUNT} · <Coin /> {WALL_REPAIR_COST}</button></div> : null}
+                <p className={styles.feedback} role="status">{feedback?.message ?? `Hold 0.5s to ${buildMode} · Tap balloons to pop`}</p>
+              </div> : <div className={`${styles.controls} ${styles.attackControls}`}>
+                <p className={styles.toolbarHint}>TAP TO SEND TO LANE {selectedAttackLane}</p>
+                <div className={styles.toolRow}>{(["basic", "speed", "heavy"] as BalloonType[]).map(type => { const unlocked = summaries.yours.unlockedBalloonTypes[type]; const config = BALLOON_TYPES[type]; const unavailable = match.status === "complete" || !summaries.opponent.running || !unlocked || summaries.yours.coins < config.cost || summaries.yours.queue.length >= MAX_LAUNCH_QUEUE_SIZE; return <button key={type} type="button" disabled={unavailable} onClick={() => sendBalloon(type)} className={styles.toolButton}><FloatIcon kind={type} /><span>{type.toUpperCase()}</span><span className={styles.cost}>{unlocked ? <><Coin />{config.cost}</> : "LOCKED"}</span></button>; })}</div>
+                {summaries.yours.queue.length > 0 ? <p className={styles.queuePanel}>{summaries.yours.queue.length}/{MAX_LAUNCH_QUEUE_SIZE} queued</p> : null}<p className={styles.feedback} role="status">{lastSends[viewAs] === "No balloons sent yet" ? "" : lastSends[viewAs]}</p>
               </div>}
             </section>;
           })}
         </div>
+        {match.status === "complete" ? <div className={styles.matchOverlay} role="status">{match.result?.type === "draw" ? "DRAW" : match.result?.winnerPlayerId === viewAs ? "VICTORY" : "DEFEAT"}</div> : null}
       </div>
     </main>
   );

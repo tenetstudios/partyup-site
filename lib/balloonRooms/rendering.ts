@@ -1,9 +1,7 @@
 import {
   GRID_COLUMNS,
   GRID_ROWS,
-  SPAWN_LANES,
   getCellCenter,
-  getLaneCell,
   type Balloon,
   type BalloonRoom,
   type NailStrip,
@@ -27,7 +25,7 @@ export function drawBalloonRoom(
   roomKey: string,
   effects: RoomVisualEffect[],
   now: number,
-  options: { debugPaths: boolean; preview: WallPreview; selectedWallId?: string | null },
+  options: { showGrid?: boolean; debugPaths: boolean; preview: WallPreview; selectedWallId?: string | null },
 ): void {
   const bounds = canvas.getBoundingClientRect();
   const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
@@ -42,12 +40,11 @@ export function drawBalloonRoom(
   if (!context) return;
   context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
   context.clearRect(0, 0, bounds.width, bounds.height);
-  drawGrid(context, bounds.width, bounds.height);
-  drawLanes(context, bounds.width, bounds.height);
+  if (options.showGrid) drawGrid(context, bounds.width, bounds.height);
   if (options.debugPaths) drawPaths(context, room, bounds.width, bounds.height);
-  for (const wall of room.walls) drawWall(context, wall, bounds.width, bounds.height, "rgba(195, 93, 255, 0.96)", 5, true);
+  for (const wall of room.walls) drawWall(context, wall, bounds.width, bounds.height, "#fffdf3", 5, true);
   const selectedWall = room.walls.find((wall) => wall.id === options.selectedWallId);
-  if (selectedWall) drawWall(context, selectedWall, bounds.width, bounds.height, "rgba(253, 230, 138, 0.9)", 11);
+  if (selectedWall) drawWall(context, selectedWall, bounds.width, bounds.height, "#d3eeff", 11);
   for (const glue of room.glueTraps) {
     const wall = room.walls.find((candidate) => candidate.id === glue.wallSegmentId);
     if (wall) drawGlue(context, wall, bounds.width, bounds.height);
@@ -57,13 +54,13 @@ export function drawBalloonRoom(
     if (nails.length > 0) drawNailStack(context, wall, nails, bounds.width, bounds.height);
   }
   if (options.preview) {
-    drawWall(context, options.preview.wall, bounds.width, bounds.height, options.preview.valid ? "rgba(216, 180, 254, 0.72)" : "rgba(248, 113, 113, 0.82)", 7);
+    drawWall(context, options.preview.wall, bounds.width, bounds.height, options.preview.valid ? "#c5eeff" : "rgba(248, 113, 113, 0.82)", 7);
   }
   for (const balloon of room.balloons) drawBalloon(context, balloon, bounds.width, bounds.height, options.debugPaths);
   drawEffects(context, roomKey, effects, now, bounds.width, bounds.height);
 
   if (room.health <= 0) {
-    context.fillStyle = "rgba(7, 0, 15, 0.74)";
+    context.fillStyle = "rgba(42, 90, 138, 0.48)";
     context.fillRect(0, 0, bounds.width, bounds.height);
     context.fillStyle = "#fca5a5";
     context.font = `900 ${Math.max(16, bounds.width * 0.09)}px sans-serif`;
@@ -75,7 +72,7 @@ export function drawBalloonRoom(
 
 function drawGrid(context: CanvasRenderingContext2D, width: number, height: number): void {
   context.save();
-  context.strokeStyle = "rgba(221, 194, 255, 0.075)";
+  context.strokeStyle = "rgba(242, 251, 255, 0.18)";
   context.lineWidth = 1;
   for (let column = 1; column < GRID_COLUMNS; column += 1) {
     const x = (column / GRID_COLUMNS) * width;
@@ -90,18 +87,6 @@ function drawGrid(context: CanvasRenderingContext2D, width: number, height: numb
     context.moveTo(0, y);
     context.lineTo(width, y);
     context.stroke();
-  }
-  context.restore();
-}
-
-function drawLanes(context: CanvasRenderingContext2D, width: number, height: number): void {
-  context.save();
-  context.textAlign = "center";
-  context.font = "900 9px sans-serif";
-  for (const lane of SPAWN_LANES) {
-    const position = getCellCenter(getLaneCell(lane));
-    context.fillStyle = "rgba(216, 180, 254, 0.48)";
-    context.fillText(`↑ ${lane}`, position.x * width, height - 7);
   }
   context.restore();
 }
@@ -123,38 +108,46 @@ function drawPaths(context: CanvasRenderingContext2D, room: BalloonRoom, width: 
   context.restore();
 }
 
+// Visual thickness is centered on the canonical grid edge; collision data stays unchanged.
+function wallRect(wall: WallSegment, width: number, height: number) {
+  const thickness = Math.max(10, Math.min(30, width / GRID_COLUMNS * .62, height / GRID_ROWS * .66));
+  const vertical = wall.orientation === "vertical";
+  return { x: wall.gridX / GRID_COLUMNS * width - (vertical ? thickness / 2 : 0), y: wall.gridY / GRID_ROWS * height - (vertical ? 0 : thickness / 2), w: vertical ? thickness : width / GRID_COLUMNS, h: vertical ? height / GRID_ROWS : thickness, thickness };
+}
+
 function drawWall(context: CanvasRenderingContext2D, wall: WallSegment, width: number, height: number, color: string, lineWidth: number, showIntegrity = false): void {
+  const { x, y, w, h } = wallRect(wall, width, height);
   context.save();
-  context.strokeStyle = color;
-  context.lineWidth = lineWidth;
-  context.lineCap = "round";
-  context.shadowColor = color;
-  context.shadowBlur = 6;
-  context.beginPath();
-  if (wall.orientation === "vertical") {
-    const x = (wall.gridX / GRID_COLUMNS) * width;
-    context.moveTo(x, (wall.gridY / GRID_ROWS) * height);
-    context.lineTo(x, ((wall.gridY + 1) / GRID_ROWS) * height);
-  } else {
-    const y = (wall.gridY / GRID_ROWS) * height;
-    context.moveTo((wall.gridX / GRID_COLUMNS) * width, y);
-    context.lineTo(((wall.gridX + 1) / GRID_COLUMNS) * width, y);
-  }
+  context.shadowColor = "#42618270";
+  context.shadowBlur = 4;
+  context.shadowOffsetY = 3;
+  const face = context.createLinearGradient(x, y, x + w * .25, y + h);
+  face.addColorStop(0, "#fffef7"); face.addColorStop(.2, "#f4f0e8"); face.addColorStop(1, "#c4bfba");
+  context.fillStyle = showIntegrity ? face : color;
+  context.globalAlpha = showIntegrity || lineWidth === 11 ? 1 : .65;
+  context.beginPath(); context.roundRect(x + 1, y, Math.max(1, w - 2), h, 3); context.fill();
+  context.shadowBlur = 0; context.shadowOffsetY = 0;
+  context.strokeStyle = showIntegrity ? "#fdfbf1" : color; context.lineWidth = lineWidth === 11 ? 3 : 1;
   context.stroke();
-  if (showIntegrity && wall.integrity < wall.maxIntegrity) {
-    const midpoint = getWallCenter(wall);
-    const ratio = wall.integrity / wall.maxIntegrity;
-    context.shadowBlur = 0;
-    context.strokeStyle = "rgba(7,3,15,0.78)";
-    context.lineWidth = Math.max(1.5, lineWidth * 0.45);
-    context.setLineDash(ratio <= 0.3 ? [7, 5] : [3, 9]);
+  context.strokeStyle = "#ffffffb0"; context.lineWidth = 3;
+  context.beginPath(); context.moveTo(x + 4, y + h - 4); context.lineTo(x + 4, y + 3); context.lineTo(x + w - 4, y + 3); context.stroke();
+  context.strokeStyle = "#97989565"; context.lineWidth = 2;
+  context.beginPath(); context.moveTo(x + 4, y + h - 2); context.lineTo(x + w - 3, y + h - 2); context.stroke();
+  // Subdivide the face visually, while preserving one canonical wall segment.
+  const blocks = Math.max(1, Math.round((wall.orientation === "horizontal" ? w : h) / 42));
+  for (let i = 1; i < blocks; i++) {
+    context.strokeStyle = "#a8a49d90"; context.lineWidth = 1;
+    context.beginPath();
+    if (wall.orientation === "horizontal") { context.moveTo(x + w * i / blocks, y + 2); context.lineTo(x + w * i / blocks, y + h - 2); }
+    else { context.moveTo(x + 2, y + h * i / blocks); context.lineTo(x + w - 2, y + h * i / blocks); }
     context.stroke();
-    context.setLineDash([]);
-    context.fillStyle = "rgba(253,230,138,0.98)";
-    context.font = "900 8px monospace";
-    context.textAlign = "center";
-    context.textBaseline = "middle";
-    context.fillText(`${wall.integrity}/${wall.maxIntegrity}`, midpoint.x * width + (wall.orientation === "vertical" ? 12 : 0), midpoint.y * height - (wall.orientation === "horizontal" ? 9 : 0));
+  }
+  if (showIntegrity && wall.integrity < wall.maxIntegrity) {
+    const ratio = wall.integrity / wall.maxIntegrity;
+    context.strokeStyle = ratio <= .3 ? "#827c78" : "#aaa29a"; context.lineWidth = 1;
+    context.beginPath(); context.moveTo(x + w * .6, y + 1); context.lineTo(x + w * .45, y + h * .42); context.lineTo(x + w * .6, y + h * .58);
+    if (ratio <= .6) context.lineTo(x + w * .35, y + h - 1);
+    context.stroke();
   }
   context.restore();
 }
@@ -166,62 +159,40 @@ export function getWallCenter(wall: WallSegment): { x: number; y: number } {
 }
 
 function drawGlue(context: CanvasRenderingContext2D, wall: WallSegment, width: number, height: number): void {
-  drawWall(context, wall, width, height, "rgba(74, 222, 128, 0.92)", 10);
+  const { x, y, w, h } = wallRect(wall, width, height);
+  context.save();
+  const gel = context.createLinearGradient(x, y, x + w, y + h);
+  gel.addColorStop(0, "#e1fbffbd"); gel.addColorStop(.45, "#56c2f2a8"); gel.addColorStop(1, "#c8faffd9");
+  context.fillStyle = gel; context.strokeStyle = "#e1fbff"; context.lineWidth = 1.5;
+  context.beginPath(); context.roundRect(x, y - 1, w, h + 3, 5); context.fill(); context.stroke();
+  context.strokeStyle = "#ffffffbd";
+  for (let i = 1; i < 4; i++) {
+    const bx = x + w * i / 4;
+    context.beginPath(); context.moveTo(bx - 3, y + 5); context.quadraticCurveTo(bx + 4, y + 1, bx + 3, y + h * .4); context.stroke();
+  }
+  context.beginPath(); context.moveTo(x + 3, y + h - 4); context.bezierCurveTo(x + w * .3, y + h + 1, x + w * .6, y + h - 8, x + w - 3, y + h - 3); context.stroke();
+  context.restore();
 }
 
-function drawNailStack(
-  context: CanvasRenderingContext2D,
-  wall: WallSegment,
-  nails: NailStrip[],
-  width: number,
-  height: number,
-): void {
-  const totalDurability = nails.reduce((sum, nail) => sum + nail.durability, 0);
-  const totalMaximum = nails.reduce((sum, nail) => sum + nail.maxDurability, 0);
-  const ratio = totalDurability / totalMaximum;
-  const color = ratio <= 0.2
-      ? "rgba(248, 113, 113, 0.96)"
-      : ratio <= 0.6
-        ? "rgba(251, 191, 36, 0.96)"
-        : "rgba(167, 243, 208, 0.98)";
-  const startX = (wall.gridX / GRID_COLUMNS) * width;
-  const startY = (wall.gridY / GRID_ROWS) * height;
-  const length = wall.orientation === "vertical" ? height / GRID_ROWS : width / GRID_COLUMNS;
-  const spikeCount = 4;
-  const spikeSize = Math.max(3, Math.min(6, length / 7));
-
+function drawNailStack(context: CanvasRenderingContext2D, wall: WallSegment, nails: NailStrip[], width: number, height: number): void {
+  const { x, y, w, h, thickness } = wallRect(wall, width, height);
+  const ratio = nails.reduce((sum, nail) => sum + nail.durability, 0) / nails.reduce((sum, nail) => sum + nail.maxDurability, 0);
+  const vertical = wall.orientation === "vertical";
+  const count = Math.min(4, 2 + nails.length - 1);
   context.save();
-  context.strokeStyle = color;
-  context.fillStyle = color;
-  context.lineWidth = 1.5;
-  context.shadowColor = color;
-  context.shadowBlur = 5 * ratio;
-  for (let index = 0; index < spikeCount; index += 1) {
-    const progress = (index + 0.5) / spikeCount;
-    const x = wall.orientation === "vertical" ? startX : startX + length * progress;
-    const y = wall.orientation === "vertical" ? startY + length * progress : startY;
-    context.beginPath();
-    if (wall.orientation === "vertical") {
-      context.moveTo(x, y - spikeSize * 0.7);
-      context.lineTo(x + (index % 2 ? -spikeSize : spikeSize), y);
-      context.lineTo(x, y + spikeSize * 0.7);
-    } else {
-      context.moveTo(x - spikeSize * 0.7, y);
-      context.lineTo(x, y + (index % 2 ? -spikeSize : spikeSize));
-      context.lineTo(x + spikeSize * 0.7, y);
-    }
-    context.closePath();
-    context.fill();
+  context.globalAlpha = .6 + ratio * .4;
+  for (let i = 0; i < count; i++) {
+    context.save();
+    if (vertical) { context.translate(x + w, y + h * (i + .5) / count); context.rotate(-Math.PI / 2); }
+    else context.translate(x + w * (i + .5) / count, y + h);
+    const half = Math.max(3, thickness * .2), length = thickness * 1.1;
+    const metal = context.createLinearGradient(-half, 0, half, 0);
+    metal.addColorStop(0, "#33465e"); metal.addColorStop(.38, "#c5d4e2"); metal.addColorStop(.55, "#f2f7fa"); metal.addColorStop(.7, "#8594a8"); metal.addColorStop(1, "#33445e");
+    context.fillStyle = metal; context.strokeStyle = "#41546b"; context.lineWidth = .8;
+    context.beginPath(); context.moveTo(-half, 2); context.lineTo(0, length); context.lineTo(half, 2); context.closePath(); context.fill(); context.stroke();
+    context.fillRect(-half - 2, 0, half * 2 + 4, 3);
+    context.restore();
   }
-  context.setLineDash([]);
-  context.shadowBlur = 0;
-  context.font = "900 8px monospace";
-  context.textAlign = "center";
-  context.textBaseline = "middle";
-  context.fillStyle = "rgba(255,255,255,0.95)";
-  const labelX = wall.orientation === "vertical" ? startX + 12 : startX + length / 2;
-  const labelY = wall.orientation === "vertical" ? startY + length / 2 : startY - 10;
-  context.fillText(`×${nails.length} ${totalDurability}`, labelX, labelY);
   context.restore();
 }
 
@@ -268,26 +239,33 @@ function drawBalloon(context: CanvasRenderingContext2D, balloon: Balloon, width:
   const x = balloon.x * width;
   const y = balloon.y * height;
   const radius = Math.max(10, balloon.radius * width);
-  const gradient = context.createRadialGradient(x - radius * 0.35, y - radius * 0.4, radius * 0.1, x, y, radius);
+  const gradient = context.createRadialGradient(x + radius * 0.4, y - radius * 0.45, radius * 0.1, x, y, radius);
   const colors = balloon.balloonType === "speed"
-    ? ["#cffafe", "#22d3ee", "#2563eb"]
+    ? ["#c3f1ff", "#2589ff", "#153bc9"]
     : balloon.balloonType === "heavy"
-      ? ["#fde68a", "#f97316", "#7c2d12"]
-      : ["#f9a8d4", "#ec2994", "#8b3dff"];
+      ? ["#c4b4d0", "#594467", "#211d36"]
+      : ["#ffb4c0", "#ff294e", "#c30034"];
   gradient.addColorStop(0, colors[0]);
   gradient.addColorStop(0.35, colors[1]);
   gradient.addColorStop(1, colors[2]);
   context.save();
-  context.shadowColor = balloon.balloonType === "speed" ? "rgba(34, 211, 238, 0.55)" : balloon.balloonType === "heavy" ? "rgba(249, 115, 22, 0.52)" : "rgba(236, 41, 148, 0.42)";
+  context.shadowColor = balloon.balloonType === "speed" ? "rgba(100, 193, 255, 0.4)" : balloon.balloonType === "heavy" ? "rgba(92, 73, 117, 0.25)" : "rgba(255, 129, 156, 0.3)";
   context.shadowBlur = 12;
   context.fillStyle = gradient;
   context.beginPath();
-  context.ellipse(x, y, radius * (balloon.balloonType === "speed" ? 0.66 : 0.82), radius, 0, 0, Math.PI * 2);
+  const rx = radius * (balloon.balloonType === "speed" ? .66 : .82);
+  context.moveTo(x, y + radius);
+  context.bezierCurveTo(x - rx * 1.5, y + radius * .2, x - rx * 1.1, y - radius, x, y - radius);
+  context.bezierCurveTo(x + rx * 1.1, y - radius, x + rx * 1.5, y + radius * .2, x, y + radius);
+  context.closePath();
   context.fill();
   context.shadowBlur = 0;
+  context.strokeStyle = "rgba(255,205,222,.25)";
+  context.lineWidth = Math.max(1, radius * .035);
+  context.stroke();
   context.fillStyle = "rgba(255,255,255,0.72)";
   context.beginPath();
-  context.ellipse(x - radius * 0.25, y - radius * 0.35, radius * 0.12, radius * 0.22, -0.35, 0, Math.PI * 2);
+  context.ellipse(x + radius * 0.34, y - radius * 0.48, radius * 0.12, radius * 0.22, -0.35, 0, Math.PI * 2);
   context.fill();
   context.fillStyle = colors[2];
   context.beginPath();
@@ -296,13 +274,17 @@ function drawBalloon(context: CanvasRenderingContext2D, balloon: Balloon, width:
   context.lineTo(x + radius * 0.16, y + radius * 1.16);
   context.closePath();
   context.fill();
-  context.font = `900 ${Math.max(7, radius * 0.48)}px sans-serif`;
+  context.strokeStyle = "rgba(255,255,255,.7)";
+  context.lineWidth = .8;
+  context.beginPath(); context.moveTo(x, y + radius * 1.16);
+  context.bezierCurveTo(x - radius * .22, y + radius * 1.5, x + radius * .18, y + radius * 1.65, x - radius * .08, y + radius * 1.95); context.stroke();
+  context.font = `700 ${Math.max(7, radius * 0.48)}px sans-serif`;
   context.textAlign = "center";
   context.textBaseline = "middle";
   context.fillStyle = "rgba(255,255,255,0.96)";
   context.fillText(`${balloon.health}`, x, y + radius * 0.27);
   if (balloon.glued) {
-    context.strokeStyle = "rgba(74, 222, 128, 0.95)";
+    context.strokeStyle = "rgba(187, 242, 255, 0.9)";
     context.lineWidth = 2;
     context.beginPath();
     context.arc(x, y, radius * 1.08, 0, Math.PI * 2);
