@@ -853,6 +853,23 @@ export default function NetworkBalloonRoomsClient({ initialCode, initialRoomId }
   const matchLabel = matchRow.status === "complete" ? matchRow.result === "draw" ? "DRAW" : matchRow.winner_user_id === userId ? "YOU WIN" : "OPPONENT WINS"
     : snapshot.waveState.status === "transition" ? `ROUND ${nextRound?.id ?? "—"} IN ${Math.max(0, Math.ceil(((snapshot.waveState.transitionEndsAt ?? snapshot.simulationTimeMs) - snapshot.simulationTimeMs) / 1000))}s`
       : `ROUND ${waveRound?.id ?? "—"} · ${snapshot.waveState.spawnedCount}/${waveRound?.composition.reduce((sum, item) => sum + item.count, 0) ?? 0}`;
+  // The live deterministic snapshot completes before the database row can round-trip.
+  // Prefer it so the winner sees the result immediately.
+  const matchOutcome = snapshot.status === "complete"
+    ? snapshot.result?.type === "draw"
+      ? "DRAW"
+      : snapshot.result?.winnerPlayerId === playerId
+        ? "YOU WIN"
+        : "DEFEAT"
+    : matchRow.status === "complete"
+      ? matchRow.result === "draw"
+        ? "DRAW"
+        : matchRow.winner_user_id === userId
+          ? "YOU WIN"
+          : "DEFEAT"
+      : opponentReconnecting
+        ? "OPPONENT RECONNECTING"
+        : null;
 
   return (
     <main className={`${styles.gameShell} text-white`}>
@@ -885,7 +902,7 @@ export default function NetworkBalloonRoomsClient({ initialCode, initialRoomId }
             </section>;
           })}
         </div>
-        {matchRow.status === "complete" || opponentReconnecting ? <div className={styles.matchOverlay} role="status">{matchRow.status === "complete" ? matchRow.result === "draw" ? "DRAW" : matchRow.winner_user_id === userId ? "VICTORY" : "DEFEAT" : "OPPONENT RECONNECTING"}</div> : null}
+        {matchOutcome ? <div className={styles.matchOverlay} data-result={matchOutcome === "YOU WIN" ? "win" : undefined} role="status" aria-live="assertive">{matchOutcome}</div> : null}
       </div>
     </main>
   );

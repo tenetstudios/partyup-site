@@ -61,6 +61,7 @@
 .repairPanel button:disabled { opacity: .4; }
 .queuePanel { margin-top: 4px; font-size: 9px; text-align: center; }
 .matchOverlay { position: absolute; z-index: 8; top: 40%; left: 50%; transform: translate(-50%, -50%); padding: 24px 40px; border: 1px solid #ebfaff; border-radius: 20px; background: #316ba0c9; backdrop-filter: blur(12px); text-align: center; font-size: 24px; font-weight: 700; letter-spacing: .08em; box-shadow: 0 10px 45px #305b9150; }
+.matchOverlay[data-result='win'] { padding: 28px 50px; border-color: #fff; background: linear-gradient(145deg, #3d8fdad9, #686dd5d9); font-size: clamp(32px, 4vw, 56px); text-shadow: 0 2px 12px #c9f6ff99; box-shadow: inset 0 1px 18px #fff4, 0 0 34px #c3eeff99, 0 14px 45px #24558a66; }
 .lobbyPanel { width: min(100%, 460px); padding: 28px; border: 1px solid #e2f5ffbb; border-radius: 22px; background: #286196b8; backdrop-filter: blur(14px); box-shadow: 0 15px 60px #1f54834d; }
 .gameShell button:focus-visible, .gameShell summary:focus-visible, .gameShell a:focus-visible { outline: 2px solid white; outline-offset: 3px; }
 @media (min-width: 1800px) { .gameFrame { padding-inline: 32px; } .room { grid-template-rows: 76px minmax(0, 1fr) 145px; } }

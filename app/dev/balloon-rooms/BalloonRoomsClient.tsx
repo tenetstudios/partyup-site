@@ -311,6 +311,13 @@ export default function BalloonRoomsClient() {
   const selectedWallRepairable = selectedWall !== null && selectedWall.integrity > 0 && selectedWall.integrity <= WALL_REPAIR_THRESHOLD;
   const buildMode = buildModes[viewAs];
   const selectedAttackLane = attackLanes[viewAs];
+  const matchOutcome = match.status === "complete"
+    ? match.result?.type === "draw"
+      ? "DRAW"
+      : match.result?.winnerPlayerId === viewAs
+        ? "YOU WIN"
+        : "DEFEAT"
+    : null;
 
   return (
     <main className={`${styles.gameShell} text-white`}>
@@ -346,7 +353,7 @@ export default function BalloonRoomsClient() {
             </section>;
           })}
         </div>
-        {match.status === "complete" ? <div className={styles.matchOverlay} role="status">{match.result?.type === "draw" ? "DRAW" : match.result?.winnerPlayerId === viewAs ? "VICTORY" : "DEFEAT"}</div> : null}
+        {matchOutcome ? <div className={styles.matchOverlay} data-result={matchOutcome === "YOU WIN" ? "win" : undefined} role="status" aria-live="assertive">{matchOutcome}</div> : null}
       </div>
     </main>
   );
